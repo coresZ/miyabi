@@ -12,6 +12,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
+	scrapePkg "github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/nfo"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
@@ -36,7 +37,7 @@ func libraryFixture(t testing.TB) (*LibraryService, tasks.TaskInfo, scanPayload)
 		t.Fatal(err)
 	}
 	library := NewLibraryService(store.Client, driveSvc, taskSvc, images)
-	scrape := NewScrapeService(library, nil, driveSvc, images)
+	scrape := scrapePkg.New(store.Client, driveSvc, nil, images, taskSvc)
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScan, library.Scan, library.Finished))
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScrape, scrape.Scrape, scrape.Finished))
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindCover, scrape.Cover, scrape.Finished))
@@ -184,7 +185,7 @@ func TestMetadataCanonicalizesLegacyAliasBeforeRescan(t *testing.T) {
 		IDs: []nfo.UniqueID{{Type: "javdb", Default: true, Value: "catalogue-id"}},
 	}
 	if err := ent.WithTx(ctx, library.database, func(tx *ent.Tx) error {
-		return saveMovieMetadata(ctx, tx, legacy.ID, doc)
+		return scrapePkg.SaveMovieMetadata(ctx, tx, legacy.ID, doc)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +232,7 @@ func TestOfflineScanUsesCatalogueIdentityAndKeepsItOnRescan(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadata := library.database.Task.Query().Where(task.TypeEQ("scrape")).OnlyX(ctx)
-	input, err := tasks.DecodePayload[metadataPayload](metadata.Payload)
+	input, err := tasks.DecodePayload[scrapePkg.MetadataPayload](metadata.Payload)
 	if err != nil || input.MovieID != record.ID || input.JavDBID != payload.JavDBID {
 		t.Fatalf("metadata job lost the known JavDB ID: %#v, %v", input, err)
 	}

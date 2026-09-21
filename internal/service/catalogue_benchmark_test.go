@@ -9,6 +9,7 @@ import (
 
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/nfo"
 )
 
@@ -81,11 +82,11 @@ func BenchmarkOfflineActivityHistory(b *testing.B) {
 }
 
 func BenchmarkTaskPayload(b *testing.B) {
-	input := coverPayload{
-		metadataPayload: metadataPayload{Source: domain.LibrarySource{AccountID: "100", Directory: domain.LibraryDirectory{ID: "10", Path: "/Movies"}},
+	input := scrape.CoverPayload{
+		MetadataPayload: scrape.MetadataPayload{Source: domain.LibrarySource{AccountID: "100", Directory: domain.LibraryDirectory{ID: "10", Path: "/Movies"}},
 			ScanTaskID: 1, MovieID: 2, Code: "ABP-001", JavDBID: "movie"},
 		Document: nfo.Movie{Code: "ABP-001", Title: "Fixture title", Rating: 4.5},
-		Snapshot: &metadataSnapshot{Videos: "fingerprint", Directories: []metadataDirectorySnapshot{{ID: "10"}}},
+		Snapshot: &scrape.Snapshot{Videos: "fingerprint", Directories: []scrape.DirectorySnapshot{{ID: "10"}}},
 	}
 	for i := range 20 {
 		input.Document.Tags = append(input.Document.Tags, nfo.Tag{ID: fmt.Sprint(i), Name: "Fixture tag", CategoryID: "category"})
@@ -115,7 +116,7 @@ func BenchmarkTaskPayload(b *testing.B) {
 			if err := json.Unmarshal(body, &record.Payload); err != nil {
 				b.Fatal(err)
 			}
-			decoded, err := tasks.DecodePayload[coverPayload](record.Payload)
+			decoded, err := tasks.DecodePayload[scrape.CoverPayload](record.Payload)
 			if err != nil {
 				b.Fatal(err)
 			}

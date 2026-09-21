@@ -11,6 +11,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/nfo"
 	"github.com/ppxb/miyabi/internal/pan"
 )
@@ -133,7 +134,7 @@ func TestRescanRepairsAuxiliaryVideosAndSSNISubtitleAlias(t *testing.T) {
 		t.Fatalf("SSNI-748 playback still points at an auxiliary file: %+v", files)
 	}
 	for _, job := range library.database.Task.Query().Where(task.TypeEQ("scrape")).AllX(ctx) {
-		input, err := tasks.DecodePayload[metadataPayload](job.Payload)
+		input, err := tasks.DecodePayload[scrape.MetadataPayload](job.Payload)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -172,28 +173,28 @@ func TestNFOIdentifiesOnlyEligibleVideosAndSmallFilesDoNotMakeDirectoryShared(t 
 		library.database.File.Query().Where(file.FileIDEQ("auxiliary")).OnlyX(ctx).MovieID != nil {
 		t.Fatal("NFO inference did not distinguish the feature from its auxiliary file")
 	}
-	scrape := NewScrapeService(library, nil, library.drive, library.images)
+	scrapeSvc := scrape.New(library.database, library.drive, nil, library.images, library.tasks)
 	sess, err := library.drive.OpenSource(ctx, source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	directories, err := scrape.directories(ctx, sess, metadataPayload{Source: source, MovieID: film.ID})
+	directories, err := scrapeSvc.Directories(ctx, sess, scrape.MetadataPayload{Source: source, MovieID: film.ID})
 	if err != nil || len(directories) != 1 || directories[0].Shared {
 		t.Fatalf("small video blocked reuse of the movie NFO: %+v err=%v", directories, err)
 	}
-	live, found := findDirectoryNFO(film.Code, directories[0])
+	live, found := scrape.FindDirectoryNFO(film.Code, directories[0])
 	observed := make(scanObservations)
-	observed.add("10", entries)
-	compact, compactFound := findNFO(film.Code, false, observed["10"], func(entry observedFile) string { return entry.Name })
+	observed.Add("10", entries)
+	compact, compactFound := scrape.FindNFO(film.Code, false, observed["10"], func(entry observedFile) string { return entry.Name })
 	if !found || !compactFound || live.Name != "movie.nfo" || compact.Name != live.Name {
 		t.Fatal("live metadata reads and scan observations selected different NFOs")
 	}
-	snapshot := metadataSnapshot{
-		Videos:      videoFingerprint([]pan.File{entries[0]}),
-		Directories: []metadataDirectorySnapshot{directorySnapshot("10", entries[2], entries[3], entries[4])},
+	snapshot := scrape.Snapshot{
+		Videos:      scrape.VideoFingerprint([]pan.File{entries[0]}),
+		Directories: []scrape.DirectorySnapshot{scrape.NewDirectorySnapshot("10", entries[2], entries[3], entries[4])},
 	}
 	indexed := library.database.Movie.Query().Where(movie.IDEQ(film.ID)).WithFiles().OnlyX(ctx)
-	if !snapshot.matches(indexed, observed) {
+	if !snapshot.Matches(indexed, observed) {
 		t.Fatal("an auxiliary video invalidated an unchanged NFO snapshot")
 	}
 }

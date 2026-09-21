@@ -206,8 +206,8 @@ func (service *DiscoverService) Browse(
 	return service.projectMovies(ctx, movies)
 }
 
-func (service *DiscoverService) MovieDetail(ctx context.Context, movieID string) (DiscoverMovieDetail, error) {
-	movie, err := cachedJavDB(ctx, service, service.details, movieID, func(ctx context.Context) (domain.MovieDetail, error) {
+func (service *DiscoverService) CatalogueDetail(ctx context.Context, movieID string) (domain.MovieDetail, error) {
+	return cachedJavDB(ctx, service, service.details, movieID, func(ctx context.Context) (domain.MovieDetail, error) {
 		detail, err := service.javdb.MovieDetail(ctx, movieID)
 		if err != nil {
 			return domain.MovieDetail{}, err
@@ -217,6 +217,10 @@ func (service *DiscoverService) MovieDetail(ctx context.Context, movieID string)
 		}
 		return detail, nil
 	})
+}
+
+func (service *DiscoverService) MovieDetail(ctx context.Context, movieID string) (DiscoverMovieDetail, error) {
+	movie, err := service.CatalogueDetail(ctx, movieID)
 	if err != nil {
 		return DiscoverMovieDetail{}, fmt.Errorf("get JavDB movie detail: %w", err)
 	}

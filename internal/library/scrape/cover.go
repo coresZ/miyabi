@@ -1,10 +1,9 @@
-package service
+package scrape
 
 import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/ppxb/miyabi/internal/tasks"
 	"strings"
 
 	"github.com/ppxb/miyabi/internal/codeid"
@@ -15,10 +14,23 @@ import (
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/nfo"
 	"github.com/ppxb/miyabi/internal/pan"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
 
-func (service *ScrapeService) Cover(ctx context.Context, job tasks.Job) error {
-	input, err := tasks.DecodePayload[coverPayload](job.Payload)
+// CoverPayload describes the input and intermediate state of a cover creation job.
+type CoverPayload struct {
+	MetadataPayload
+	ScrapeTaskID int                 `json:"scrape_task_id"`
+	Document     nfo.Movie           `json:"document"`
+	CoverURL     string              `json:"cover_url,omitempty"`
+	Origin       *ArtworkOrigin      `json:"origin,omitempty"`
+	Artwork      *mediaimage.Artwork `json:"artwork,omitempty"`
+	Snapshot     *Snapshot           `json:"snapshot,omitempty"`
+}
+
+// Cover processes the cover download, generation, and upload of artwork and NFO sidecars.
+func (service *Service) Cover(ctx context.Context, job tasks.Job) error {
+	input, err := tasks.DecodePayload[CoverPayload](job.Payload)
 	if err != nil {
 		return err
 	}
@@ -32,10 +44,10 @@ func (service *ScrapeService) Cover(ctx context.Context, job tasks.Job) error {
 	return service.processCover(ctx, job, input)
 }
 
-func (service *ScrapeService) processCover(ctx context.Context, job tasks.Job, input coverPayload) error {
+func (service *Service) processCover(ctx context.Context, job tasks.Job, input CoverPayload) error {
 	input.Code = codeid.Normalize(input.Code)
 	input.Document.Code = codeid.Normalize(input.Document.Code)
-	sess, err := service.begin(ctx, input.metadataPayload)
+	sess, err := service.begin(ctx, input.MetadataPayload)
 	if err != nil {
 		return err
 	}
@@ -82,16 +94,16 @@ func (service *ScrapeService) processCover(ctx context.Context, job tasks.Job, i
 	if err != nil {
 		return err
 	}
-	if err := service.library.database.Task.UpdateOneID(job.ID).SetPayload(encoded).Exec(ctx); err != nil {
+	if err := service.db.Task.UpdateOneID(job.ID).SetPayload(encoded).Exec(ctx); err != nil {
 		return err
 	}
 	// Re-read the directory after scraping. Never upload alongside a video
 	// which was deleted or moved while waiting for JavDB or another task.
-	directories, err := service.directories(ctx, sess, input.metadataPayload)
+	directories, err := service.directories(ctx, sess, input.MetadataPayload)
 	if err != nil {
 		return err
 	}
-	snapshot := &metadataSnapshot{}
+	snapshot := &Snapshot{}
 	var videos []pan.File
 	for i, directory := range directories {
 		state, err := service.writeSidecars(ctx, sess, input, directory, poster, fanart)
@@ -104,11 +116,11 @@ func (service *ScrapeService) processCover(ctx context.Context, job tasks.Job, i
 				videos = append(videos, entry)
 			}
 		}
-		if err := service.library.database.Task.UpdateOneID(job.ID).SetProgress((i + 1) * 100 / len(directories)).Exec(ctx); err != nil {
+		if err := service.db.Task.UpdateOneID(job.ID).SetProgress((i + 1) * 100 / len(directories)).Exec(ctx); err != nil {
 			return err
 		}
 	}
-	snapshot.Videos = videoFingerprint(videos)
+	snapshot.Videos = VideoFingerprint(videos)
 	input.Snapshot = snapshot
 	encoded, err = tasks.EncodePayload(input)
 	if err != nil {
@@ -124,35 +136,37 @@ func (service *ScrapeService) processCover(ctx context.Context, job tasks.Job, i
 	}); err != nil {
 		return fmt.Errorf("save movie artwork: %w", err)
 	}
-	service.library.tasks.NotifyLibraryChanged()
+	if service.notifier != nil {
+		service.notifier.NotifyLibraryChanged()
+	}
 	return nil
 }
 
-func (service *ScrapeService) originImage(ctx context.Context, sess drive.Session, entry pan.File) ([]byte, error) {
-	info, err := service.library.sourceInfo(ctx, sess, entry.ID)
+func (service *Service) originImage(ctx context.Context, sess drive.Session, entry pan.File) ([]byte, error) {
+	info, err := drive.SourceInfo(ctx, sess, entry.ID)
 	if err != nil {
 		return nil, fmt.Errorf("find NFO artwork: %w", err)
 	}
 	return sess.Read(ctx, info.File.PickCode, 32<<20)
 }
 
-func (service *ScrapeService) writeSidecars(ctx context.Context, sess drive.Session, input coverPayload, directory movieDirectory, poster, fanart []byte) (metadataDirectorySnapshot, error) {
-	var snapshot metadataDirectorySnapshot
+func (service *Service) writeSidecars(ctx context.Context, sess drive.Session, input CoverPayload, directory MovieDirectory, poster, fanart []byte) (DirectorySnapshot, error) {
+	var snapshot DirectorySnapshot
 	stem := nfo.FileStem(input.Code)
 	nfoName := stem + ".nfo"
 	// An existing matching NFO is already the source of truth. Preserve its
 	// formatting and user edits, as well as its referenced artwork.
-	if doc, origin, found, err := service.directoryNFO(ctx, sess, input.metadataPayload, directory); err != nil {
+	if doc, origin, found, err := DirectoryNFO(ctx, sess, input.Code, directory); err != nil {
 		return snapshot, err
 	} else if found {
-		if err := verifyCoverOrigin(input, directory.ID, doc, *origin, poster, fanart); err != nil {
+		if err := VerifyCoverOrigin(input, directory.ID, doc, *origin, poster, fanart); err != nil {
 			return snapshot, err
 		}
-		return directorySnapshot(directory.ID, origin.NFO, origin.Poster, origin.Fanart), nil
+		return NewDirectorySnapshot(directory.ID, origin.NFO, origin.Poster, origin.Fanart), nil
 	}
 	posterName, fanartName := "poster.jpg", "fanart.jpg"
-	existingPoster, posterExists := sidecarByName(directory.Files, posterName)
-	existingFanart, fanartExists := sidecarByName(directory.Files, fanartName)
+	existingPoster, posterExists := SidecarByName(directory.Files, posterName)
+	existingFanart, fanartExists := SidecarByName(directory.Files, fanartName)
 	if directory.Shared || directory.ID == input.Source.Directory.ID || (posterExists && !strings.EqualFold(existingPoster.SHA1, pan.SHA1(poster))) ||
 		(fanartExists && !strings.EqualFold(existingFanart.SHA1, pan.SHA1(fanart))) {
 		posterName, fanartName = stem+"-poster.jpg", stem+"-fanart.jpg"
@@ -172,23 +186,22 @@ func (service *ScrapeService) writeSidecars(ctx context.Context, sess drive.Sess
 	}{
 		{posterName, poster}, {fanartName, fanart}, {nfoName, body},
 	} {
-		if existing, found := sidecarByName(directory.Files, item.name); found {
+		if existing, found := SidecarByName(directory.Files, item.name); found {
 			if strings.EqualFold(existing.SHA1, pan.SHA1(item.body)) {
 				continue
 			}
 			return snapshot, domain.E(domain.KindConflict, fmt.Sprintf("媒体目录已存在不同内容的 %s，已保留原文件", item.name), nil)
 		}
-		if err := service.uploadSidecar(ctx, sess, directory, item.name, item.body); err != nil {
+		if err := UploadSidecar(ctx, sess, directory, item.name, item.body); err != nil {
 			return snapshot, fmt.Errorf("write %s to 115: %w", item.name, err)
 		}
 	}
-	return directorySnapshot(directory.ID, pan.File{Name: nfoName, SHA1: pan.SHA1(body)},
+	return NewDirectorySnapshot(directory.ID, pan.File{Name: nfoName, SHA1: pan.SHA1(body)},
 		pan.File{Name: posterName, SHA1: pan.SHA1(poster)}, pan.File{Name: fanartName, SHA1: pan.SHA1(fanart)}), nil
 }
 
-// A retry may find sidecars written by its previous attempt. Accept those,
-// but never mark a newly edited metadata source as already synchronized.
-func verifyCoverOrigin(input coverPayload, directoryID string, current nfo.Movie, origin artworkOrigin, poster, fanart []byte) error {
+// VerifyCoverOrigin validates that existing sidecars have not changed concurrently.
+func VerifyCoverOrigin(input CoverPayload, directoryID string, current nfo.Movie, origin ArtworkOrigin, poster, fanart []byte) error {
 	expected := input.Document
 	posterSHA, fanartSHA := pan.SHA1(poster), pan.SHA1(fanart)
 	// directories() orders parent IDs as text; later NFOs keep their own edits.
@@ -215,7 +228,8 @@ func verifyCoverOrigin(input coverPayload, directoryID string, current nfo.Movie
 	return nil
 }
 
-func (service *ScrapeService) uploadSidecar(ctx context.Context, sess drive.Session, directory movieDirectory, name string, body []byte) error {
+// UploadSidecar writes a sidecar file into a movie's directory on 115 storage.
+func UploadSidecar(ctx context.Context, sess drive.Session, directory MovieDirectory, name string, body []byte) error {
 	for _, entry := range directory.Files {
 		if !directory.VideoIDs[entry.ID] {
 			continue
@@ -230,8 +244,4 @@ func (service *ScrapeService) uploadSidecar(ctx context.Context, sess drive.Sess
 		return sess.Upload(ctx, directory.ID, name, body)
 	}
 	return domain.E(domain.KindInvalid, "没有可写入元数据的视频目录", nil)
-}
-
-func (service *ScrapeService) Artwork(key string) ([]byte, error) {
-	return service.images.Read(key)
 }

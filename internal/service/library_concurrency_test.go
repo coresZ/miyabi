@@ -10,6 +10,7 @@ import (
 	drivePkg "github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	scrapePkg "github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
@@ -114,13 +115,12 @@ func TestMetadataSourceChangeAfterInfoPreventsUpload(t *testing.T) {
 	}
 	finished := make(chan error, 1)
 	go func() {
-		scrape := &ScrapeService{library: library}
 		sess, err := library.drive.OpenSource(t.Context(), source)
 		if err != nil {
 			finished <- err
 			return
 		}
-		finished <- scrape.uploadSidecar(t.Context(), sess, movieDirectory{
+		finished <- scrapePkg.UploadSidecar(t.Context(), sess, scrapePkg.MovieDirectory{
 			ID: source.Directory.ID, Files: []pan.File{video}, VideoIDs: map[string]bool{video.ID: true},
 		}, "movie.nfo", []byte("fixture"))
 	}()

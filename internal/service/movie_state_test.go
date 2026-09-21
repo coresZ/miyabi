@@ -8,6 +8,7 @@ import (
 
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/pan"
 )
 
@@ -67,7 +68,7 @@ func TestMovieStatesFollowDownloadThroughIndexingWithoutCatalogueRequests(t *tes
 		t.Fatalf("committed files are missing or duplicated: %+v err=%v", saved, err)
 	}
 	// A failed metadata job does not revoke playback of an indexed video.
-	metadata, err := tasks.EncodePayload(metadataPayload{Source: source, ScanTaskID: scan.ID,
+	metadata, err := tasks.EncodePayload(scrape.MetadataPayload{Source: source, ScanTaskID: scan.ID,
 		MovieID: *indexed.MovieID, Code: input.Code, JavDBID: input.JavDBID})
 	if err != nil {
 		t.Fatal(err)

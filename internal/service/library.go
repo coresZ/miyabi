@@ -162,3 +162,11 @@ func libraryEntity(id, name *string) *LibraryEntity {
 	}
 	return &LibraryEntity{ID: valueOrZero(id), Name: *name}
 }
+
+func valueOrZero[T any](value *T) T {
+	if value != nil {
+		return *value
+	}
+	var zero T
+	return zero
+}

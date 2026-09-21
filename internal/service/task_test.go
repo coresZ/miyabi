@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/library/scrape"
 )
 
 func TestTaskGroupsFoldChildCountsAndLatestState(t *testing.T) {
@@ -25,7 +26,7 @@ func TestTaskGroupsFoldChildCountsAndLatestState(t *testing.T) {
 		{"scrape", task.StatusDone}, {"scrape", task.StatusDone}, {"scrape", task.StatusFailed},
 		{"cover", task.StatusDone}, {"cover", task.StatusRunning},
 	} {
-		input, err := tasks.EncodePayload(metadataPayload{Source: payload.Source, ScanTaskID: parent.ID})
+		input, err := tasks.EncodePayload(scrape.MetadataPayload{Source: payload.Source, ScanTaskID: parent.ID})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -69,7 +70,7 @@ func TestTaskListRetainsOlderActiveWorkflows(t *testing.T) {
 	if err := library.tasks.Queue().Finish(ctx, parent.ID, nil); err != nil {
 		t.Fatal(err)
 	}
-	input, err := tasks.EncodePayload(metadataPayload{Source: payload.Source, ScanTaskID: parent.ID})
+	input, err := tasks.EncodePayload(scrape.MetadataPayload{Source: payload.Source, ScanTaskID: parent.ID})
 	if err != nil {
 		t.Fatal(err)
 	}

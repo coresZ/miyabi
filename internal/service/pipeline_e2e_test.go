@@ -19,6 +19,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/javdb"
+	scrapePkg "github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/nfo"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
@@ -267,7 +268,7 @@ type pipelineFixture struct {
 	catalogue *fakeCatalogue
 	tasks     *tasks.Service
 	library   *LibraryService
-	scrape    *ScrapeService
+	scrape    *scrapePkg.Service
 	discover  *DiscoverService
 	source    domain.LibrarySource
 }
@@ -303,7 +304,7 @@ func newPipelineFixture(t *testing.T) *pipelineFixture {
 	catalogue := &fakeCatalogue{ids: make(map[string]string), details: make(map[string]domain.MovieDetail), cover: fixtureJPEG(t, 600, 400)}
 	discover.javdb = catalogue
 	library := NewLibraryService(store.Client, d, taskSvc, images)
-	scrape := NewScrapeService(library, discover, d, images)
+	scrape := scrapePkg.New(store.Client, d, discover, images, taskSvc)
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScan, library.Scan, library.Finished))
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScrape, scrape.Scrape, scrape.Finished))
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindCover, scrape.Cover, scrape.Finished))
@@ -420,7 +421,7 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 	if len(record.Edges.Actors) != 2 || len(record.Edges.Tags) != 1 || len(record.Edges.Files) != 1 || record.Edges.Files[0].FileID != video.ID {
 		t.Fatalf("movie edges = actors %d tags %d files %+v", len(record.Edges.Actors), len(record.Edges.Tags), record.Edges.Files)
 	}
-	artwork := movieArtwork(record)
+	artwork := scrapePkg.MovieArtwork(record)
 	if exists, err := fixture.library.images.Exists(artwork); err != nil || !exists {
 		t.Fatalf("artwork %+v cached = %t, %v", artwork, exists, err)
 	}

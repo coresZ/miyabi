@@ -15,7 +15,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
-	"github.com/ppxb/miyabi/internal/nfo"
+	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
@@ -136,11 +136,11 @@ func (service *LibraryService) Scan(ctx context.Context, job tasks.Job) error {
 			}); err != nil {
 				return err
 			}
-			entries, err := service.directoryEntries(ctx, sess, info.ParentID)
+			entries, err := drive.DirectoryEntries(ctx, sess, info.ParentID)
 			if err != nil {
 				return err
 			}
-			observed.add(info.ParentID, entries)
+			observed.Add(info.ParentID, entries)
 			return reconcile()
 		}
 		start = scanDirectory{id: info.ID, path: payload.TargetPath}
@@ -168,7 +168,7 @@ func (service *LibraryService) Scan(ctx context.Context, job tasks.Job) error {
 			return page, nil
 		}, func(page pan.FilePage) (bool, error) {
 			videos := make([]scanVideo, 0, len(page.Files))
-			observed.add(directory.id, page.Files)
+			observed.Add(directory.id, page.Files)
 			for _, entry := range page.Files {
 				if seen[entry.ID] {
 					return false, domain.E(domain.KindConflict, fmt.Sprintf("扫描期间重复遇到文件或目录 %s，请重新扫描", path.Join(directory.path, entry.Name)), nil)
@@ -220,18 +220,11 @@ func (service *LibraryService) Scan(ctx context.Context, job tasks.Job) error {
 		if len(sidecars) == 1 && len(directoryCodes) <= 1 && slices.ContainsFunc(unidentified, func(video scanVideo) bool {
 			return canIdentifyVideo(video.File)
 		}) {
-			body, err := sess.Read(ctx, sidecars[0].PickCode, 2<<20)
-			if err != nil {
-				return fmt.Errorf("read scan NFO: %w", err)
-			}
-			doc, err := nfo.Decode(body)
+			doc, err := scrape.ReadNFO(ctx, sess, sidecars[0])
 			if err != nil {
 				return err
 			}
-			code := codeid.Normalize(doc.Code)
-			if code == "" {
-				code, _ = codeid.Parse(sidecars[0].Name)
-			}
+			code := doc.Code
 			if code != "" && (len(directoryCodes) == 0 || directoryCodes[code]) {
 				matched := 0
 				for i := range unidentified {
@@ -261,18 +254,13 @@ func (service *LibraryService) Scan(ctx context.Context, job tasks.Job) error {
 }
 
 func isVideo(name string) bool {
-	switch strings.ToLower(path.Ext(name)) {
-	case ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts", ".m2ts", ".mts", ".mpg", ".mpeg", ".vob":
-		return true
-	default:
-		return false
-	}
+	return domain.IsVideo(name)
 }
 
-const minVideoSize int64 = 100 << 20
+const minVideoSize int64 = domain.MinVideoSize
 
 func canIdentifyVideo(entry pan.File) bool {
-	return !entry.IsDirectory && isVideo(entry.Name) && entry.Size >= minVideoSize
+	return !entry.IsDirectory && domain.IsVideo(entry.Name) && entry.Size >= domain.MinVideoSize
 }
 
 func (service *LibraryService) indexScanPage(ctx context.Context, taskID int, scanID, directoryPath string, videos []scanVideo, payload *scanPayload) error {
@@ -548,13 +536,13 @@ func (service *LibraryService) reconcileScanTx(ctx context.Context, tx *ent.Tx, 
 			ids = append(ids, record.ID)
 		}
 	}
-	snapshots, err := completedMetadataSnapshots(ctx, tx.Client(), payload.Source, ids)
+	snapshots, err := scrape.CompletedMetadataSnapshots(ctx, tx.Client(), payload.Source, ids)
 	if err != nil {
 		return err
 	}
 	for _, record := range moviesToScrape {
-		if snapshot, found := snapshots[record.ID]; found && record.ScrapeStatus == movie.ScrapeStatusDone && snapshot.matches(record, observed) {
-			cached, err := service.images.Exists(movieArtwork(record))
+		if snapshot, found := snapshots[record.ID]; found && record.ScrapeStatus == movie.ScrapeStatusDone && snapshot.Matches(record, observed) {
+			cached, err := service.images.Exists(scrape.MovieArtwork(record))
 			if err != nil {
 				return fmt.Errorf("check cached artwork: %w", err)
 			}
@@ -562,7 +550,7 @@ func (service *LibraryService) reconcileScanTx(ctx context.Context, tx *ent.Tx, 
 				continue
 			}
 		}
-		input := metadataPayload{Source: payload.Source, ScanTaskID: taskID, MovieID: record.ID,
+		input := scrape.MetadataPayload{Source: payload.Source, ScanTaskID: taskID, MovieID: record.ID,
 			Code: record.Code, JavDBID: valueOrZero(record.JavdbID)}
 		encoded, err := tasks.EncodePayload(input)
 		if err != nil {

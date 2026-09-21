@@ -13,6 +13,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
+	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/pan"
 )
 
@@ -21,7 +22,7 @@ type completedScanFixture struct {
 	queued  tasks.TaskInfo
 	payload scanPayload
 	covered *ent.Task
-	input   coverPayload
+	input   scrape.CoverPayload
 	movie   *ent.Movie
 	videos  []scanVideo
 	entries map[string][]pan.File
@@ -55,9 +56,12 @@ func newCompletedScanFixture(t *testing.T) *completedScanFixture {
 	nfo := pan.File{Name: "ABP-001.nfo", SHA1: strings.Repeat("1", 40)}
 	poster := pan.File{Name: "ABP-001-poster.jpg", SHA1: strings.Repeat("2", 40)}
 	fanart := pan.File{Name: "ABP-001-fanart.jpg", SHA1: strings.Repeat("3", 40)}
-	input := coverPayload{metadataPayload: metadataPayload{Source: payload.Source, ScanTaskID: queued.ID, MovieID: record.ID, Code: record.Code},
-		Artwork: &artwork, Snapshot: &metadataSnapshot{Videos: videoFingerprint([]pan.File{videos[0].File}),
-			Directories: []metadataDirectorySnapshot{directorySnapshot("10", nfo, poster, fanart)},
+	input := scrape.CoverPayload{
+		MetadataPayload: scrape.MetadataPayload{Source: payload.Source, ScanTaskID: queued.ID, MovieID: record.ID, Code: record.Code},
+		Artwork:         &artwork,
+		Snapshot: &scrape.Snapshot{
+			Videos:      scrape.VideoFingerprint([]pan.File{videos[0].File}),
+			Directories: []scrape.DirectorySnapshot{scrape.NewDirectorySnapshot("10", nfo, poster, fanart)},
 		},
 	}
 	encoded, err := tasks.EncodePayload(input)
@@ -145,7 +149,7 @@ func TestRescanSchedulesOnlyChangedOrIncompleteMetadata(t *testing.T) {
 			}
 			observed := make(scanObservations)
 			for id, entries := range f.entries {
-				observed.add(id, entries)
+				observed.Add(id, entries)
 			}
 			if err := f.library.reconcileScan(t.Context(), f.queued.ID, "rescan", &f.payload, observed); err != nil {
 				t.Fatal(err)

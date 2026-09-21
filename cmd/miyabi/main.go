@@ -19,6 +19,7 @@ import (
 	"github.com/ppxb/miyabi/internal/drive"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/javdb"
+	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/logging"
 	"github.com/ppxb/miyabi/internal/service"
 	"github.com/ppxb/miyabi/internal/tasks"
@@ -81,14 +82,14 @@ func run(args []string) error {
 	library := service.NewLibraryService(store.Client, driveSvc, taskSvc, images)
 	play := service.NewPlayService(library, driveSvc)
 	defer play.Close()
-	scrape := service.NewScrapeService(library, discover, driveSvc, images)
-	data, err := service.NewDataService(cfg.DataDir, scrape)
+	scrapeSvc := scrape.New(store.Client, driveSvc, discover, images, taskSvc)
+	data, err := service.NewDataService(cfg.DataDir, store.Client, images, scrapeSvc)
 	if err != nil {
 		return fmt.Errorf("initialize data service: %w", err)
 	}
 	taskRegistry.Register(tasks.NewHandler(tasks.KindScan, library.Scan, library.Finished))
-	taskRegistry.Register(tasks.NewHandler(tasks.KindScrape, scrape.Scrape, scrape.Finished))
-	taskRegistry.Register(tasks.NewHandler(tasks.KindCover, scrape.Cover, scrape.Finished))
+	taskRegistry.Register(tasks.NewHandler(tasks.KindScrape, scrapeSvc.Scrape, scrapeSvc.Finished))
+	taskRegistry.Register(tasks.NewHandler(tasks.KindCover, scrapeSvc.Cover, scrapeSvc.Finished))
 	// Keep scans, metadata writes and directory sidecars ordered.
 	pool := tasks.NewPool(taskSvc.Queue(), taskSvc.Bus(), taskRegistry, 1, logger)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -105,7 +106,7 @@ func run(args []string) error {
 		Library:  library,
 		Play:     play,
 		Tasks:    taskSvc,
-		Artwork:  scrape,
+		Artwork:  scrapeSvc,
 		Data:     data,
 		Network:  network,
 		Frontend: miyabi.Frontend(),

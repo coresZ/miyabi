@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/nfo"
 )
 
@@ -22,16 +23,16 @@ func taskPayloadJSON(t testing.TB, value any) json.RawMessage {
 
 func TestTaskPayloadRoundTripKeepsMetadataAndIntegerPrecision(t *testing.T) {
 	library, _, payload := libraryFixture(t)
-	input := coverPayload{
-		metadataPayload: metadataPayload{Source: payload.Source, ScanTaskID: 9007199254740993, MovieID: 2, Code: "ABP-001"},
+	input := scrape.CoverPayload{
+		MetadataPayload: scrape.MetadataPayload{Source: payload.Source, ScanTaskID: 9007199254740993, MovieID: 2, Code: "ABP-001"},
 		Document: nfo.Movie{Code: "ABP-001", Title: "Fixture title", Rating: 4.5,
 			Tags: []nfo.Tag{{ID: "tag", Name: "标签", CategoryID: "category"}}},
-		Snapshot: &metadataSnapshot{Videos: "fingerprint", Directories: []metadataDirectorySnapshot{{ID: "10"}}},
+		Snapshot: &scrape.Snapshot{Videos: "fingerprint", Directories: []scrape.DirectorySnapshot{{ID: "10"}}},
 	}
 	encoded := taskPayloadJSON(t, input)
 	record := library.database.Task.Create().SetType("cover").SetPayload(encoded).SaveX(t.Context())
 	loaded := library.database.Task.GetX(t.Context(), record.ID)
-	restored, err := tasks.DecodePayload[coverPayload](loaded.Payload)
+	restored, err := tasks.DecodePayload[scrape.CoverPayload](loaded.Payload)
 	if err != nil || !reflect.DeepEqual(restored, input) {
 		t.Fatalf("task round trip changed metadata or IDs: %#v, %v", restored, err)
 	}
@@ -69,7 +70,7 @@ func TestPartialTaskPayloadUpdateRetainsUnknownFields(t *testing.T) {
 
 func TestTaskPayloadRejectsMalformedValues(t *testing.T) {
 	for _, body := range []string{`{`, `{"scan_task_id":"1"}`, `{"scan_task_id":1.5}`, `{"scan_task_id":9223372036854775808}`} {
-		if _, err := tasks.DecodePayload[metadataPayload](json.RawMessage(body)); err == nil {
+		if _, err := tasks.DecodePayload[scrape.MetadataPayload](json.RawMessage(body)); err == nil {
 			t.Errorf("accepted invalid task payload: %s", body)
 		}
 	}

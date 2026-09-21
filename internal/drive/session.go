@@ -2,6 +2,7 @@ package drive
 
 import (
 	"context"
+	"slices"
 
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
@@ -211,4 +212,38 @@ func (s *sourceSession) CommitAccount(ctx context.Context, fn func(tx *ent.Tx) e
 		return context.Canceled
 	}
 	return ent.WithTx(ctx, s.drive.database, fn)
+}
+
+// SourceInfo fetches file info and validates that it resides within the session's library source.
+func SourceInfo(ctx context.Context, sess Session, id string) (pan.FileInfo, error) {
+	info, err := sess.Info(ctx, id)
+	if err != nil {
+		return pan.FileInfo{}, err
+	}
+	if !WithinSource(info, sess.Source()) {
+		return pan.FileInfo{}, domain.E(domain.KindNotFound, "下载资源已移出媒体目录", nil)
+	}
+	return info, nil
+}
+
+// DirectoryEntries lists all file entries across pages in a directory, validating that the directory is within the library source.
+func DirectoryEntries(ctx context.Context, sess Session, id string) ([]pan.File, error) {
+	var files []pan.File
+	err := WalkFilePages(ctx, func(offset int) (pan.FilePage, error) {
+		page, err := sess.List(ctx, id, offset)
+		if err != nil {
+			return pan.FilePage{}, err
+		}
+		if !slices.ContainsFunc(page.Path, func(directory pan.Directory) bool { return directory.ID == sess.Source().Directory.ID }) {
+			return pan.FilePage{}, domain.E(domain.KindConflict, "该文件夹已移出媒体目录，请重新扫描", nil)
+		}
+		return page, nil
+	}, func(page pan.FilePage) (bool, error) {
+		files = append(files, page.Files...)
+		return true, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
 }

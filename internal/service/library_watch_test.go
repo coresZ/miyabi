@@ -8,6 +8,7 @@ import (
 	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/movie"
+	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/nfo"
 )
 
@@ -124,7 +125,7 @@ func TestWatchedStateSurvivesScrapingDownloadIndexingAndRescan(t *testing.T) {
 	doc := nfo.Movie{Code: film.Code, Title: "Updated title",
 		IDs: []nfo.UniqueID{{Type: "javdb", Default: true, Value: "catalogue-id"}}}
 	if err := ent.WithTx(ctx, library.database, func(tx *ent.Tx) error {
-		if err := saveMovieMetadata(ctx, tx, film.ID, doc); err != nil {
+		if err := scrape.SaveMovieMetadata(ctx, tx, film.ID, doc); err != nil {
 			return err
 		}
 		_, err := indexDownloadedMovie(ctx, tx, scanPayload{Code: film.Code, JavDBID: doc.JavDBID()})

@@ -9,6 +9,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
@@ -313,7 +314,7 @@ func TestOfflineActivitySeparatesPlaybackFromArtworkAndRechecksFiles(t *testing.
 	if err := service.database.Task.UpdateOneID(download.ID).SetPayload(encoded).Exec(ctx); err != nil {
 		t.Fatal(err)
 	}
-	metadata, err := tasks.EncodePayload(metadataPayload{Source: source, ScanTaskID: input.ScanTaskID, MovieID: film.ID})
+	metadata, err := tasks.EncodePayload(scrape.MetadataPayload{Source: source, ScanTaskID: input.ScanTaskID, MovieID: film.ID})
 	if err != nil {
 		t.Fatal(err)
 	}

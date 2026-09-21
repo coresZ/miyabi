@@ -364,3 +364,90 @@ func TestFilePath(t *testing.T) {
 	}
 }
 
+type fakeSessionStub struct {
+	Session
+	source domain.LibrarySource
+	info   func(ctx context.Context, fileID string) (pan.FileInfo, error)
+	list   func(ctx context.Context, dirID string, offset int) (pan.FilePage, error)
+}
+
+func (f *fakeSessionStub) Source() domain.LibrarySource { return f.source }
+func (f *fakeSessionStub) Info(ctx context.Context, id string) (pan.FileInfo, error) {
+	if f.info != nil {
+		return f.info(ctx, id)
+	}
+	return pan.FileInfo{}, nil
+}
+func (f *fakeSessionStub) List(ctx context.Context, dirID string, offset int) (pan.FilePage, error) {
+	if f.list != nil {
+		return f.list(ctx, dirID, offset)
+	}
+	return pan.FilePage{}, nil
+}
+
+func TestSourceInfo(t *testing.T) {
+	source := domain.LibrarySource{
+		AccountID: "acc-1",
+		Directory: domain.LibraryDirectory{ID: "dir-100"},
+	}
+	sess := &fakeSessionStub{
+		source: source,
+		info: func(ctx context.Context, fileID string) (pan.FileInfo, error) {
+			if fileID == "valid" {
+				return pan.FileInfo{
+					File: pan.File{ID: "valid", Name: "ABP-001.mp4"},
+					Path: []pan.Directory{{ID: "0"}, {ID: "dir-100"}},
+				}, nil
+			}
+			return pan.FileInfo{
+				File: pan.File{ID: "outside", Name: "other.mp4"},
+				Path: []pan.Directory{{ID: "0"}, {ID: "other-dir"}},
+			}, nil
+		},
+	}
+
+	info, err := SourceInfo(t.Context(), sess, "valid")
+	if err != nil || info.Name != "ABP-001.mp4" {
+		t.Fatalf("expected valid info, got err=%v, info=%+v", err, info)
+	}
+
+	_, err = SourceInfo(t.Context(), sess, "outside")
+	if err == nil {
+		t.Fatal("expected error for file outside library source, got nil")
+	}
+}
+
+func TestDirectoryEntries(t *testing.T) {
+	source := domain.LibrarySource{
+		AccountID: "acc-1",
+		Directory: domain.LibraryDirectory{ID: "dir-100"},
+	}
+	sess := &fakeSessionStub{
+		source: source,
+		list: func(ctx context.Context, dirID string, offset int) (pan.FilePage, error) {
+			if dirID == "dir-inside" {
+				return pan.FilePage{
+					Total: 2,
+					Path:  []pan.Directory{{ID: "0"}, {ID: "dir-100"}, {ID: "dir-inside"}},
+					Files: []pan.File{{ID: "f1", Name: "a.mp4"}, {ID: "f2", Name: "b.mp4"}},
+				}, nil
+			}
+			return pan.FilePage{
+				Total: 1,
+				Path:  []pan.Directory{{ID: "0"}, {ID: "other"}},
+				Files: []pan.File{{ID: "f3", Name: "c.mp4"}},
+			}, nil
+		},
+	}
+
+	files, err := DirectoryEntries(t.Context(), sess, "dir-inside")
+	if err != nil || len(files) != 2 {
+		t.Fatalf("expected 2 files, got err=%v, files=%+v", err, files)
+	}
+
+	_, err = DirectoryEntries(t.Context(), sess, "dir-outside")
+	if err == nil {
+		t.Fatal("expected error for directory outside library source, got nil")
+	}
+}
+

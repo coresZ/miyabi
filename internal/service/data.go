@@ -4,15 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ppxb/miyabi/internal/tasks"
 	"os"
 	"path/filepath"
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/ppxb/miyabi/internal/domain"
+	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
+	"github.com/ppxb/miyabi/internal/library/scrape"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
 
 var ErrCacheBusy = domain.E(domain.KindBusy, "封面正在处理或缓存正在清理，请稍后重试", nil)
@@ -25,15 +27,17 @@ type DataInfo struct {
 
 type DataService struct {
 	directory string
-	scrape    *ScrapeService
+	db        *ent.Client
+	images    *mediaimage.Cache
+	scrape    *scrape.Service
 }
 
-func NewDataService(directory string, scrape *ScrapeService) (*DataService, error) {
+func NewDataService(directory string, db *ent.Client, images *mediaimage.Cache, scrapeSvc *scrape.Service) (*DataService, error) {
 	absolute, err := filepath.Abs(directory)
 	if err != nil {
 		return nil, fmt.Errorf("resolve data directory: %w", err)
 	}
-	return &DataService{directory: absolute, scrape: scrape}, nil
+	return &DataService{directory: absolute, db: db, images: images, scrape: scrapeSvc}, nil
 }
 
 func (service *DataService) Info(ctx context.Context) (DataInfo, error) {
@@ -48,16 +52,16 @@ func (service *DataService) ClearCache(ctx context.Context) (DataInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return DataInfo{}, err
 	}
-	if !service.scrape.artwork.TryLock() {
+	if !service.scrape.TryLockArtwork() {
 		return DataInfo{}, ErrCacheBusy
 	}
-	defer service.scrape.artwork.Unlock()
+	defer service.scrape.UnlockArtwork()
 
 	retained, err := service.retainedArtwork(ctx)
 	if err != nil {
 		return DataInfo{}, err
 	}
-	if err := service.scrape.images.Prune(ctx, retained); err != nil {
+	if err := service.images.Prune(ctx, retained); err != nil {
 		return DataInfo{}, err
 	}
 	return service.info(ctx, retained)
@@ -66,7 +70,7 @@ func (service *DataService) ClearCache(ctx context.Context) (DataInfo, error) {
 func (service *DataService) info(ctx context.Context, retained map[string]bool) (DataInfo, error) {
 	result := DataInfo{DataDirectory: service.directory}
 	var err error
-	result.Cache, err = service.scrape.images.Stats(ctx, retained)
+	result.Cache, err = service.images.Stats(ctx, retained)
 	if err != nil {
 		return DataInfo{}, err
 	}
@@ -92,7 +96,7 @@ func (service *DataService) info(ctx context.Context, retained map[string]bool) 
 func (service *DataService) retainedArtwork(ctx context.Context) (map[string]bool, error) {
 	// Include every account and directory, including films temporarily without
 	// indexed files. Switching the active library must not make their covers disposable.
-	records, err := service.scrape.library.database.Movie.Query().
+	records, err := service.db.Movie.Query().
 		Select(movie.FieldID, movie.FieldCover, movie.FieldPoster, movie.FieldFanarts).All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read artwork references: %w", err)
@@ -109,7 +113,7 @@ func (service *DataService) retainedArtwork(ctx context.Context) (map[string]boo
 	// Failed and queued cover jobs can resume from locally saved artwork before
 	// the movie references it. Extract only those URLs, not the full NFO payloads.
 	var pending []mediaimage.Artwork
-	err = service.scrape.library.database.Task.Query().Where(
+	err = service.db.Task.Query().Where(
 		task.TypeEQ(tasks.KindCover.String()), task.StatusNEQ(task.StatusDone),
 		func(selector *sql.Selector) {
 			selector.Select(

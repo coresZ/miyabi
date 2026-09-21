@@ -15,6 +15,7 @@ import (
 	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
+	"github.com/ppxb/miyabi/internal/library/scrape"
 )
 
 func dataFixture(t *testing.T) *DataService {
@@ -29,8 +30,8 @@ func dataFixture(t *testing.T) *DataService {
 	if err != nil {
 		t.Fatal(err)
 	}
-	library := NewLibraryService(store.Client, nil, tasks.NewService(store.Client, tasks.NewRegistry()), images)
-	service, err := NewDataService(directory, NewScrapeService(library, nil, nil, images))
+	scrapeSvc := scrape.New(store.Client, nil, nil, images, nil)
+	service, err := NewDataService(directory, store.Client, images, scrapeSvc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func dataArtwork(t *testing.T, service *DataService, seed uint8) mediaimage.Artw
 	if err := png.Encode(&encoded, cover); err != nil {
 		t.Fatal(err)
 	}
-	artwork, err := service.scrape.images.FromCover(encoded.Bytes())
+	artwork, err := service.images.FromCover(encoded.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +64,7 @@ func artworkURLs(artwork mediaimage.Artwork) []string {
 func TestDataCleanupPreservesAllLibraryAndUnfinishedTaskReferences(t *testing.T) {
 	service := dataFixture(t)
 	ctx := t.Context()
-	db := service.scrape.library.database
+	db := service.db
 	filmImages := dataArtwork(t, service, 10)
 	additional := dataArtwork(t, service, 20)
 	unused := dataArtwork(t, service, 30)
@@ -82,14 +83,14 @@ func TestDataCleanupPreservesAllLibraryAndUnfinishedTaskReferences(t *testing.T)
 	retained := append(artworkURLs(filmImages), artworkURLs(additional)...)
 	for index, status := range []task.Status{task.StatusQueued, task.StatusRunning, task.StatusFailed} {
 		artwork := dataArtwork(t, service, uint8(40+index*10))
-		payload, err := tasks.EncodePayload(coverPayload{Artwork: &artwork})
+		payload, err := tasks.EncodePayload(scrape.CoverPayload{Artwork: &artwork})
 		if err != nil {
 			t.Fatal(err)
 		}
 		db.Task.Create().SetType("cover").SetStatus(status).SetPayload(payload).ExecX(ctx)
 		retained = append(retained, artworkURLs(artwork)...)
 	}
-	completed, err := tasks.EncodePayload(coverPayload{Artwork: &unused})
+	completed, err := tasks.EncodePayload(scrape.CoverPayload{Artwork: &unused})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,12 +118,12 @@ func TestDataCleanupPreservesAllLibraryAndUnfinishedTaskReferences(t *testing.T)
 		t.Fatalf("after cleanup: %+v %v", after, err)
 	}
 	for _, url := range retained {
-		if _, err := service.scrape.images.ReadURL(url); err != nil {
+		if _, err := service.images.ReadURL(url); err != nil {
 			t.Fatalf("referenced image was removed: %s %v", url, err)
 		}
 	}
 	for _, url := range artworkURLs(unused) {
-		if _, err := service.scrape.images.ReadURL(url); !os.IsNotExist(err) {
+		if _, err := service.images.ReadURL(url); !os.IsNotExist(err) {
 			t.Fatalf("unused image was not removed: %s %v", url, err)
 		}
 	}
@@ -149,7 +150,7 @@ func TestDataCleanupPreservesAllLibraryAndUnfinishedTaskReferences(t *testing.T)
 func TestDataCleanupAndCoverWorkShareAnExclusiveGate(t *testing.T) {
 	service := dataFixture(t)
 	unused := dataArtwork(t, service, 70)
-	if err := service.scrape.artwork.Lock(t.Context()); err != nil {
+	if err := service.scrape.LockArtwork(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.ClearCache(t.Context()); !errors.Is(err, ErrCacheBusy) {
@@ -157,7 +158,7 @@ func TestDataCleanupAndCoverWorkShareAnExclusiveGate(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	payload, err := tasks.EncodePayload(coverPayload{})
+	payload, err := tasks.EncodePayload(scrape.CoverPayload{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,12 +167,12 @@ func TestDataCleanupAndCoverWorkShareAnExclusiveGate(t *testing.T) {
 	if err := service.scrape.Cover(ctx, tasks.Job{Payload: payload}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cover did not wait on the cleanup gate: %v", err)
 	}
-	service.scrape.artwork.Unlock()
+	service.scrape.UnlockArtwork()
 	if _, err := service.ClearCache(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled cleanup error = %v", err)
 	}
 	for _, url := range artworkURLs(unused) {
-		if _, err := service.scrape.images.ReadURL(url); err != nil {
+		if _, err := service.images.ReadURL(url); err != nil {
 			t.Fatal("blocked cleanup removed images")
 		}
 	}
@@ -183,14 +184,14 @@ func TestDataCleanupAndCoverWorkShareAnExclusiveGate(t *testing.T) {
 func TestDataCleanupDoesNotDeleteWhenReferenceLookupFails(t *testing.T) {
 	service := dataFixture(t)
 	unused := dataArtwork(t, service, 80)
-	if err := service.scrape.library.database.Close(); err != nil {
+	if err := service.db.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.ClearCache(t.Context()); err == nil {
 		t.Fatal("cleanup ignored an unreadable reference database")
 	}
 	for _, url := range artworkURLs(unused) {
-		if _, err := service.scrape.images.ReadURL(url); err != nil {
+		if _, err := service.images.ReadURL(url); err != nil {
 			t.Fatal("failed reference lookup deleted images")
 		}
 	}
