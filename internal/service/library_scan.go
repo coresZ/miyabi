@@ -294,156 +294,156 @@ func (service *LibraryService) processScanPageTx(ctx context.Context, tx *ent.Tx
 	}
 	indexChanged := false
 	offlineChanged := false
-		if len(videos) > 0 {
-			ids := make([]string, 0, len(videos))
-			for _, video := range videos {
-				ids = append(ids, video.ID)
+	if len(videos) > 0 {
+		ids := make([]string, 0, len(videos))
+		for _, video := range videos {
+			ids = append(ids, video.ID)
+		}
+		previous, err := tx.File.Query().Where(file.FileIDIn(ids...)).
+			Select(file.FieldID, file.FieldFileID, file.FieldName, file.FieldParentID, file.FieldSize,
+				file.FieldSha1, file.FieldPickCode, file.FieldAccountID, file.FieldRootID, file.FieldPath, file.FieldMovieID).
+			WithMovie(func(q *ent.MovieQuery) { q.Select(movie.FieldID, movie.FieldCode, movie.FieldJavdbID) }).All(ctx)
+		if err != nil {
+			return fmt.Errorf("load previous file associations: %w", err)
+		}
+		previousFiles := make(map[string]*ent.File, len(previous))
+		for _, entry := range previous {
+			previousFiles[entry.FileID] = entry
+		}
+		if prepare != nil {
+			service.identifyScanVideos(*payload, videos, previousFiles)
+			videos = prepare(videos)
+		}
+		ids = ids[:0]
+		codes := make(map[string]int)
+		for _, video := range videos {
+			ids = append(ids, video.ID)
+			if video.Code != "" {
+				codes[video.Code] = 0
 			}
-			previous, err := tx.File.Query().Where(file.FileIDIn(ids...)).
-				Select(file.FieldID, file.FieldFileID, file.FieldName, file.FieldParentID, file.FieldSize,
-					file.FieldSha1, file.FieldPickCode, file.FieldAccountID, file.FieldRootID, file.FieldPath, file.FieldMovieID).
-				WithMovie(func(q *ent.MovieQuery) { q.Select(movie.FieldID, movie.FieldCode, movie.FieldJavdbID) }).All(ctx)
-			if err != nil {
-				return fmt.Errorf("load previous file associations: %w", err)
-			}
-			previousFiles := make(map[string]*ent.File, len(previous))
-			for _, entry := range previous {
-				previousFiles[entry.FileID] = entry
-			}
-			if prepare != nil {
-				service.identifyScanVideos(*payload, videos, previousFiles)
-				videos = prepare(videos)
-			}
-			ids = ids[:0]
-			codes := make(map[string]int)
-			for _, video := range videos {
-				ids = append(ids, video.ID)
-				if video.Code != "" {
-					codes[video.Code] = 0
-				}
-			}
-			for _, entry := range previous {
-				if film := entry.Edges.Movie; film != nil {
-					if _, needed := codes[film.Code]; needed {
-						codes[film.Code] = film.ID
-					}
-				}
-			}
-			if len(codes) > 0 && payload.OfflineTaskID != 0 && payload.TargetID != "" {
-				id, err := indexDownloadedMovie(ctx, tx, *payload)
-				if err != nil {
-					return err
-				}
-				for code := range codes {
-					codes[code] = id
-				}
-			} else if len(codes) > 0 {
-				numbers := make([]string, 0, len(codes))
-				for code, id := range codes {
-					if id == 0 {
-						numbers = append(numbers, code)
-					}
-				}
-				if len(numbers) > 0 {
-					movies, err := tx.Movie.Query().Where(movie.CodeIn(numbers...)).Select(movie.FieldID, movie.FieldCode).All(ctx)
-					if err != nil {
-						return fmt.Errorf("load scanned movie IDs: %w", err)
-					}
-					for _, record := range movies {
-						codes[record.Code] = record.ID
-					}
-				}
-				// Existing metadata needs no write during a rescan. The SQLite
-				// write transaction also protects the missing-code check.
-				var builders []*ent.MovieCreate
-				for code, id := range codes {
-					if id == 0 {
-						builders = append(builders, tx.Movie.Create().SetCode(code))
-					}
-				}
-				if len(builders) > 0 {
-					created, err := tx.Movie.CreateBulk(builders...).Save(ctx)
-					if err != nil {
-						return fmt.Errorf("index scanned movies: %w", err)
-					}
-					for _, record := range created {
-						codes[record.Code] = record.ID
-					}
-				}
-			}
-			builders := make([]*ent.FileCreate, 0, len(videos))
-			var unchanged []string
-			var previousMovies []int
-			for _, video := range videos {
-				old := previousFiles[video.ID]
-				if old != nil && old.Name == video.Name && old.ParentID == video.ParentID &&
-					old.Size == video.Size && old.Sha1 == video.SHA1 && old.PickCode == video.PickCode &&
-					old.AccountID == payload.Source.AccountID && old.RootID == payload.Source.Directory.ID &&
-					old.Path == path.Join(directoryPath, video.Name) && valueOrZero(old.MovieID) == codes[video.Code] {
-					unchanged = append(unchanged, video.ID)
-					continue
-				}
-				indexChanged = true
-				if old != nil && old.MovieID != nil && *old.MovieID != codes[video.Code] {
-					previousMovies = append(previousMovies, *old.MovieID)
-				}
-				builder := tx.File.Create().SetFileID(video.ID).SetName(video.Name).SetSize(video.Size).
-					SetPickCode(video.PickCode).SetSha1(video.SHA1).SetParentID(video.ParentID).
-					SetAccountID(payload.Source.AccountID).SetRootID(payload.Source.Directory.ID).
-					SetPath(path.Join(directoryPath, video.Name)).SetScanID(scanID)
-				if video.Code != "" {
-					builder.SetMovieID(codes[video.Code])
-				}
-				builders = append(builders, builder)
-			}
-			if len(builders) > 0 {
-				if err := tx.File.CreateBulk(builders...).OnConflictColumns(file.FieldFileID).
-					UpdateNewValues().UpdateMovieID().Exec(ctx); err != nil {
-					return fmt.Errorf("index scanned files: %w", err)
-				}
-			}
-			if len(unchanged) > 0 {
-				if err := tx.File.Update().Where(file.FileIDIn(unchanged...)).SetScanID(scanID).Exec(ctx); err != nil {
-					return fmt.Errorf("mark unchanged scanned files: %w", err)
-				}
-			}
-			removed, err := removeUnreferencedMovies(ctx, tx, previousMovies)
-			if err != nil {
-				return err
-			}
-			payload.Scan.RemovedMovies += removed
-			if len(videos) > 0 && payload.OfflineTaskID != 0 {
-				// Record each committed page with its download, so playback is
-				// available before the remaining scan and metadata work finishes.
-				record, err := tx.Task.Get(ctx, payload.OfflineTaskID)
-				if err != nil {
-					return err
-				}
-				input, err := tasks.DecodePayload[offlinePayload](record.Payload)
-				if err != nil {
-					return err
-				}
-				known := make(map[string]bool, len(input.FileIDs))
-				for _, id := range input.FileIDs {
-					known[id] = true
-				}
-				for _, id := range ids {
-					if !known[id] {
-						input.FileIDs = append(input.FileIDs, id)
-						known[id], offlineChanged = true, true
-					}
-				}
-				if offlineChanged {
-					record.Payload, err = tasks.SetPayloadField(record.Payload, "file_ids", input.FileIDs)
-					if err != nil {
-						return err
-					}
-					if err := tx.Task.UpdateOneID(record.ID).SetPayload(record.Payload).Exec(ctx); err != nil {
-						return err
-					}
+		}
+		for _, entry := range previous {
+			if film := entry.Edges.Movie; film != nil {
+				if _, needed := codes[film.Code]; needed {
+					codes[film.Code] = film.ID
 				}
 			}
 		}
+		if len(codes) > 0 && payload.OfflineTaskID != 0 && payload.TargetID != "" {
+			id, err := indexDownloadedMovie(ctx, tx, *payload)
+			if err != nil {
+				return err
+			}
+			for code := range codes {
+				codes[code] = id
+			}
+		} else if len(codes) > 0 {
+			numbers := make([]string, 0, len(codes))
+			for code, id := range codes {
+				if id == 0 {
+					numbers = append(numbers, code)
+				}
+			}
+			if len(numbers) > 0 {
+				movies, err := tx.Movie.Query().Where(movie.CodeIn(numbers...)).Select(movie.FieldID, movie.FieldCode).All(ctx)
+				if err != nil {
+					return fmt.Errorf("load scanned movie IDs: %w", err)
+				}
+				for _, record := range movies {
+					codes[record.Code] = record.ID
+				}
+			}
+			// Existing metadata needs no write during a rescan. The SQLite
+			// write transaction also protects the missing-code check.
+			var builders []*ent.MovieCreate
+			for code, id := range codes {
+				if id == 0 {
+					builders = append(builders, tx.Movie.Create().SetCode(code))
+				}
+			}
+			if len(builders) > 0 {
+				created, err := tx.Movie.CreateBulk(builders...).Save(ctx)
+				if err != nil {
+					return fmt.Errorf("index scanned movies: %w", err)
+				}
+				for _, record := range created {
+					codes[record.Code] = record.ID
+				}
+			}
+		}
+		builders := make([]*ent.FileCreate, 0, len(videos))
+		var unchanged []string
+		var previousMovies []int
+		for _, video := range videos {
+			old := previousFiles[video.ID]
+			if old != nil && old.Name == video.Name && old.ParentID == video.ParentID &&
+				old.Size == video.Size && old.Sha1 == video.SHA1 && old.PickCode == video.PickCode &&
+				old.AccountID == payload.Source.AccountID && old.RootID == payload.Source.Directory.ID &&
+				old.Path == path.Join(directoryPath, video.Name) && valueOrZero(old.MovieID) == codes[video.Code] {
+				unchanged = append(unchanged, video.ID)
+				continue
+			}
+			indexChanged = true
+			if old != nil && old.MovieID != nil && *old.MovieID != codes[video.Code] {
+				previousMovies = append(previousMovies, *old.MovieID)
+			}
+			builder := tx.File.Create().SetFileID(video.ID).SetName(video.Name).SetSize(video.Size).
+				SetPickCode(video.PickCode).SetSha1(video.SHA1).SetParentID(video.ParentID).
+				SetAccountID(payload.Source.AccountID).SetRootID(payload.Source.Directory.ID).
+				SetPath(path.Join(directoryPath, video.Name)).SetScanID(scanID)
+			if video.Code != "" {
+				builder.SetMovieID(codes[video.Code])
+			}
+			builders = append(builders, builder)
+		}
+		if len(builders) > 0 {
+			if err := tx.File.CreateBulk(builders...).OnConflictColumns(file.FieldFileID).
+				UpdateNewValues().UpdateMovieID().Exec(ctx); err != nil {
+				return fmt.Errorf("index scanned files: %w", err)
+			}
+		}
+		if len(unchanged) > 0 {
+			if err := tx.File.Update().Where(file.FileIDIn(unchanged...)).SetScanID(scanID).Exec(ctx); err != nil {
+				return fmt.Errorf("mark unchanged scanned files: %w", err)
+			}
+		}
+		removed, err := removeUnreferencedMovies(ctx, tx, previousMovies)
+		if err != nil {
+			return err
+		}
+		payload.Scan.RemovedMovies += removed
+		if len(videos) > 0 && payload.OfflineTaskID != 0 {
+			// Record each committed page with its download, so playback is
+			// available before the remaining scan and metadata work finishes.
+			record, err := tx.Task.Get(ctx, payload.OfflineTaskID)
+			if err != nil {
+				return err
+			}
+			input, err := tasks.DecodePayload[offlinePayload](record.Payload)
+			if err != nil {
+				return err
+			}
+			known := make(map[string]bool, len(input.FileIDs))
+			for _, id := range input.FileIDs {
+				known[id] = true
+			}
+			for _, id := range ids {
+				if !known[id] {
+					input.FileIDs = append(input.FileIDs, id)
+					known[id], offlineChanged = true, true
+				}
+			}
+			if offlineChanged {
+				record.Payload, err = tasks.SetPayloadField(record.Payload, "file_ids", input.FileIDs)
+				if err != nil {
+					return err
+				}
+				if err := tx.Task.UpdateOneID(record.ID).SetPayload(record.Payload).Exec(ctx); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	if err := saveScanProgress(ctx, tx.Task, taskID, *payload); err != nil {
 		return err
 	}

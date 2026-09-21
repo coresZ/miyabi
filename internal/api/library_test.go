@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/service"
 )
 
@@ -72,7 +73,7 @@ func TestLibraryWatchedEndpointValidatesIDsAndReturnsSavedState(t *testing.T) {
 		{name: "not numeric", id: "movie", status: http.StatusBadRequest},
 		{name: "overflow", id: "99999999999999999999", status: http.StatusBadRequest},
 		{name: "missing movie", id: "42", err: fs.ErrNotExist, status: http.StatusNotFound, called: true},
-		{name: "unmounted", id: "42", err: service.ErrMediaDirectoryRequired, status: http.StatusBadRequest, called: true},
+		{name: "unmounted", id: "42", err: drive.ErrMediaDirectoryRequired, status: http.StatusBadRequest, called: true},
 		{name: "write failed", id: "42", err: errors.New("write failed"), status: http.StatusInternalServerError, called: true},
 		{name: "source changed", id: "42", err: service.ErrWatchHistorySourceChanged, status: http.StatusConflict, called: true},
 	} {

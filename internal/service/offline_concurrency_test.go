@@ -156,18 +156,15 @@ func TestOfflineSyncRespectsSourceChangesDuringRemotePolling(t *testing.T) {
 			service, record, input, source := offlineFixture(t)
 			started := make(chan struct{}, 1)
 			hold, release := panTestGate(t)
-			client := &panStub{
-				account: func(context.Context, string) (pan.Account, error) { return pan.Account{ID: source.AccountID}, nil },
-				list: func(context.Context, string, string, int, int) (pan.FilePage, error) {
-					return pan.FilePage{Path: []pan.Directory{{ID: source.Directory.ID, Name: source.Directory.Name}}}, nil
-				},
-				offlineTasks: func(context.Context, string, int) (pan.OfflinePage, error) {
-					started <- struct{}{}
-					<-hold
-					return pan.OfflinePage{PageCount: 1, Tasks: []pan.OfflineTask{{Hash: input.InfoHash, Status: 2, FileID: "download-folder"}}}, nil
-				},
+			client := stubOf(t, service.drive)
+			client.list = func(context.Context, string, string, int, int) (pan.FilePage, error) {
+				return pan.FilePage{Path: []pan.Directory{{ID: source.Directory.ID, Name: source.Directory.Name}}}, nil
 			}
-			service.drive.SetClient(client)
+			client.offlineTasks = func(context.Context, string, int) (pan.OfflinePage, error) {
+				started <- struct{}{}
+				<-hold
+				return pan.OfflinePage{PageCount: 1, Tasks: []pan.OfflineTask{{Hash: input.InfoHash, Status: 2, FileID: "download-folder"}}}, nil
+			}
 			finished := make(chan error, 1)
 			go func() { finished <- service.Sync(t.Context()) }()
 			awaitPan(t, started)

@@ -15,10 +15,11 @@ func (d *Drive) refreshTokens(ctx context.Context, expected snapshot) error {
 	}
 	key := fmt.Sprintf("%d:%d", expected.credentialVersion, expected.tokenVersion)
 	result := d.refresh.DoChan(key, func() (any, error) {
-		if !d.startWork() {
+		done, ok := d.StartWork()
+		if !ok {
 			return nil, context.Canceled
 		}
-		defer d.work.Done()
+		defer done()
 		current, err := d.credentials(expected)
 		if err != nil || current.tokenVersion != expected.tokenVersion {
 			return nil, err

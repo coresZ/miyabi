@@ -59,11 +59,17 @@ internal/
 // 授权版本；每次调用前后比对版本；Commit 在持有 drive 提交锁的前提下开事务并复查。
 type Session interface {
     Source() domain.LibrarySource
-    List(ctx context.Context, dirID string, page int) (pan.FilePage, error)
+    Version() uint64                                                   // 签发时的授权版本，播放会话据此校验
+    List(ctx context.Context, dirID string, offset int) (pan.FilePage, error)
     Info(ctx context.Context, fileID string) (pan.FileInfo, error)
     Read(ctx context.Context, pickCode string, limit int64) ([]byte, error)
     Upload(ctx context.Context, dirID, name string, body []byte) error
-    Commit(ctx context.Context, fn func(tx *ent.Tx) error) error
+    PlayURL(ctx context.Context, pickCode string) ([]pan.PlaySource, error)
+    AddOffline(ctx context.Context, magnet string) (string, error)
+    RemoveOffline(ctx context.Context, hash string) error
+    OfflineTasks(ctx context.Context, page int) (pan.OfflinePage, error) // 只绑定账号，不绑定挂载目录
+    Commit(ctx context.Context, fn func(tx *ent.Tx) error) error        // 持提交锁后复查挂载目录与授权版本
+    CommitAccount(ctx context.Context, fn func(tx *ent.Tx) error) error // 持提交锁后只复查凭据，离线任务在换目录后仍可落账
 }
 
 // tasks.Handler：每种任务由所属包实现并注册，队列不再知道任何领域规则。
@@ -213,10 +219,10 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 - ✅ `OfflineService` 对未导出 `workflowInfos` 的调用改为公开的 `Workflows(ctx, records)`。
 - ✅ `LibrarySource / LibraryDirectory / ScanProgress` 迁入 `domain/source.go`，service 层不留别名。
 - ✅ 全仓 `"scan" / "scrape" / "cover" / "offline"` 字面量与裸 JSON 路径替换完毕（`data.go`、`library_scan.go`、`metadata_snapshot.go`、`movie_state.go`、`offline.go`、`scrape.go`）。
-- ⏭ `PanService.SelectDirectory` 直接持有队列门并调用 `tasks.EnsureScanTask` 的做法保留到 B3：`drive` 包成型后发布 `MountChanged` 事件，`library` 订阅并入队扫描。见 3.5 `events.go`。
+- ✅ `PanService.SelectDirectory` 不再持有队列门：B3 改为 `drive` 发布 `MountChanged` 事件，`library` 订阅并调用 `tasks.EnqueueFreshScan`。见 3.5 `events.go`。
 - ⏭ `worker/offline.go`、`worker/monitor.go` 两个 ticker 循环合并为 `tasks.RunPeriodic` 列在 3.8，随 B5 / B6 迁包时处理。
 
-### 3.5 步骤 B3：`drive` 包与 `Session`
+### 3.5 步骤 B3：`drive` 包与 `Session`（已完成，2026-09-21，提交 `326f63e` 及后续收口）
 
 原 `service/pan.go、pan_state.go、pan_token.go、pan_directory.go、pan_pagination.go`（776 行）迁入 `internal/drive`：
 
@@ -228,9 +234,11 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 | `token.go` | `withPanToken` 的主动/被动刷新与 singleflight |
 | `session.go` | `Open(ctx) (Session, error)`：签发时校验账号（带 60 秒 TTL 缓存，替代每次操作都打 `/open/user/info`），封装 `sourceState → withPanSourceToken → checkScanSource` 三段式与 `commitSource` |
 | `pagination.go` | `WalkFilePages / WalkOfflinePages` |
-| `events.go` | `MountChanged` 订阅；`SelectDirectory` 改为发布事件，`library` 订阅后调用 `tasks.Service.EnqueueScan`，队列门不再被 drive 持有（从 B2 顺延） |
+| `events.go` | `MountChanged` 订阅；`SelectDirectory` 改为发布事件，`library` 订阅后调用 `tasks.Service.EnqueueFreshScan`，队列门不再被 drive 持有（从 B2 顺延）。监听者在 drive 持有提交锁期间运行，返回错误则挂载回滚（内存与 settings 一并还原） |
 
 替换点（共十余处）：`library_source.go:29-64`、`library_scan.go:284-301`、`cover.go:218-244`、`play.go:110-136`、`offline.go:189-240`、`scrape.go:66-76` 等。完成后 `ScrapeService`、`PlayService`、`DataService` 对 `library.drive.*` 的 33 处穿透全部消失。
+
+收口（2026-09-21）：`PlayService`、`ScrapeService` 直接持有 `*drive.Drive`，`library.drive.*` 穿透归零；`DiscoverService` 通过构造参数注入 `SourceProvider` 窄接口（B7 的 `catalogue.LocalState` 前身），不再 `SetDrive`；`drive` 不导出任何测试钩子，service 测试经由真实 QR 登录与 `SelectDirectory` 建立夹具；原 `pan_*_test.go` 的 24 个并发用例按新 API 迁入 `internal/drive`，另补挂载回滚、会话失效矩阵、`ValidateSource`、离线分页用例。
 
 ### 3.6 步骤 B4 到 B7：业务包迁移
 
@@ -274,7 +282,8 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 
 | 位置 | 处理 |
 | --- | --- |
-| `errPanSourceChanged` vs `library_scan.go:116`、`scrape.go:73` 的同文案字面量 | 统一为 `drive.ErrSourceChanged`（`domain.Kind=Conflict`） |
+| `errPanSourceChanged` vs `library_scan.go:116`、`scrape.go:73` 的同文案字面量 | ✅ 统一为 `drive.ErrSourceChanged`（`domain.Kind=Conflict`）；`ErrMediaDirectoryRequired` 同样只保留 `drive` 一份 |
+| `contextLock` 在 `tasks/queue.go`、`drive/drive.go`、`service/lock.go` 三份 | ✅ 收敛为 `internal/syncx.ContextLock` |
 | `library_scan.go:236-263` vs `scrape.go:256-291` NFO 读取 | 合并为 `scrape.readNFO` |
 | `pan/*` 11 处 `json.Unmarshal + result.err()` 样板 | 抽 `apiRequest[T]`，仿现有 `authRequest[T]` |
 | `pan/upload.go:37` ≤128KiB 时两次 SHA1 | 复用 |
@@ -536,7 +545,7 @@ func (a *Aggregator) Find(ctx, ref domain.MovieRef) ([]domain.Magnet, error)
 
 - 每个提交：`go test ./... -race`、`go vet`、前端 `node --test`、`tsc`、oxlint、Vite 构建。
 - M2 起：黄金 JSON 测试证明所有列出的端点响应逐字节一致。
-- M3：`drive.Session` 并发测试沿用现有 `pan_concurrency_test.go` 场景（登出、换目录、令牌刷新中途发生）。
+- M3：`drive.Session` 并发测试沿用现有 `pan_concurrency_test.go` 场景（登出、换目录、令牌刷新中途发生）。✅ 已迁入 `internal/drive/{login,token,mount,pagination}_test.go`，夹具只走真实登录与挂载路径。
 - M4：e2e 测试在每个包迁出后重跑；`internal/service` 删除时 e2e 必须仍然通过。
 - M6：JavBus 固件测试；聚合器测试覆盖单源超时、单源失败、重复 infohash 合并、`Inferred` 标记、排序稳定性。
 - 浏览器行为按项目约定由你验证：设置页网络分区、磁力卡片徽章、排行标签页、评论折叠区。
@@ -559,4 +568,5 @@ func (a *Aggregator) Find(ctx, ref domain.MovieRef) ([]domain.Magnet, error)
 - 番号识别与刮削校验（2026-09-20）：针对 `200GANA-3458` 与 `CARIB` 等前缀不一致问题，不引入静态硬匹配字典；在 M4 (B4) 落地“NFO 与文件名双向容差亲缘校验”策略，核心数字一致且前缀包含时自动放行并收敛为 NFO 标准番号。
 - 模型迁移（2026-09-20）：M2 (B1) 放弃临时类型别名（type alias）过渡方案，采用全仓一次性原子替换，避免遗留脚手架代码。
 - 分页器（2026-09-21，提交 `562f49d`、`58622d6`）：`ListPagination` 从"第 X / Y 页"文字改为 shadcn `PaginationLink / PaginationEllipsis` 页码链接，库页面同时移除"共 N 部影片 · 每页 20 部"文案；这是对"前端样式原样沿用"约束的第二次例外，3.9 清单以此为新基线。`562f49d` 的页码输入框方案已被 `58622d6` 的页码链接替代，最终不存在跳转输入框。页码算法收敛为 `lib/pagination.ts` 的纯函数并配单测：连续窗口固定 3 页（当前页 ±1），首尾页始终可点，总页数不超过 7 时全部列出，省略号不用于只遮一页的情形。链接语义沿用 shadcn 原版：当前页用 `aria-current="page"` 且不可点，禁用态用 `aria-disabled` 加 `pointer-events-none`；上一页/下一页保持仓库既有的原生 `Button`。传入 `totalPages` 的页面（库、观看历史）渲染完整页码，未传的页面（发现页，JavDB 无总数）只渲染当前页占位。
+- B3 收口（2026-09-21）：挂载不再与扫描入队同处一个事务，改为 drive 先持久化并切换版本、再在提交锁内同步发布 `MountChanged`；任一监听者返回错误即回滚内存与 settings，对外等价于原来的原子性。监听者约束写进 `SubscribeMount` 注释：不得经由 drive 开会话或提交，否则死锁。挂载触发的扫描只复用 `Queued` 状态（`EnqueueFreshScan`），`Running` 的扫描可能是旧挂载签发的，不能替新挂载；手动重扫仍走 `EnqueueScan` 复用 `Queued+Running`。`drive` 不再导出 `MountSource / SetClient / BumpAuthorization / AuthorizationVersion` 四个只为测试存在的方法，测试改走真实登录与 `SelectDirectory`。`326f63e` 顺手去掉的 `artworkOrigin` json 标签已还原，cover 任务 payload 形状与 B1 之前一致。
 - 任务引擎（2026-09-21）：`tasks.Queue` 不包含领域规则。完成后要发布哪个修订号由处理器的 `Finished` 钩子以 `tasks.Change` 位掩码返回，队列在事务提交后统一发布；没有钩子的处理器不触发任何修订。B2 迁出时不引入类型别名，`service` 层直接引用 `tasks.*` 与 `domain.*`。

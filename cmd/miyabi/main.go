@@ -60,11 +60,6 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("initialize network service: %w", err)
 	}
-	discover, err := service.NewDiscoverService(context.Background(), store.Client, javdb.Options{}, network.ProxyManager())
-	if err != nil {
-		return fmt.Errorf("initialize discovery service: %w", err)
-	}
-	defer discover.Close()
 	taskRegistry := tasks.NewRegistry()
 	taskSvc := tasks.NewService(store.Client, taskRegistry)
 	driveSvc, err := drive.New(context.Background(), store.Client)
@@ -72,7 +67,11 @@ func run(args []string) error {
 		return fmt.Errorf("initialize drive service: %w", err)
 	}
 	defer driveSvc.Close()
-	discover.SetDrive(driveSvc)
+	discover, err := service.NewDiscoverService(context.Background(), store.Client, javdb.Options{}, network.ProxyManager(), driveSvc)
+	if err != nil {
+		return fmt.Errorf("initialize discovery service: %w", err)
+	}
+	defer discover.Close()
 	offline := service.NewOfflineService(store.Client, discover, driveSvc, taskSvc)
 	monitors := service.NewMonitorService(store.Client, discover, offline, taskSvc)
 	images, err := mediaimage.NewCache(cfg.DataDir)
@@ -80,9 +79,9 @@ func run(args []string) error {
 		return err
 	}
 	library := service.NewLibraryService(store.Client, driveSvc, taskSvc, images)
-	play := service.NewPlayService(library)
+	play := service.NewPlayService(library, driveSvc)
 	defer play.Close()
-	scrape := service.NewScrapeService(library, discover, images)
+	scrape := service.NewScrapeService(library, discover, driveSvc, images)
 	data, err := service.NewDataService(cfg.DataDir, scrape)
 	if err != nil {
 		return fmt.Errorf("initialize data service: %w", err)

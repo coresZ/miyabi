@@ -39,13 +39,26 @@ func (s *Service) Workflows(ctx context.Context, records []*ent.Task) ([]TaskInf
 	return WorkflowInfos(ctx, s.database, records)
 }
 
-// EnqueueScan reuses a queued or running full scan of the source or creates one.
+// EnqueueScan reuses a queued or running full scan of the source or creates
+// one. It serves manual retries, where any active scan is good enough.
 func (s *Service) EnqueueScan(ctx context.Context, source domain.LibrarySource) (TaskInfo, error) {
+	return s.enqueueScan(ctx, source, task.StatusQueued, task.StatusRunning)
+}
+
+// EnqueueFreshScan queues a full scan that observes the current mount. Only a
+// scan that has not started yet is reused: a running one may have been issued
+// against an earlier mount of the same directory and is about to fail its
+// source check.
+func (s *Service) EnqueueFreshScan(ctx context.Context, source domain.LibrarySource) (TaskInfo, error) {
+	return s.enqueueScan(ctx, source, task.StatusQueued)
+}
+
+func (s *Service) enqueueScan(ctx context.Context, source domain.LibrarySource, reusable ...task.Status) (TaskInfo, error) {
 	if err := s.queue.Lock(ctx); err != nil {
 		return TaskInfo{}, err
 	}
 	defer s.queue.Unlock()
-	record, err := EnsureScanTask(ctx, s.database.Task, source, task.StatusQueued, task.StatusRunning)
+	record, err := EnsureScanTask(ctx, s.database.Task, source, reusable...)
 	if err != nil {
 		return TaskInfo{}, err
 	}

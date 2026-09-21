@@ -15,7 +15,6 @@ import (
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/watchhistory"
-	"github.com/ppxb/miyabi/internal/pan"
 )
 
 func historyFilm(t *testing.T, library *LibraryService, source domain.LibrarySource, code string) (*ent.Movie, *ent.File) {
@@ -157,11 +156,9 @@ func TestWatchProgressValidatesFilesNumbersAndMountedSource(t *testing.T) {
 		t.Fatalf("a file from another movie was accepted: %v", err)
 	}
 	progress.FileID = video.FileID
-	if err := library.drive.MountSource(ctx, domain.LibrarySource{
+	mountSource(t, library.drive, stubOf(t, library.drive), domain.LibrarySource{
 		AccountID: "other", Directory: payload.Source.Directory,
-	}, pan.Tokens{AccessToken: "token"}); err != nil {
-		t.Fatal(err)
-	}
+	})
 	if err := library.SaveWatchProgress(ctx, session.ID, progress); !ent.IsNotFound(err) {
 		t.Fatalf("an inactive source accepted progress: %v", err)
 	}

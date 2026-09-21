@@ -73,12 +73,16 @@ type LibraryService struct {
 
 func NewLibraryService(database *ent.Client, d *drive.Drive, tasks *tasks.Service, images *mediaimage.Cache) *LibraryService {
 	svc := &LibraryService{database: database, drive: d, tasks: tasks, images: images}
-	if d != nil {
+	if d != nil && tasks != nil {
+		// A mount is complete only once its scan is queued; an error here makes
+		// the drive roll the mount back.
 		d.SubscribeMount(func(ctx context.Context, event drive.MountEvent) error {
-			if event.Source.Directory.ID != "" && tasks != nil {
-				_, err := tasks.EnqueueScan(ctx, event.Source)
-				return err
+			if event.Source.Directory.ID != "" {
+				if _, err := tasks.EnqueueFreshScan(ctx, event.Source); err != nil {
+					return err
+				}
 			}
+			tasks.NotifyLibraryChanged()
 			return nil
 		})
 	}

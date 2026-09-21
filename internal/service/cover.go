@@ -133,7 +133,7 @@ func (service *ScrapeService) originImage(ctx context.Context, sess drive.Sessio
 	if err != nil {
 		return nil, fmt.Errorf("find NFO artwork: %w", err)
 	}
-	return service.library.readSidecar(ctx, sess, info.File, 32<<20)
+	return sess.Read(ctx, info.File.PickCode, 32<<20)
 }
 
 func (service *ScrapeService) writeSidecars(ctx context.Context, sess drive.Session, input coverPayload, directory movieDirectory, poster, fanart []byte) (metadataDirectorySnapshot, error) {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/ppxb/miyabi/internal/domain"
+	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/javdb"
 	"github.com/ppxb/miyabi/internal/netx"
 	"github.com/ppxb/miyabi/internal/pan"
@@ -50,7 +51,7 @@ func TestErrorMiddlewareMapsDomainErrorsToStatusAndMessage(t *testing.T) {
 		message string
 	}{
 		{name: "bad request wrapper", err: BadRequest(errors.New("page must be positive")), status: http.StatusBadRequest, message: "page must be positive"},
-		{name: "media directory required", err: service.ErrMediaDirectoryRequired, status: http.StatusBadRequest, message: service.ErrMediaDirectoryRequired.PublicMessage()},
+		{name: "media directory required", err: drive.ErrMediaDirectoryRequired, status: http.StatusBadRequest, message: drive.ErrMediaDirectoryRequired.PublicMessage()},
 		{name: "magnet not found", err: fmt.Errorf("add: %w", service.ErrMagnetNotFound), status: http.StatusBadRequest, message: service.ErrMagnetNotFound.PublicMessage()},
 		{name: "invalid progress", err: service.ErrInvalidWatchProgress, status: http.StatusBadRequest, message: service.ErrInvalidWatchProgress.PublicMessage()},
 		{name: "invalid proxy", err: proxyValidationError(), status: http.StatusBadRequest, message: "代理配置无效: 代理地址必须包含协议（如 http://）与主机地址"},

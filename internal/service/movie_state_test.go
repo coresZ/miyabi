@@ -15,7 +15,7 @@ func TestMovieStatesFollowDownloadThroughIndexingWithoutCatalogueRequests(t *tes
 	offline, record, input, source := offlineFixture(t)
 	ctx := t.Context()
 	// No JavDB client: state reads must remain entirely local.
-	discover := &DiscoverService{database: offline.database, drive: offline.drive}
+	discover := &DiscoverService{database: offline.database, local: offline.drive}
 	identity := []MovieIdentity{{ID: input.JavDBID, Code: input.Code}}
 	assertState := func(want MovieState, libraryID int) {
 		t.Helper()
@@ -92,7 +92,7 @@ func TestMovieStatesFollowDownloadThroughIndexingWithoutCatalogueRequests(t *tes
 func TestMovieStatesScopePendingWorkToTheMountedAccountAndRoot(t *testing.T) {
 	offline, record, input, source := offlineFixture(t)
 	ctx := t.Context()
-	discover := &DiscoverService{database: offline.database, drive: offline.drive}
+	discover := &DiscoverService{database: offline.database, local: offline.drive}
 	// A completed download may await scan creation after its mount returns.
 	input.FileID = "download-folder"
 	encoded, err := tasks.EncodePayload(input)
@@ -109,11 +109,9 @@ func TestMovieStatesScopePendingWorkToTheMountedAccountAndRoot(t *testing.T) {
 		{"other root", source.AccountID, "another-root", MovieNotInLibrary},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			if err := offline.drive.MountSource(ctx, domain.LibrarySource{
-				AccountID: scenario.accountID, Directory: domain.LibraryDirectory{ID: scenario.directoryID},
-			}, pan.Tokens{AccessToken: "token"}); err != nil {
-				t.Fatal(err)
-			}
+			mountSource(t, offline.drive, stubOf(t, offline.drive), domain.LibrarySource{
+				AccountID: scenario.accountID, Directory: domain.LibraryDirectory{ID: scenario.directoryID, Name: "Root", Path: "/Root"},
+			})
 			states, err := discover.MovieStates(ctx, []MovieIdentity{{ID: input.JavDBID, Code: input.Code}})
 			if err != nil || len(states) != 1 || states[0].State != scenario.want || states[0].LibraryID != 0 {
 				t.Fatalf("state crossed its source: %+v err=%v", states, err)

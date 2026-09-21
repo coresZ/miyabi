@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"sync"
+
+	"github.com/ppxb/miyabi/internal/syncx"
 )
 
 type offlineOperation struct {
-	lock  contextLock
+	lock  syncx.ContextLock
 	users int
 }
 

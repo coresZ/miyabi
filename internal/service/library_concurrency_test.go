@@ -16,8 +16,8 @@ import (
 
 func TestPanDatabaseCommitDoesNotBlockPlaybackOrCanceledWaiters(t *testing.T) {
 	play, source := playFixture(t)
-	drive := play.library.drive
-	playback, err := play.createSession(source, drive.AuthorizationVersion(), []pan.PlaySource{{URL: "https://cdn.example/video", Height: 1080}})
+	drive := play.drive
+	playback, err := play.createSession(source, authorizationVersion(t, drive), []pan.PlaySource{{URL: "https://cdn.example/video", Height: 1080}})
 	if err != nil {
 		t.Fatal(err)
 	}

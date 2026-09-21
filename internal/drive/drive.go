@@ -13,6 +13,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/pan"
+	"github.com/ppxb/miyabi/internal/syncx"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -20,37 +21,6 @@ const (
 	credentialsSetting = "pan.credentials"
 	directorySetting   = "pan.library_directory"
 )
-
-type contextLock struct {
-	once sync.Once
-	gate chan struct{}
-}
-
-func (lock *contextLock) Lock(ctx context.Context) error {
-	lock.once.Do(func() { lock.gate = make(chan struct{}, 1) })
-	select {
-	case lock.gate <- struct{}{}:
-		if err := ctx.Err(); err != nil {
-			lock.Unlock()
-			return err
-		}
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func (lock *contextLock) Unlock() { <-lock.gate }
-
-func (lock *contextLock) TryLock() bool {
-	lock.once.Do(func() { lock.gate = make(chan struct{}, 1) })
-	select {
-	case lock.gate <- struct{}{}:
-		return true
-	default:
-		return false
-	}
-}
 
 // Client abstracts the upstream 115 API calls.
 type Client interface {
@@ -103,7 +73,7 @@ type Drive struct {
 	client   Client
 
 	mu                   sync.Mutex
-	commit               contextLock
+	commit               syncx.ContextLock
 	tokens               pan.Tokens
 	session              *loginSession
 	directory            mountRecord
@@ -135,11 +105,11 @@ func NewWithClient(ctx context.Context, database *ent.Client, client Client) (*D
 		return nil, err
 	}
 	return &Drive{
-		database: database,
-		client:   client,
-		tokens:   tokens,
+		database:  database,
+		client:    client,
+		tokens:    tokens,
 		directory: directory,
-		events:   newEventBus(),
+		events:    newEventBus(),
 	}, nil
 }
 
@@ -149,23 +119,6 @@ func (d *Drive) Close() {
 	d.mu.Unlock()
 	d.work.Wait()
 	d.client.Close()
-}
-
-// SetClient replaces the upstream client (primarily used for test doubles).
-func (d *Drive) SetClient(client Client) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.client = client
-}
-
-func (d *Drive) startWork() bool {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.closed {
-		return false
-	}
-	d.work.Add(1)
-	return true
 }
 
 func (d *Drive) snapshot() snapshot {
@@ -212,8 +165,9 @@ func (d *Drive) verifiedSource(ctx context.Context) (snapshot, error) {
 	return state, nil
 }
 
-// StartWork increments the in-flight work counter if the drive is not closed.
-// It returns a done callback and true on success, or nil and false if closed.
+// StartWork registers work that Close must wait for, such as a remote
+// mutation that has to be recorded once started. It returns false once the
+// drive is closed.
 func (d *Drive) StartWork() (func(), bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -231,20 +185,6 @@ func (d *Drive) ValidateSource(source domain.LibrarySource, version uint64) bool
 	return !s.closed && s.matchesSource(source, version) && s.tokens.AccessToken != ""
 }
 
-// BumpAuthorization increments the authorization version, invalidating existing sessions.
-func (d *Drive) BumpAuthorization() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.authorizationVersion++
-}
-
-// AuthorizationVersion returns the current authorization version.
-func (d *Drive) AuthorizationVersion() uint64 {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d.authorizationVersion
-}
-
 // Commit executes a database transaction under the drive commit lock.
 func (d *Drive) Commit(ctx context.Context, fn func(tx *ent.Tx) error) error {
 	if err := d.commit.Lock(ctx); err != nil {
@@ -259,25 +199,6 @@ func (d *Drive) OpenMedia(ctx context.Context, method, address string, headers h
 	return d.client.OpenMedia(ctx, method, address, headers)
 }
 
-// MountSource directly configures tokens and the mounted directory, persisting both to settings.
-func (d *Drive) MountSource(ctx context.Context, source domain.LibrarySource, tokens pan.Tokens) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if tokens.ExpiresAt.IsZero() {
-		tokens.ExpiresAt = time.Now().Add(24 * time.Hour)
-	}
-	d.tokens = tokens
-	d.directory = mountRecord{AccountID: source.AccountID, LibraryDirectory: source.Directory}
-	d.authorizationVersion++
-	if err := saveSetting(ctx, d.database, credentialsSetting, tokens); err != nil {
-		return err
-	}
-	if err := saveSetting(ctx, d.database, directorySetting, d.directory); err != nil {
-		return err
-	}
-	return nil
-}
-
 // Source returns the current mounted library source from the in-memory snapshot, or nil if unmounted.
 func (d *Drive) Source() *domain.LibrarySource {
 	s := d.snapshot()
@@ -289,6 +210,9 @@ func (d *Drive) Source() *domain.LibrarySource {
 }
 
 // SubscribeMount registers a listener for directory mount and unmount events.
+// Listeners run while the drive holds its commit lock, so they must not open
+// sessions or commit through the drive; an error from a mount listener rolls
+// the mount back.
 func (d *Drive) SubscribeMount(listener MountListener) func() {
 	return d.events.subscribe(listener)
 }

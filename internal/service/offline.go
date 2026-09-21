@@ -18,13 +18,11 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/pan"
+	"github.com/ppxb/miyabi/internal/syncx"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
-var (
-	ErrMediaDirectoryRequired = domain.E(domain.KindInvalid, "请先在设置页挂载当前 115 账号的媒体目录", nil)
-	ErrMagnetNotFound         = domain.E(domain.KindInvalid, "磁力链不属于当前影片，请刷新后重试", nil)
-)
+var ErrMagnetNotFound = domain.E(domain.KindInvalid, "磁力链不属于当前影片，请刷新后重试", nil)
 
 type OfflineSubmission struct {
 	TaskID      int         `json:"task_id"`
@@ -66,7 +64,7 @@ type OfflineService struct {
 	drive      *drive.Drive
 	tasks      *tasks.Service
 	operations offlineOperations
-	syncing    contextLock
+	syncing    syncx.ContextLock
 }
 
 func NewOfflineService(database *ent.Client, discover *DiscoverService, drive *drive.Drive, tasks *tasks.Service) *OfflineService {

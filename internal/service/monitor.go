@@ -12,6 +12,7 @@ import (
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/monitor"
+	"github.com/ppxb/miyabi/internal/syncx"
 )
 
 const (
@@ -50,7 +51,7 @@ type MonitorService struct {
 	discover *DiscoverService
 	offline  *OfflineService
 	tasks    *tasks.Service
-	checking contextLock
+	checking syncx.ContextLock
 	wake     chan struct{}
 }
 

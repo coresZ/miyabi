@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/ppxb/miyabi/internal/database"
-	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
@@ -26,19 +25,7 @@ func libraryFixture(t testing.TB) (*LibraryService, tasks.TaskInfo, scanPayload)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	source := domain.LibrarySource{AccountID: "100", Directory: domain.LibraryDirectory{ID: "10", Name: "Movies", Path: "/Movies"}}
-	client := &panStub{
-		account: func(context.Context, string) (pan.Account, error) {
-			return pan.Account{ID: source.AccountID}, nil
-		},
-	}
-	driveSvc, err := drive.NewWithClient(t.Context(), store.Client, client)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := driveSvc.MountSource(t.Context(), source, pan.Tokens{AccessToken: "token"}); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(driveSvc.Close)
+	driveSvc := newMountedDrive(t, store.Client, &panStub{}, source)
 	taskSvc := tasks.NewService(store.Client, tasks.NewRegistry())
 	queued, err := taskSvc.EnqueueScan(t.Context(), source)
 	if err != nil {
@@ -49,7 +36,7 @@ func libraryFixture(t testing.TB) (*LibraryService, tasks.TaskInfo, scanPayload)
 		t.Fatal(err)
 	}
 	library := NewLibraryService(store.Client, driveSvc, taskSvc, images)
-	scrape := NewScrapeService(library, nil, images)
+	scrape := NewScrapeService(library, nil, driveSvc, images)
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScan, library.Scan, library.Finished))
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScrape, scrape.Scrape, scrape.Finished))
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindCover, scrape.Cover, scrape.Finished))

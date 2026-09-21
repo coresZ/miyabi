@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ppxb/miyabi/internal/domain"
-	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/javdb"
 	"github.com/ppxb/miyabi/internal/netx"
@@ -94,7 +93,7 @@ type catalogueClient interface {
 // DiscoverService combines JavDB catalogue data with Miyabi's local state.
 type DiscoverService struct {
 	database *ent.Client
-	drive    *drive.Drive
+	local    SourceProvider
 	javdb    catalogueClient
 	lists    *responseCache[[]domain.Movie]
 	details  *responseCache[domain.MovieDetail]
@@ -107,17 +106,21 @@ type DiscoverService struct {
 	viewedMu sync.Mutex
 }
 
-func (service *DiscoverService) SetDrive(d *drive.Drive) {
-	service.drive = d
-}
-
 // NewDiscoverService creates the lazy JavDB client and persists a stable
 // anonymous device UUID. It does not perform a network request.
+// SourceProvider exposes the mounted library source so catalogue projections
+// can tell which local files belong to the current library. B7 turns this
+// into catalogue.LocalState implemented by library.
+type SourceProvider interface {
+	Source() *domain.LibrarySource
+}
+
 func NewDiscoverService(
 	ctx context.Context,
 	database *ent.Client,
 	options javdb.Options,
 	proxy *netx.ProxyManager,
+	local SourceProvider,
 ) (*DiscoverService, error) {
 	deviceUUID, found, err := loadSetting[string](ctx, database, javdbDeviceSetting)
 	if err != nil {
@@ -159,6 +162,7 @@ func NewDiscoverService(
 		details:  newResponseCache[domain.MovieDetail](256, 5*time.Minute),
 		tags:     newResponseCache[[]domain.TagCategory](5, 24*time.Hour),
 		magnets:  newResponseCache[[]domain.Magnet](64, time.Minute),
+		local:    local,
 		route: JavDBRouteStatus{
 			Host:      route.Host,
 			LatencyMS: route.LatencyMS,

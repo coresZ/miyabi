@@ -38,8 +38,8 @@ func (service *DiscoverService) MovieStates(ctx context.Context, identities []Mo
 		result[index] = DiscoverMovieState{ID: item.ID, State: MovieNotInLibrary}
 	}
 	var source *domain.LibrarySource
-	if service.drive != nil {
-		source = service.drive.Source()
+	if service.local != nil {
+		source = service.local.Source()
 	}
 	if source == nil {
 		return result, nil

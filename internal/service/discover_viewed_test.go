@@ -16,7 +16,7 @@ func TestDiscoverViewedMovieIDs(t *testing.T) {
 	}
 	defer store.Close()
 
-	svc, err := NewDiscoverService(ctx, store.Client, javdb.Options{}, nil)
+	svc, err := NewDiscoverService(ctx, store.Client, javdb.Options{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

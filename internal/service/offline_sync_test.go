@@ -14,7 +14,7 @@ import (
 )
 
 func TestOfflineSyncContinuesPastIndividualFailures(t *testing.T) {
-	service, first, input, source := offlineFixture(t)
+	service, first, input, _ := offlineFixture(t)
 	ctx := t.Context()
 	records := []*ent.Task{first}
 	for index := 1; index < 5; index++ {
@@ -33,22 +33,19 @@ func TestOfflineSyncContinuesPastIndividualFailures(t *testing.T) {
 			SetStatus(status).SetPayload(encoded).SaveX(ctx))
 	}
 	fetched := 0
-	service.drive.SetClient(&panStub{
-		account: func(context.Context, string) (pan.Account, error) { return pan.Account{ID: source.AccountID}, nil },
-		offlineTasks: func(_ context.Context, _ string, page int) (pan.OfflinePage, error) {
-			fetched++
-			if page == 1 {
-				return pan.OfflinePage{PageCount: 2, Tasks: []pan.OfflineTask{
-					{Hash: input.InfoHash, Status: 99},
-					{Hash: "download-1", Status: 2, FileID: "first-folder"},
-				}}, nil
-			}
+	stubOf(t, service.drive).offlineTasks = func(_ context.Context, _ string, page int) (pan.OfflinePage, error) {
+		fetched++
+		if page == 1 {
 			return pan.OfflinePage{PageCount: 2, Tasks: []pan.OfflineTask{
-				{Hash: "download-2", Status: 2, FileID: "second-folder"},
-				{Hash: "download-3", Status: 1, Progress: 65},
+				{Hash: input.InfoHash, Status: 99},
+				{Hash: "download-1", Status: 2, FileID: "first-folder"},
 			}}, nil
-		},
-	})
+		}
+		return pan.OfflinePage{PageCount: 2, Tasks: []pan.OfflineTask{
+			{Hash: "download-2", Status: 2, FileID: "second-folder"},
+			{Hash: "download-3", Status: 1, Progress: 65},
+		}}, nil
+	}
 	err := service.Sync(ctx)
 	if err == nil || !strings.Contains(err.Error(), "unknown offline status 99") {
 		t.Fatalf("individual sync failure was lost: %v", err)
@@ -75,17 +72,14 @@ func TestOfflineSyncContinuesPastIndividualFailures(t *testing.T) {
 }
 
 func TestOfflineSyncKeepsUnseenTasksWhenLaterPageFails(t *testing.T) {
-	service, record, _, source := offlineFixture(t)
+	service, record, _, _ := offlineFixture(t)
 	pageError := errors.New("fixture page unavailable")
-	service.drive.SetClient(&panStub{
-		account: func(context.Context, string) (pan.Account, error) { return pan.Account{ID: source.AccountID}, nil },
-		offlineTasks: func(_ context.Context, _ string, page int) (pan.OfflinePage, error) {
-			if page == 1 {
-				return pan.OfflinePage{PageCount: 2}, nil
-			}
-			return pan.OfflinePage{}, pageError
-		},
-	})
+	stubOf(t, service.drive).offlineTasks = func(_ context.Context, _ string, page int) (pan.OfflinePage, error) {
+		if page == 1 {
+			return pan.OfflinePage{PageCount: 2}, nil
+		}
+		return pan.OfflinePage{}, pageError
+	}
 	if err := service.Sync(t.Context()); !errors.Is(err, pageError) {
 		t.Fatalf("page failure = %v", err)
 	}
@@ -99,14 +93,11 @@ func TestOfflineCompletionWaitsForLocationAcrossRestart(t *testing.T) {
 	service, record, input, source := offlineFixture(t)
 	ctx := t.Context()
 	fileID := ""
-	service.drive.SetClient(&panStub{
-		account: func(context.Context, string) (pan.Account, error) { return pan.Account{ID: source.AccountID}, nil },
-		offlineTasks: func(context.Context, string, int) (pan.OfflinePage, error) {
-			return pan.OfflinePage{PageCount: 1, Tasks: []pan.OfflineTask{
-				{Hash: input.InfoHash, Status: 2, Progress: 100, FileID: fileID},
-			}}, nil
-		},
-	})
+	stubOf(t, service.drive).offlineTasks = func(context.Context, string, int) (pan.OfflinePage, error) {
+		return pan.OfflinePage{PageCount: 1, Tasks: []pan.OfflineTask{
+			{Hash: input.InfoHash, Status: 2, Progress: 100, FileID: fileID},
+		}}, nil
+	}
 	if err := service.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -195,13 +186,10 @@ func TestOfflineMissingLocationStopsPendingWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	fetched := 0
-	service.drive.SetClient(&panStub{
-		account: func(context.Context, string) (pan.Account, error) { return pan.Account{ID: source.AccountID}, nil },
-		offlineTasks: func(context.Context, string, int) (pan.OfflinePage, error) {
-			fetched++
-			return pan.OfflinePage{PageCount: 1}, nil
-		},
-	})
+	stubOf(t, service.drive).offlineTasks = func(context.Context, string, int) (pan.OfflinePage, error) {
+		fetched++
+		return pan.OfflinePage{PageCount: 1}, nil
+	}
 	if err := service.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}

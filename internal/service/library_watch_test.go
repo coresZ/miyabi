@@ -2,9 +2,10 @@ package service
 
 import (
 	"errors"
-	"github.com/ppxb/miyabi/internal/domain"
 	"testing"
 
+	"github.com/ppxb/miyabi/internal/domain"
+	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/nfo"
@@ -81,7 +82,7 @@ func TestMarkWatchedRequiresAMovieInTheMountedSource(t *testing.T) {
 	if err := library.drive.ClearDirectory(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := library.MarkWatched(ctx, 1, testWatchScope(payload.Source)); !errors.Is(err, ErrMediaDirectoryRequired) {
+	if _, err := library.MarkWatched(ctx, 1, testWatchScope(payload.Source)); !errors.Is(err, drive.ErrMediaDirectoryRequired) {
 		t.Fatalf("unmounted library was accepted: %v", err)
 	}
 }

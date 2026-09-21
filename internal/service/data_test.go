@@ -30,7 +30,7 @@ func dataFixture(t *testing.T) *DataService {
 		t.Fatal(err)
 	}
 	library := NewLibraryService(store.Client, nil, tasks.NewService(store.Client, tasks.NewRegistry()), images)
-	service, err := NewDataService(directory, NewScrapeService(library, nil, images))
+	service, err := NewDataService(directory, NewScrapeService(library, nil, nil, images))
 	if err != nil {
 		t.Fatal(err)
 	}

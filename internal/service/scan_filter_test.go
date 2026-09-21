@@ -7,7 +7,6 @@ import (
 	"path"
 	"testing"
 
-	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
@@ -17,7 +16,6 @@ import (
 )
 
 type scanMetadataClient struct {
-	drive.Client
 	bodies map[string][]byte
 	reads  int
 }
@@ -107,8 +105,8 @@ func TestRescanRepairsAuxiliaryVideosAndSSNISubtitleAlias(t *testing.T) {
 		}
 		return pan.FilePage{Files: entries[id], Total: len(entries[id]), Path: []pan.Directory{{ID: source.Directory.ID}}}, nil
 	}
-	metadata := &scanMetadataClient{Client: client}
-	library.drive.SetClient(metadata)
+	metadata := &scanMetadataClient{}
+	client.readMetadata = metadata.ReadMetadata
 	queued := library.database.Task.Query().Where(task.TypeEQ("scan")).OnlyX(ctx)
 	if err := library.Scan(ctx, tasks.Job{ID: queued.ID, Payload: queued.Payload}); err != nil {
 		t.Fatal(err)
@@ -163,8 +161,8 @@ func TestNFOIdentifiesOnlyEligibleVideosAndSmallFilesDoNotMakeDirectoryShared(t 
 	client.list = func(context.Context, string, string, int, int) (pan.FilePage, error) {
 		return pan.FilePage{Files: entries, Total: len(entries), Path: []pan.Directory{{ID: "10"}}}, nil
 	}
-	metadata := &scanMetadataClient{Client: client, bodies: map[string][]byte{"nfo": body}}
-	library.drive.SetClient(metadata)
+	metadata := &scanMetadataClient{bodies: map[string][]byte{"nfo": body}}
+	client.readMetadata = metadata.ReadMetadata
 	queued := library.database.Task.Query().Where(task.TypeEQ("scan")).OnlyX(ctx)
 	if err := library.Scan(ctx, tasks.Job{ID: queued.ID, Payload: queued.Payload}); err != nil {
 		t.Fatal(err)
@@ -174,7 +172,7 @@ func TestNFOIdentifiesOnlyEligibleVideosAndSmallFilesDoNotMakeDirectoryShared(t 
 		library.database.File.Query().Where(file.FileIDEQ("auxiliary")).OnlyX(ctx).MovieID != nil {
 		t.Fatal("NFO inference did not distinguish the feature from its auxiliary file")
 	}
-	scrape := NewScrapeService(library, nil, library.images)
+	scrape := NewScrapeService(library, nil, library.drive, library.images)
 	sess, err := library.drive.OpenSource(ctx, source)
 	if err != nil {
 		t.Fatal(err)

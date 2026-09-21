@@ -2,12 +2,16 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
+	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/pan"
 )
 
@@ -52,7 +56,7 @@ func (client *panStub) BeginLogin(ctx context.Context) (*pan.Login, error) {
 	if client.Client != nil {
 		return client.Client.BeginLogin(ctx)
 	}
-	return &pan.Login{}, nil
+	return &pan.Login{QRCode: []byte("fixture")}, nil
 }
 
 func (client *panStub) LoginStatus(ctx context.Context, login *pan.Login) (pan.LoginState, error) {
@@ -72,7 +76,7 @@ func (client *panStub) ExchangeToken(ctx context.Context, login *pan.Login) (pan
 	if client.Client != nil {
 		return client.Client.ExchangeToken(ctx, login)
 	}
-	return pan.Tokens{}, nil
+	return panTestTokens("login"), nil
 }
 
 func (client *panStub) RefreshToken(ctx context.Context, token string) (pan.Tokens, error) {
@@ -82,7 +86,7 @@ func (client *panStub) RefreshToken(ctx context.Context, token string) (pan.Toke
 	if client.Client != nil {
 		return client.Client.RefreshToken(ctx, token)
 	}
-	return pan.Tokens{}, nil
+	return panTestTokens("refreshed"), nil
 }
 
 func (client *panStub) List(ctx context.Context, token, directory string, offset, limit int) (pan.FilePage, error) {
@@ -179,26 +183,106 @@ func panTestTokens(prefix string) pan.Tokens {
 	return pan.Tokens{AccessToken: prefix + "-access", RefreshToken: prefix + "-refresh", ExpiresAt: time.Now().Add(time.Hour)}
 }
 
-func panConcurrencyFixture(t *testing.T) (*LibraryService, *panStub) {
-	t.Helper()
-	library, _, payload := libraryFixture(t)
-	client := &panStub{
-		account: func(context.Context, string) (pan.Account, error) {
-			return pan.Account{ID: payload.Source.AccountID}, nil
-		},
-		beginLogin:  func(context.Context) (*pan.Login, error) { return &pan.Login{QRCode: []byte("fixture")}, nil },
-		loginStatus: func(context.Context, *pan.Login) (pan.LoginState, error) { return pan.LoginAuthorized, nil },
+// directoryPage is what 115 answers when a directory is listed: its ancestry.
+// Mounting it yields exactly the given LibraryDirectory.
+func directoryPage(directory domain.LibraryDirectory) pan.FilePage {
+	page := pan.FilePage{Path: []pan.Directory{{ID: "0", Name: "Root"}}}
+	segments := strings.Split(strings.Trim(directory.Path, "/"), "/")
+	for i, name := range segments[:len(segments)-1] {
+		page.Path = append(page.Path, pan.Directory{ID: fmt.Sprintf("ancestor-%d", i), Name: name})
 	}
-	d, err := drive.NewWithClient(t.Context(), library.database, client)
+	name := directory.Name
+	if name == "" {
+		name = segments[len(segments)-1]
+	}
+	page.Path = append(page.Path, pan.Directory{ID: directory.ID, Name: name})
+	return page
+}
+
+// loginAccount completes a QR login for the account through the real state
+// machine, replacing any current credentials. The stub keeps answering for
+// that account afterwards.
+func loginAccount(t testing.TB, d *drive.Drive, client *panStub, accountID string) {
+	t.Helper()
+	client.account = func(context.Context, string) (pan.Account, error) { return pan.Account{ID: accountID}, nil }
+	login, err := d.BeginLogin(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := d.MountSource(t.Context(), payload.Source, panTestTokens("original")); err != nil {
+	if status, err := d.LoginStatus(t.Context(), login.ID); err != nil || status.State != pan.LoginAuthorized {
+		t.Fatalf("fixture login = %+v, %v", status, err)
+	}
+}
+
+// mountSource mounts the source's directory as the settings page would,
+// logging its account in first unless it already is. An empty directory ID
+// only ensures the login.
+func mountSource(t testing.TB, d *drive.Drive, client *panStub, source domain.LibrarySource) {
+	t.Helper()
+	status, err := d.Account(t.Context())
+	if err != nil || !status.Connected || status.Account == nil || status.Account.ID != source.AccountID {
+		loginAccount(t, d, client, source.AccountID)
+	}
+	if source.Directory.ID == "" {
+		return
+	}
+	previous := client.list
+	client.list = func(ctx context.Context, token, id string, offset, limit int) (pan.FilePage, error) {
+		if id == source.Directory.ID {
+			return directoryPage(source.Directory), nil
+		}
+		if previous != nil {
+			return previous(ctx, token, id, offset, limit)
+		}
+		return pan.FilePage{}, nil
+	}
+	defer func() { client.list = previous }()
+	if _, err := d.SelectDirectory(t.Context(), source.Directory.ID); err != nil {
 		t.Fatal(err)
 	}
-	library.drive = d
-	t.Cleanup(library.drive.Close)
-	return library, client
+}
+
+// fixtureStubs remembers which stub backs each fixture drive so tests can
+// script 115 without threading the stub through every fixture signature.
+var fixtureStubs sync.Map
+
+func stubOf(t testing.TB, d *drive.Drive) *panStub {
+	t.Helper()
+	client, ok := fixtureStubs.Load(d)
+	if !ok {
+		t.Fatal("drive was not created by newMountedDrive")
+	}
+	return client.(*panStub)
+}
+
+// newMountedDrive builds a drive on the fixture database with the source
+// mounted through the real login and mount paths.
+func newMountedDrive(t testing.TB, database *ent.Client, client *panStub, source domain.LibrarySource) *drive.Drive {
+	t.Helper()
+	d, err := drive.NewWithClient(t.Context(), database, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(d.Close)
+	fixtureStubs.Store(d, client)
+	mountSource(t, d, client, source)
+	return d
+}
+
+// authorizationVersion is the version a session issued right now would carry.
+func authorizationVersion(t testing.TB, d *drive.Drive) uint64 {
+	t.Helper()
+	sess, err := d.Open(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sess.Version()
+}
+
+func panConcurrencyFixture(t *testing.T) (*LibraryService, *panStub) {
+	t.Helper()
+	library, _, _ := libraryFixture(t)
+	return library, stubOf(t, library.drive)
 }
 
 func panTestGate(t *testing.T) (<-chan struct{}, func()) {

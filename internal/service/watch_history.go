@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ppxb/miyabi/internal/domain"
+	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
@@ -81,7 +82,7 @@ func (service *LibraryService) MarkWatched(ctx context.Context, movieID int, sco
 	libraryChanged := false
 	source := service.drive.Source()
 	if source == nil {
-		return result, ErrMediaDirectoryRequired
+		return result, drive.ErrMediaDirectoryRequired
 	}
 	if source.AccountID != scope.AccountID || source.Directory.ID != scope.DirectoryID {
 		return result, ErrWatchHistorySourceChanged
@@ -174,7 +175,7 @@ func (service *LibraryService) SaveWatchProgress(ctx context.Context, id int, pr
 	}
 	source := service.drive.Source()
 	if source == nil {
-		return ErrMediaDirectoryRequired
+		return drive.ErrMediaDirectoryRequired
 	}
 	changed := false
 	err := ent.WithTx(ctx, service.database, func(tx *ent.Tx) error {

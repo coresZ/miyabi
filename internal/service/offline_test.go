@@ -1,12 +1,10 @@
 package service
 
 import (
-	"context"
 	"errors"
 	"testing"
 
 	"github.com/ppxb/miyabi/internal/domain"
-	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
@@ -18,20 +16,7 @@ import (
 func offlineFixture(t *testing.T) (*OfflineService, *ent.Task, offlinePayload, domain.LibrarySource) {
 	t.Helper()
 	library, _, scan := libraryFixture(t)
-	client := &panStub{
-		account: func(context.Context, string) (pan.Account, error) {
-			return pan.Account{ID: scan.Source.AccountID}, nil
-		},
-	}
-	d, err := drive.NewWithClient(t.Context(), library.database, client)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := d.MountSource(t.Context(), scan.Source, pan.Tokens{AccessToken: "fixture-token"}); err != nil {
-		t.Fatal(err)
-	}
-	library.drive = d
-	service := NewOfflineService(library.database, nil, d, library.tasks)
+	service := NewOfflineService(library.database, nil, library.drive, library.tasks)
 	input := offlinePayload{AccountID: scan.Source.AccountID, DirectoryID: scan.Source.Directory.ID,
 		Code: "ABP-001", JavDBID: "fixture-movie", Hash: "fixture-hash", InfoHash: "fixture-hash"}
 	encoded, err := tasks.EncodePayload(input)
@@ -219,11 +204,9 @@ func TestCompletedOfflineTaskDefersScanForAnotherMount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := service.drive.MountSource(t.Context(), domain.LibrarySource{
-		AccountID: source.AccountID, Directory: domain.LibraryDirectory{ID: "another-root"},
-	}, pan.Tokens{AccessToken: "fixture-token"}); err != nil {
-		t.Fatal(err)
-	}
+	mountSource(t, service.drive, stubOf(t, service.drive), domain.LibrarySource{
+		AccountID: source.AccountID, Directory: domain.LibraryDirectory{ID: "another-root", Name: "Another", Path: "/Another"},
+	})
 	if err := service.updateTask(t.Context(), sess, record, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
 		t.Fatal(err)
 	}
@@ -277,11 +260,9 @@ func TestOfflineActivityKeepsLatestTasksInCurrentSource(t *testing.T) {
 		current.DirectoryID != source.Directory.ID || current.Phase != "downloading" {
 		t.Fatalf("latest task: %+v", current)
 	}
-	if err := service.drive.MountSource(ctx, domain.LibrarySource{
-		AccountID: source.AccountID, Directory: domain.LibraryDirectory{ID: "empty-root"},
-	}, pan.Tokens{AccessToken: "fixture-token"}); err != nil {
-		t.Fatal(err)
-	}
+	mountSource(t, service.drive, stubOf(t, service.drive), domain.LibrarySource{
+		AccountID: source.AccountID, Directory: domain.LibraryDirectory{ID: "empty-root", Name: "Empty", Path: "/Empty"},
+	})
 	activity, err = service.Activity(ctx)
 	if err != nil || activity.Source == nil || activity.Source.Directory.ID != "empty-root" || len(activity.Tasks) != 0 {
 		t.Fatalf("changed source: %+v err=%v", activity, err)

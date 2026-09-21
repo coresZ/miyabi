@@ -40,6 +40,9 @@ func (d *Drive) SelectDirectory(ctx context.Context, directoryID string) (domain
 	if err != nil {
 		return domain.LibraryDirectory{}, fmt.Errorf("get 115 media directory: %w", err)
 	}
+	if len(files.Path) == 0 {
+		return domain.LibraryDirectory{}, domain.E(domain.KindNotFound, "115 目录不存在或已被移除", nil)
+	}
 	names := make([]string, 0, len(files.Path))
 	for _, directory := range files.Path {
 		if directory.ID != "0" {
@@ -68,20 +71,51 @@ func (d *Drive) SelectDirectory(ctx context.Context, directoryID string) (domain
 		return domain.LibraryDirectory{}, err
 	}
 
-	if err := saveSetting(ctx, d.database, directorySetting, record); err != nil {
-		return domain.LibraryDirectory{}, fmt.Errorf("save media directory setting: %w", err)
+	if err := d.persistDirectory(ctx, record); err != nil {
+		return domain.LibraryDirectory{}, err
 	}
-
-	d.mu.Lock()
-	d.directory = record
-	d.authorizationVersion++
-	d.mu.Unlock()
-
-	source := domain.LibrarySource{AccountID: account.ID, Directory: directory}
-	if err := d.events.publishMount(ctx, source); err != nil {
-		return domain.LibraryDirectory{}, fmt.Errorf("publish mount event: %w", err)
+	previous := d.swapDirectory(record)
+	// The mount is complete only once every listener has accepted it; the
+	// library queues the scan here. On failure nothing observable remains.
+	if err := d.events.publishMount(ctx, record.source()); err != nil {
+		d.restoreDirectory(previous)
+		if rollback := d.persistDirectory(ctx, previous.directory); rollback != nil {
+			return domain.LibraryDirectory{}, fmt.Errorf("mount media directory: %w (rollback failed: %v)", err, rollback)
+		}
+		return domain.LibraryDirectory{}, fmt.Errorf("mount media directory: %w", err)
 	}
 	return directory, nil
+}
+
+// swapDirectory publishes a new mount in memory and returns what it replaced.
+func (d *Drive) swapDirectory(record mountRecord) snapshot {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	previous := snapshot{directory: d.directory, authorizationVersion: d.authorizationVersion}
+	d.directory = record
+	d.authorizationVersion++
+	return previous
+}
+
+func (d *Drive) restoreDirectory(previous snapshot) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.directory = previous.directory
+	d.authorizationVersion = previous.authorizationVersion
+}
+
+// persistDirectory stores the mount, or removes it when the record is empty.
+func (d *Drive) persistDirectory(ctx context.Context, record mountRecord) error {
+	if record.ID == "" {
+		if _, err := d.database.Setting.Delete().Where(setting.Key(directorySetting)).Exec(ctx); err != nil {
+			return fmt.Errorf("remove 115 media directory setting: %w", err)
+		}
+		return nil
+	}
+	if err := saveSetting(ctx, d.database, directorySetting, record); err != nil {
+		return fmt.Errorf("save media directory setting: %w", err)
+	}
+	return nil
 }
 
 // ClearDirectory unmounts the active media directory and emits a MountChanged event.
@@ -102,15 +136,13 @@ func (d *Drive) discardOtherAccountDirectory(ctx context.Context, accountID stri
 }
 
 func (d *Drive) clearDirectory(ctx context.Context) error {
-	if _, err := d.database.Setting.Delete().Where(setting.Key(directorySetting)).Exec(ctx); err != nil {
-		return fmt.Errorf("remove 115 media directory setting: %w", err)
+	if err := d.persistDirectory(ctx, mountRecord{}); err != nil {
+		return err
 	}
-	d.mu.Lock()
-	d.directory = mountRecord{}
-	d.authorizationVersion++
-	d.mu.Unlock()
-
-	_ = d.events.publishMount(ctx, domain.LibrarySource{})
+	d.swapDirectory(mountRecord{})
+	if err := d.events.publishMount(ctx, domain.LibrarySource{}); err != nil {
+		return fmt.Errorf("publish unmount event: %w", err)
+	}
 	return nil
 }
 

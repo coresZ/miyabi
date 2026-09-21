@@ -19,7 +19,6 @@ import (
 	"github.com/ppxb/miyabi/internal/pan"
 )
 
-
 type PlayFiles struct {
 	Code   string            `json:"code"`
 	Title  string            `json:"title"`
@@ -56,19 +55,20 @@ type playSession struct {
 }
 
 type PlayService struct {
+	drive    *drive.Drive
 	library  *LibraryService
 	mu       sync.Mutex
 	sessions map[string]*playSession
 }
 
-func NewPlayService(library *LibraryService) *PlayService {
-	return &PlayService{library: library, sessions: make(map[string]*playSession)}
+func NewPlayService(library *LibraryService, d *drive.Drive) *PlayService {
+	return &PlayService{library: library, drive: d, sessions: make(map[string]*playSession)}
 }
 
 func (service *PlayService) Files(ctx context.Context, movieID int) (PlayFiles, error) {
-	source := service.library.drive.Source()
+	source := service.drive.Source()
 	if source == nil {
-		return PlayFiles{}, ErrMediaDirectoryRequired
+		return PlayFiles{}, drive.ErrMediaDirectoryRequired
 	}
 	scope := libraryFiles(*source)
 	record, err := service.library.database.Movie.Query().
@@ -97,7 +97,7 @@ func (service *PlayService) Files(ctx context.Context, movieID int) (PlayFiles, 
 }
 
 func (service *PlayService) Start(ctx context.Context, fileID string) (Playback, error) {
-	sess, err := service.library.drive.Open(ctx)
+	sess, err := service.drive.Open(ctx)
 	if err != nil {
 		return Playback{}, err
 	}
@@ -198,7 +198,7 @@ func (service *PlayService) resource(id string, index int) (*playSession, playRe
 	resource := session.resources[index]
 	service.mu.Unlock()
 
-	if !service.library.drive.ValidateSource(session.source, session.version) {
+	if !service.drive.ValidateSource(session.source, session.version) {
 		service.Release(id)
 		return nil, playResource{}, domain.E(domain.KindNotFound, "登录账号或媒体目录已变更，请重新播放", fs.ErrNotExist)
 	}

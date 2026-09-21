@@ -161,10 +161,11 @@ func (d *Drive) LoginStatus(ctx context.Context, id string) (LoginStatus, error)
 	}
 	d.mu.Unlock()
 	result := session.work.DoChan("status", func() (any, error) {
-		if !d.startWork() {
+		done, ok := d.StartWork()
+		if !ok {
 			return LoginStatus{}, context.Canceled
 		}
-		defer d.work.Done()
+		defer done()
 		return d.pollLogin(ctx, session)
 	})
 	select {

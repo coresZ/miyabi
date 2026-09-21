@@ -10,11 +10,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
-	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/javdb"
-	"github.com/ppxb/miyabi/internal/pan"
 )
 
 func TestNewDiscoverServicePersistsDeviceWithoutSelectingRoute(t *testing.T) {
@@ -24,7 +22,7 @@ func TestNewDiscoverServicePersistsDeviceWithoutSelectingRoute(t *testing.T) {
 	}
 	defer store.Close()
 
-	first, err := NewDiscoverService(t.Context(), store.Client, javdb.Options{}, nil)
+	first, err := NewDiscoverService(t.Context(), store.Client, javdb.Options{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +43,7 @@ func TestNewDiscoverServicePersistsDeviceWithoutSelectingRoute(t *testing.T) {
 		t.Fatalf("device UUID = %q: %v", firstDevice, err)
 	}
 
-	second, err := NewDiscoverService(t.Context(), store.Client, javdb.Options{}, nil)
+	second, err := NewDiscoverService(t.Context(), store.Client, javdb.Options{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +71,7 @@ func TestNewDiscoverServiceRestoresPersistedRoute(t *testing.T) {
 	if err := saveSetting(t.Context(), store.Client, javdbRouteSetting, saved); err != nil {
 		t.Fatal(err)
 	}
-	service, err := NewDiscoverService(t.Context(), store.Client, javdb.Options{}, nil)
+	service, err := NewDiscoverService(t.Context(), store.Client, javdb.Options{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,15 +104,9 @@ func TestProjectMoviesAddsLibraryTaskAndReleaseState(t *testing.T) {
 		SetAccountID("100").SetRootID("10").SetMovie(localMovie).Exec(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	driveSvc, err := drive.New(t.Context(), store.Client)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := driveSvc.MountSource(t.Context(), domain.LibrarySource{
-		AccountID: "100", Directory: domain.LibraryDirectory{ID: "10", Path: "/Movies"},
-	}, pan.Tokens{AccessToken: "token"}); err != nil {
-		t.Fatal(err)
-	}
+	driveSvc := newMountedDrive(t, store.Client, &panStub{}, domain.LibrarySource{
+		AccountID: "100", Directory: domain.LibraryDirectory{ID: "10", Name: "Movies", Path: "/Movies"},
+	})
 	if _, err := store.Client.Task.Create().
 		SetType("offline").
 		SetPayload(taskPayloadJSON(t, map[string]any{"code": "ABP-002", "javdb_id": "two", "account_id": "100", "directory_id": "10"})).
@@ -140,7 +132,7 @@ func TestProjectMoviesAddsLibraryTaskAndReleaseState(t *testing.T) {
 
 	today := time.Now().In(time.Local)
 	tomorrow := today.AddDate(0, 0, 1).Format("2006-01-02")
-	service := &DiscoverService{database: store.Client, drive: driveSvc}
+	service := &DiscoverService{database: store.Client, local: driveSvc}
 	movies, err := service.projectMovies(t.Context(), []domain.Movie{
 		{ID: "one", Code: "ABP-001", ReleaseDate: today.Format("2006-01-02")},
 		{ID: "two", Code: "ABP-002", ReleaseDate: tomorrow},
@@ -242,7 +234,7 @@ func TestProjectionUsesSourceIDBeforeCatalogueSpelling(t *testing.T) {
 		"javdb_id": "queued-id", "code": "PREVIOUS-002",
 		"account_id": payload.Source.AccountID, "directory_id": payload.Source.Directory.ID,
 	})).SaveX(ctx)
-	service := &DiscoverService{database: db, drive: library.drive}
+	service := &DiscoverService{database: db, local: library.drive}
 	source := []domain.Movie{
 		{ID: "known-id", Code: "作品/新版 #001"},
 		{ID: "pending-id", Code: "knb_m014"},
@@ -268,22 +260,15 @@ func TestCachedCatalogueStillReflectsCurrentLibraryAndTaskState(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	service, err := NewDiscoverService(t.Context(), store.Client, javdb.Options{}, nil)
+	driveSvc := newMountedDrive(t, store.Client, &panStub{}, domain.LibrarySource{
+		AccountID: "100", Directory: domain.LibraryDirectory{ID: "10", Name: "Movies", Path: "/Movies"},
+	})
+	service, err := NewDiscoverService(t.Context(), store.Client, javdb.Options{}, nil, driveSvc)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer service.Close()
 	loads := 0
-	driveSvc, err := drive.New(t.Context(), store.Client)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := driveSvc.MountSource(t.Context(), domain.LibrarySource{
-		AccountID: "100", Directory: domain.LibraryDirectory{ID: "10", Path: "/Movies"},
-	}, pan.Tokens{AccessToken: "token"}); err != nil {
-		t.Fatal(err)
-	}
-	service.SetDrive(driveSvc)
 	project := func() MovieState {
 		t.Helper()
 		source, err := cachedJavDB(t.Context(), service, service.lists, "fixture", func(context.Context) ([]domain.Movie, error) {
@@ -319,27 +304,18 @@ func TestCachedCatalogueStillReflectsCurrentLibraryAndTaskState(t *testing.T) {
 		SetAccountID("100").SetRootID("10").SetMovie(localMovie).Exec(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := driveSvc.MountSource(t.Context(), domain.LibrarySource{
-		AccountID: "100", Directory: domain.LibraryDirectory{ID: "10", Path: "/Movies"},
-	}, pan.Tokens{AccessToken: "token"}); err != nil {
-		t.Fatal(err)
-	}
 	if got := project(); got != MovieInLibrary || loads != 1 {
 		t.Fatalf("scanned state = %s, loads = %d", got, loads)
 	}
-	if err := driveSvc.MountSource(t.Context(), domain.LibrarySource{
-		AccountID: "100", Directory: domain.LibraryDirectory{ID: "20", Path: "/Other"},
-	}, pan.Tokens{AccessToken: "token"}); err != nil {
-		t.Fatal(err)
-	}
+	mountSource(t, driveSvc, stubOf(t, driveSvc), domain.LibrarySource{
+		AccountID: "100", Directory: domain.LibraryDirectory{ID: "20", Name: "Other", Path: "/Other"},
+	})
 	if got := project(); got != MovieNotInLibrary || loads != 1 {
 		t.Fatalf("movie outside the mounted root = %s, loads = %d", got, loads)
 	}
-	if err := driveSvc.MountSource(t.Context(), domain.LibrarySource{
-		AccountID: "200", Directory: domain.LibraryDirectory{ID: "10", Path: "/Movies"},
-	}, pan.Tokens{AccessToken: "token"}); err != nil {
-		t.Fatal(err)
-	}
+	mountSource(t, driveSvc, stubOf(t, driveSvc), domain.LibrarySource{
+		AccountID: "200", Directory: domain.LibraryDirectory{ID: "10", Name: "Movies", Path: "/Movies"},
+	})
 	if got := project(); got != MovieNotInLibrary {
 		t.Fatalf("another account inherited task state: %s", got)
 	}

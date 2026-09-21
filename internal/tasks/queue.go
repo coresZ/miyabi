@@ -3,33 +3,11 @@ package tasks
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/syncx"
 )
-
-// contextLock has a usable zero value and lets waiting callers leave promptly.
-type contextLock struct {
-	once sync.Once
-	gate chan struct{}
-}
-
-func (lock *contextLock) Lock(ctx context.Context) error {
-	lock.once.Do(func() { lock.gate = make(chan struct{}, 1) })
-	select {
-	case lock.gate <- struct{}{}:
-		if err := ctx.Err(); err != nil {
-			lock.Unlock()
-			return err
-		}
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func (lock *contextLock) Unlock() { <-lock.gate }
 
 // Queue owns task claiming and completion. It knows nothing about what a
 // task does; handlers report their side effects through FinishedHook.
@@ -37,7 +15,7 @@ type Queue struct {
 	database *ent.Client
 	registry *Registry
 	bus      *Bus
-	lock     contextLock
+	lock     syncx.ContextLock
 }
 
 func NewQueue(database *ent.Client, registry *Registry, bus *Bus) *Queue {

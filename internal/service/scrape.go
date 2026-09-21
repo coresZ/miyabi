@@ -21,6 +21,7 @@ import (
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/nfo"
 	"github.com/ppxb/miyabi/internal/pan"
+	"github.com/ppxb/miyabi/internal/syncx"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
@@ -33,9 +34,9 @@ type metadataPayload struct {
 }
 
 type artworkOrigin struct {
-	NFO    pan.File
-	Poster pan.File
-	Fanart pan.File
+	NFO    pan.File `json:"nfo"`
+	Poster pan.File `json:"poster"`
+	Fanart pan.File `json:"fanart"`
 }
 
 type coverPayload struct {
@@ -56,18 +57,19 @@ type movieDirectory struct {
 }
 
 type ScrapeService struct {
+	drive    *drive.Drive
 	library  *LibraryService
 	discover *DiscoverService
 	images   *mediaimage.Cache
-	artwork  contextLock // Keep cache cleanup outside the generation-to-commit window.
+	artwork  syncx.ContextLock // Keep cache cleanup outside the generation-to-commit window.
 }
 
-func NewScrapeService(library *LibraryService, discover *DiscoverService, images *mediaimage.Cache) *ScrapeService {
-	return &ScrapeService{library: library, discover: discover, images: images}
+func NewScrapeService(library *LibraryService, discover *DiscoverService, d *drive.Drive, images *mediaimage.Cache) *ScrapeService {
+	return &ScrapeService{library: library, discover: discover, drive: d, images: images}
 }
 
 func (service *ScrapeService) begin(ctx context.Context, input metadataPayload) (drive.Session, error) {
-	return service.library.drive.OpenSource(ctx, input.Source)
+	return service.drive.OpenSource(ctx, input.Source)
 }
 
 func (service *ScrapeService) Scrape(ctx context.Context, job tasks.Job) error {
@@ -247,7 +249,7 @@ func (service *ScrapeService) directoryNFO(ctx context.Context, sess drive.Sessi
 	if !found {
 		return nfo.Movie{}, nil, false, nil
 	}
-	body, err := service.library.readSidecar(ctx, sess, entry, 2<<20)
+	body, err := sess.Read(ctx, entry.PickCode, 2<<20)
 	if err != nil {
 		return nfo.Movie{}, nil, false, fmt.Errorf("read %s: %w", entry.Name, err)
 	}

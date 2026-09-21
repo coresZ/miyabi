@@ -212,4 +212,3 @@ func (s *sourceSession) CommitAccount(ctx context.Context, fn func(tx *ent.Tx) e
 	}
 	return ent.WithTx(ctx, s.drive.database, fn)
 }
-

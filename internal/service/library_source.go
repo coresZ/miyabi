@@ -22,23 +22,15 @@ func fileInfoPath(info pan.FileInfo) string {
 	return path.Join(names...)
 }
 
-func withinSource(info pan.FileInfo, source domain.LibrarySource) bool {
-	return drive.WithinSource(info, source)
-}
-
 func (service *LibraryService) sourceInfo(ctx context.Context, sess drive.Session, id string) (pan.FileInfo, error) {
 	info, err := sess.Info(ctx, id)
 	if err != nil {
 		return pan.FileInfo{}, err
 	}
-	if !withinSource(info, sess.Source()) {
+	if !drive.WithinSource(info, sess.Source()) {
 		return pan.FileInfo{}, domain.E(domain.KindNotFound, "下载资源已移出媒体目录", nil)
 	}
 	return info, nil
-}
-
-func (service *LibraryService) readSidecar(ctx context.Context, sess drive.Session, entry pan.File, limit int64) ([]byte, error) {
-	return sess.Read(ctx, entry.PickCode, limit)
 }
 
 func (service *LibraryService) directoryEntries(ctx context.Context, sess drive.Session, id string) ([]pan.File, error) {
