@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ppxb/miyabi/internal/service"
+	lib "github.com/ppxb/miyabi/internal/library"
 )
 
 func libraryHistoryHandler(library LibraryManager) gin.HandlerFunc {
@@ -34,7 +34,7 @@ func libraryHistoryProgressHandler(library LibraryManager) gin.HandlerFunc {
 			c.Error(BadRequest(err))
 			return
 		}
-		var progress service.WatchProgress
+		var progress lib.WatchProgress
 		if err := c.ShouldBindJSON(&progress); err != nil {
 			c.Error(BadRequest(err))
 			return
@@ -50,7 +50,7 @@ func libraryHistoryProgressHandler(library LibraryManager) gin.HandlerFunc {
 func libraryHistoryRemoveHandler(library LibraryManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var request struct {
-			service.WatchHistoryScope
+			lib.WatchHistoryScope
 			IDs []int `json:"ids" binding:"required,min=1,max=100,unique,dive,min=1"`
 		}
 		if err := c.ShouldBindJSON(&request); err != nil {
@@ -68,7 +68,7 @@ func libraryHistoryRemoveHandler(library LibraryManager) gin.HandlerFunc {
 
 func libraryHistoryClearHandler(library LibraryManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var scope service.WatchHistoryScope
+		var scope lib.WatchHistoryScope
 		if err := c.ShouldBindQuery(&scope); err != nil {
 			c.Error(BadRequest(err))
 			return

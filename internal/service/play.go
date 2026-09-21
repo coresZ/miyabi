@@ -15,9 +15,20 @@ import (
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
+	"github.com/ppxb/miyabi/internal/ent/predicate"
 	"github.com/ppxb/miyabi/internal/ent/watchhistory"
+	"github.com/ppxb/miyabi/internal/library"
+	"github.com/ppxb/miyabi/internal/library/scan"
 	"github.com/ppxb/miyabi/internal/pan"
 )
+
+type LibraryFile = library.File
+type WatchHistoryScope = library.WatchHistoryScope
+type WatchResume = library.WatchResume
+
+func historyScope(source domain.LibrarySource) predicate.WatchHistory {
+	return watchhistory.And(watchhistory.AccountIDEQ(source.AccountID), watchhistory.RootIDEQ(source.Directory.ID))
+}
 
 type PlayFiles struct {
 	Code   string            `json:"code"`
@@ -56,12 +67,12 @@ type playSession struct {
 
 type PlayService struct {
 	drive    *drive.Drive
-	library  *LibraryService
+	library  *library.Service
 	mu       sync.Mutex
 	sessions map[string]*playSession
 }
 
-func NewPlayService(library *LibraryService, d *drive.Drive) *PlayService {
+func NewPlayService(library *library.Service, d *drive.Drive) *PlayService {
 	return &PlayService{library: library, drive: d, sessions: make(map[string]*playSession)}
 }
 
@@ -70,8 +81,8 @@ func (service *PlayService) Files(ctx context.Context, movieID int) (PlayFiles, 
 	if source == nil {
 		return PlayFiles{}, drive.ErrMediaDirectoryRequired
 	}
-	scope := libraryFiles(*source)
-	record, err := service.library.database.Movie.Query().
+	scope := scan.LibraryFiles(*source)
+	record, err := service.library.Database().Movie.Query().
 		Where(movie.IDEQ(movieID), movie.HasFilesWith(scope)).
 		WithFiles(func(query *ent.FileQuery) {
 			query.Where(scope).Order(ent.Desc(file.FieldSize), ent.Asc(file.FieldPath), ent.Asc(file.FieldID))
@@ -84,7 +95,7 @@ func (service *PlayService) Files(ctx context.Context, movieID int) (PlayFiles, 
 		result.Files = append(result.Files, LibraryFile{ID: entry.FileID, Name: entry.Name, Path: entry.Path, Size: entry.Size})
 	}
 	result.Source = WatchHistoryScope{AccountID: source.AccountID, DirectoryID: source.Directory.ID}
-	history, err := service.library.database.WatchHistory.Query().
+	history, err := service.library.Database().WatchHistory.Query().
 		Where(historyScope(*source), watchhistory.MovieIDEQ(movieID)).
 		Select(watchhistory.FieldID, watchhistory.FieldFileID, watchhistory.FieldPosition, watchhistory.FieldDuration).Only(ctx)
 	if err != nil && !ent.IsNotFound(err) {
@@ -102,7 +113,7 @@ func (service *PlayService) Start(ctx context.Context, fileID string) (Playback,
 		return Playback{}, err
 	}
 	source := sess.Source()
-	_, err = service.library.database.File.Query().Where(libraryFiles(source), file.FileIDEQ(fileID)).Only(ctx)
+	_, err = service.library.Database().File.Query().Where(scan.LibraryFiles(source), file.FileIDEQ(fileID)).Only(ctx)
 	if err != nil {
 		return Playback{}, fmt.Errorf("read indexed video: %w", err)
 	}
@@ -110,7 +121,7 @@ func (service *PlayService) Start(ctx context.Context, fileID string) (Playback,
 	if err != nil {
 		return Playback{}, fmt.Errorf("read 115 video: %w", err)
 	}
-	if info.IsDirectory || !isVideo(info.Name) || !drive.WithinSource(info, source) {
+	if info.IsDirectory || !domain.IsVideo(info.Name) || !drive.WithinSource(info, source) {
 		return Playback{}, domain.E(domain.KindNotFound, "视频已不在当前媒体目录中，请重新扫描", fs.ErrNotExist)
 	}
 	if info.PickCode == "" {

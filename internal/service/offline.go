@@ -17,6 +17,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/library/scan"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/syncx"
 	"github.com/ppxb/miyabi/internal/tasks"
@@ -257,7 +258,7 @@ func (service *OfflineService) remoteHasVideo(ctx context.Context, sess drive.Se
 		return false, domain.E(domain.KindConflict, "该磁力的资源已在媒体目录之外，请先在 115 中移动资源", nil)
 	}
 	if !info.IsDirectory {
-		return isVideo(info.Name), nil
+		return domain.IsVideo(info.Name), nil
 	}
 	directories := []string{info.ID}
 	seen := map[string]bool{info.ID: true}
@@ -276,7 +277,7 @@ func (service *OfflineService) remoteHasVideo(ctx context.Context, sess drive.Se
 						seen[entry.ID] = true
 						directories = append(directories, entry.ID)
 					}
-				} else if isVideo(entry.Name) {
+				} else if domain.IsVideo(entry.Name) {
 					found = true
 					return false, nil
 				}
@@ -338,7 +339,7 @@ func (service *OfflineService) submissions(ctx context.Context, records []*ent.T
 	}
 	indexed := make(map[string]*ent.Movie)
 	for start := 0; start < len(fileIDs); start += 500 {
-		files, err := service.database.File.Query().Where(libraryFiles(*source),
+		files, err := service.database.File.Query().Where(scan.LibraryFiles(*source),
 			file.FileIDIn(fileIDs[start:min(start+500, len(fileIDs))]...)).
 			Select(file.FieldFileID, file.FieldMovieID).
 			WithMovie(func(query *ent.MovieQuery) {
@@ -689,7 +690,7 @@ func (service *OfflineService) completeTask(ctx context.Context, tx *ent.Tx, rec
 	// once 115 exposes the output location.
 	if fileID != "" && input.ScanTaskID == 0 && currentSource != nil &&
 		currentSource.Directory.ID == input.DirectoryID && currentSource.AccountID == input.AccountID {
-		encoded, err := tasks.EncodePayload(scanPayload{
+		encoded, err := tasks.EncodePayload(scan.Payload{
 			Source:   *currentSource,
 			Scan:     domain.ScanProgress{Stage: "queued", CurrentPath: currentSource.Directory.Path},
 			TargetID: fileID, OfflineTaskID: record.ID, Code: input.Code, JavDBID: input.JavDBID,

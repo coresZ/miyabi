@@ -8,6 +8,7 @@ import (
 
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/library/scan"
 	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/pan"
 )
@@ -44,15 +45,14 @@ func TestMovieStatesFollowDownloadThroughIndexingWithoutCatalogueRequests(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	scan := offline.database.Task.GetX(ctx, saved.ScanTaskID)
-	payload, err := tasks.DecodePayload[scanPayload](scan.Payload)
+	scanTask := offline.database.Task.GetX(ctx, saved.ScanTaskID)
+	payload, err := tasks.DecodePayload[scan.Payload](scanTask.Payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	library := NewLibraryService(offline.database, offline.drive, offline.tasks, nil)
-	video := fixtureVideo("video-1", input.Code+".mp4")
+	video := scan.IdentifyVideo(pan.File{ID: "video-1", ParentID: "download-folder", Name: input.Code + ".mp4", Size: 1 << 30})
 	for range 2 {
-		if err := library.indexScanPage(ctx, scan.ID, "first-page", "/Movies/download-folder", []scanVideo{video}, &payload); err != nil {
+		if err := scan.ProcessScanPage(ctx, offline.database, scanTask.ID, "first-page", "/Movies/download-folder", []scan.Video{video}, &payload, nil, offline.tasks); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -68,13 +68,13 @@ func TestMovieStatesFollowDownloadThroughIndexingWithoutCatalogueRequests(t *tes
 		t.Fatalf("committed files are missing or duplicated: %+v err=%v", saved, err)
 	}
 	// A failed metadata job does not revoke playback of an indexed video.
-	metadata, err := tasks.EncodePayload(scrape.MetadataPayload{Source: source, ScanTaskID: scan.ID,
+	metadata, err := tasks.EncodePayload(scrape.MetadataPayload{Source: source, ScanTaskID: scanTask.ID,
 		MovieID: *indexed.MovieID, Code: input.Code, JavDBID: input.JavDBID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	scrape := offline.database.Task.Create().SetType("scrape").SetPayload(metadata).SaveX(ctx)
-	if err := offline.tasks.Queue().Finish(ctx, scan.ID, nil); err != nil {
+	if err := offline.tasks.Queue().Finish(ctx, scanTask.ID, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := offline.tasks.Queue().Finish(ctx, scrape.ID, errors.New("metadata unavailable")); err != nil {
@@ -131,12 +131,12 @@ func TestMovieStatesScopePendingWorkToTheMountedAccountAndRoot(t *testing.T) {
 func TestOfflinePageFileTrackingRollsBackWithTheIndex(t *testing.T) {
 	offline, record, input, source := offlineFixture(t)
 	ctx := t.Context()
-	library := NewLibraryService(offline.database, offline.drive, offline.tasks, nil)
-	payload := scanPayload{Source: source, OfflineTaskID: record.ID, TargetID: "download-folder",
+	payload := scan.Payload{Source: source, OfflineTaskID: record.ID, TargetID: "download-folder",
 		Code: input.Code, JavDBID: input.JavDBID}
+	video := scan.IdentifyVideo(pan.File{ID: "video", ParentID: "download-folder", Name: input.Code + ".mp4", Size: 1 << 30})
 	// The missing parent fails the final progress write after file tracking.
-	if err := library.indexScanPage(ctx, -1, "rolled-back", "/Movies/download-folder",
-		[]scanVideo{fixtureVideo("video", input.Code+".mp4")}, &payload); err == nil {
+	if err := scan.ProcessScanPage(ctx, offline.database, -1, "rolled-back", "/Movies/download-folder",
+		[]scan.Video{video}, &payload, nil, offline.tasks); err == nil {
 		t.Fatal("page with a missing scan parent unexpectedly committed")
 	}
 	if offline.database.File.Query().CountX(ctx) != 0 {

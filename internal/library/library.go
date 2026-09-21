@@ -1,4 +1,4 @@
-package service
+package library
 
 import (
 	"context"
@@ -12,24 +12,24 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/actor"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
-	"github.com/ppxb/miyabi/internal/ent/predicate"
 	"github.com/ppxb/miyabi/internal/ent/tag"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
+	"github.com/ppxb/miyabi/internal/library/scan"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
-type LibraryEntity struct {
+type Entity struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
 }
 
-type LibraryTag struct {
+type Tag struct {
 	ID      int    `json:"id"`
 	JavDBID string `json:"javdb_id"`
 	Name    string `json:"name"`
 }
 
-type LibraryMovie struct {
+type Movie struct {
 	ID           int                `json:"id"`
 	Code         string             `json:"code"`
 	Title        string             `json:"title"`
@@ -40,42 +40,47 @@ type LibraryMovie struct {
 	ReleaseDate  string             `json:"release_date,omitempty"`
 	Duration     int                `json:"duration"`
 	Rating       float64            `json:"rating"`
-	Director     *LibraryEntity     `json:"director,omitempty"`
-	Maker        *LibraryEntity     `json:"maker,omitempty"`
-	Series       *LibraryEntity     `json:"series,omitempty"`
-	Actors       []LibraryEntity    `json:"actors"`
-	Tags         []LibraryTag       `json:"tags"`
+	Director     *Entity            `json:"director,omitempty"`
+	Maker        *Entity            `json:"maker,omitempty"`
+	Series       *Entity            `json:"series,omitempty"`
+	Actors       []Entity           `json:"actors"`
+	Tags         []Tag              `json:"tags"`
 	ScrapeStatus movie.ScrapeStatus `json:"scrape_status"`
 	Watched      bool               `json:"watched"`
 }
 
-type LibraryPage struct {
+type Page struct {
 	Source  *domain.LibrarySource `json:"source,omitempty"`
-	Movies  []LibraryMovie        `json:"movies"`
+	Movies  []Movie               `json:"movies"`
 	Total   int                   `json:"total"`
 	Page    int                   `json:"page"`
 	HasMore bool                  `json:"has_more"`
 }
 
-type LibraryFile struct {
+type File struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Path string `json:"path"`
 	Size int64  `json:"size"`
 }
 
-type LibraryService struct {
+// Aliases for compatibility
+type LibraryEntity = Entity
+type LibraryTag = Tag
+type LibraryMovie = Movie
+type LibraryPage = Page
+type LibraryFile = File
+
+type Service struct {
 	images   *mediaimage.Cache
 	database *ent.Client
 	drive    *drive.Drive
 	tasks    *tasks.Service
 }
 
-func NewLibraryService(database *ent.Client, d *drive.Drive, tasks *tasks.Service, images *mediaimage.Cache) *LibraryService {
-	svc := &LibraryService{database: database, drive: d, tasks: tasks, images: images}
+func New(database *ent.Client, d *drive.Drive, tasks *tasks.Service, images *mediaimage.Cache) *Service {
+	svc := &Service{database: database, drive: d, tasks: tasks, images: images}
 	if d != nil && tasks != nil {
-		// A mount is complete only once its scan is queued; an error here makes
-		// the drive roll the mount back.
 		d.SubscribeMount(func(ctx context.Context, event drive.MountEvent) error {
 			if event.Source.Directory.ID != "" {
 				if _, err := tasks.EnqueueFreshScan(ctx, event.Source); err != nil {
@@ -86,24 +91,55 @@ func NewLibraryService(database *ent.Client, d *drive.Drive, tasks *tasks.Servic
 			return nil
 		})
 	}
+	if database != nil {
+		_ = migrateViewedMovies(context.Background(), database)
+	}
 	return svc
 }
 
-func libraryFiles(source domain.LibrarySource) predicate.File {
-	return file.And(file.AccountIDEQ(source.AccountID), file.RootIDEQ(source.Directory.ID))
+func (s *Service) Database() *ent.Client {
+	return s.database
 }
 
-func (service *LibraryService) Movies(ctx context.Context, page, limit int) (LibraryPage, error) {
-	result := LibraryPage{Movies: []LibraryMovie{}, Page: page}
-	source := service.drive.Source()
+func (s *Service) Drive() *drive.Drive {
+	return s.drive
+}
+
+func (s *Service) Tasks() *tasks.Service {
+	return s.tasks
+}
+
+func (s *Service) Images() *mediaimage.Cache {
+	return s.images
+}
+
+func (s *Service) StartScan(ctx context.Context) (tasks.TaskInfo, error) {
+	sess, err := s.drive.Open(ctx)
+	if err != nil {
+		return tasks.TaskInfo{}, err
+	}
+	return s.tasks.EnqueueScan(ctx, sess.Source())
+}
+
+func (s *Service) Scan(ctx context.Context, job tasks.Job) error {
+	return scan.Scan(ctx, job, s.drive, s.database, s.images, s.tasks)
+}
+
+func (s *Service) Finished(context.Context, *ent.Tx, tasks.Job, error) (tasks.Change, error) {
+	return tasks.ChangeOffline, nil
+}
+
+func (s *Service) Movies(ctx context.Context, page, limit int) (Page, error) {
+	result := Page{Movies: []Movie{}, Page: page}
+	source := s.drive.Source()
 	if source == nil {
 		return result, nil
 	}
 	result.Source = source
-	scope := libraryFiles(*source)
+	scope := scan.LibraryFiles(*source)
 	var err error
-	result.Total, err = service.database.File.Query().Where(scope).Aggregate(func(s *sql.Selector) string {
-		return sql.As("COUNT(DISTINCT "+s.C(file.FieldMovieID)+")", "total")
+	result.Total, err = s.database.File.Query().Where(scope).Aggregate(func(selector *sql.Selector) string {
+		return sql.As("COUNT(DISTINCT "+selector.C(file.FieldMovieID)+")", "total")
 	}).Int(ctx)
 	if err != nil {
 		return result, fmt.Errorf("count library index: %w", err)
@@ -111,7 +147,7 @@ func (service *LibraryService) Movies(ctx context.Context, page, limit int) (Lib
 	if result.Total == 0 {
 		return result, nil
 	}
-	records, err := service.database.Movie.Query().Where(movie.HasFilesWith(scope)).
+	records, err := s.database.Movie.Query().Where(movie.HasFilesWith(scope)).
 		Select(movie.FieldID, movie.FieldCode, movie.FieldTitle, movie.FieldJavdbID, movie.FieldCover, movie.FieldPoster,
 			movie.FieldFanarts, movie.FieldReleaseDate, movie.FieldDuration, movie.FieldRating,
 			movie.FieldDirectorID, movie.FieldDirectorName, movie.FieldMakerID, movie.FieldMakerName,
@@ -129,14 +165,14 @@ func (service *LibraryService) Movies(ctx context.Context, page, limit int) (Lib
 		return result, fmt.Errorf("list library movies: %w", err)
 	}
 	for _, record := range records {
-		item := LibraryMovie{
+		item := Movie{
 			ID: record.ID, Code: record.Code, Title: record.Title,
 			JavDBID: record.JavdbID, Cover: record.Cover, Poster: record.Poster,
 			Duration: valueOrZero(record.Duration), Rating: valueOrZero(record.Rating),
 			Director: libraryEntity(record.DirectorID, record.DirectorName),
 			Maker:    libraryEntity(record.MakerID, record.MakerName), Series: libraryEntity(record.SeriesID, record.SeriesName),
-			Actors: make([]LibraryEntity, 0, len(record.Edges.Actors)),
-			Tags:   make([]LibraryTag, 0, len(record.Edges.Tags)), ScrapeStatus: record.ScrapeStatus, Watched: record.Watched,
+			Actors: make([]Entity, 0, len(record.Edges.Actors)),
+			Tags:   make([]Tag, 0, len(record.Edges.Tags)), ScrapeStatus: record.ScrapeStatus, Watched: record.Watched,
 		}
 		if record.ReleaseDate != nil {
 			item.ReleaseDate = record.ReleaseDate.Format(time.DateOnly)
@@ -145,10 +181,10 @@ func (service *LibraryService) Movies(ctx context.Context, page, limit int) (Lib
 			item.Fanart = record.Fanarts[0]
 		}
 		for _, person := range record.Edges.Actors {
-			item.Actors = append(item.Actors, LibraryEntity{ID: person.JavdbID, Name: person.Name})
+			item.Actors = append(item.Actors, Entity{ID: person.JavdbID, Name: person.Name})
 		}
 		for _, label := range record.Edges.Tags {
-			item.Tags = append(item.Tags, LibraryTag{ID: label.ID, JavDBID: label.JavdbID, Name: label.Name})
+			item.Tags = append(item.Tags, Tag{ID: label.ID, JavDBID: label.JavdbID, Name: label.Name})
 		}
 		result.Movies = append(result.Movies, item)
 	}
@@ -156,11 +192,11 @@ func (service *LibraryService) Movies(ctx context.Context, page, limit int) (Lib
 	return result, nil
 }
 
-func libraryEntity(id, name *string) *LibraryEntity {
+func libraryEntity(id, name *string) *Entity {
 	if name == nil || *name == "" {
 		return nil
 	}
-	return &LibraryEntity{ID: valueOrZero(id), Name: *name}
+	return &Entity{ID: valueOrZero(id), Name: *name}
 }
 
 func valueOrZero[T any](value *T) T {

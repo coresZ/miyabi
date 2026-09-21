@@ -102,8 +102,6 @@ type DiscoverService struct {
 
 	routeMu sync.RWMutex
 	route   JavDBRouteStatus
-
-	viewedMu sync.Mutex
 }
 
 // NewDiscoverService creates the lazy JavDB client and persists a stable

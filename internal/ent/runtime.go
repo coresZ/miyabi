@@ -14,6 +14,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/ent/tag"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/ent/viewedmovie"
 	"github.com/ppxb/miyabi/internal/ent/watchhistory"
 )
 
@@ -250,6 +251,16 @@ func init() {
 	task.DefaultProgress = taskDescProgress.Default.(int)
 	// task.ProgressValidator is a validator for the "progress" field. It is called by the builders before save.
 	task.ProgressValidator = taskDescProgress.Validators[0].(func(int) error)
+	viewedmovieFields := schema.ViewedMovie{}.Fields()
+	_ = viewedmovieFields
+	// viewedmovieDescJavdbID is the schema descriptor for javdb_id field.
+	viewedmovieDescJavdbID := viewedmovieFields[0].Descriptor()
+	// viewedmovie.JavdbIDValidator is a validator for the "javdb_id" field. It is called by the builders before save.
+	viewedmovie.JavdbIDValidator = viewedmovieDescJavdbID.Validators[0].(func(string) error)
+	// viewedmovieDescViewedAt is the schema descriptor for viewed_at field.
+	viewedmovieDescViewedAt := viewedmovieFields[1].Descriptor()
+	// viewedmovie.DefaultViewedAt holds the default value on creation for the viewed_at field.
+	viewedmovie.DefaultViewedAt = viewedmovieDescViewedAt.Default.(func() time.Time)
 	watchhistoryFields := schema.WatchHistory{}.Fields()
 	_ = watchhistoryFields
 	// watchhistoryDescAccountID is the schema descriptor for account_id field.

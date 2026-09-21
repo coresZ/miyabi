@@ -11,6 +11,7 @@ import (
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/library/scan"
 )
 
 type MovieIdentity struct {
@@ -46,7 +47,7 @@ func (service *DiscoverService) MovieStates(ctx context.Context, identities []Mo
 	}
 	localMovies, err := service.database.Movie.Query().Where(
 		movie.Or(movie.JavdbIDIn(ids...), movie.And(movie.JavdbIDIsNil(), movie.CodeIn(codes...))),
-		movie.HasFilesWith(libraryFiles(*source)),
+		movie.HasFilesWith(scan.LibraryFiles(*source)),
 	).Select(movie.FieldID, movie.FieldCode, movie.FieldJavdbID).All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("query local movie states: %w", err)

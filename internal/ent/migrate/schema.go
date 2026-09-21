@@ -187,6 +187,25 @@ var (
 			},
 		},
 	}
+	// ViewedMoviesColumns holds the columns for the "viewed_movies" table.
+	ViewedMoviesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "javdb_id", Type: field.TypeString, Unique: true},
+		{Name: "viewed_at", Type: field.TypeTime},
+	}
+	// ViewedMoviesTable holds the schema information for the "viewed_movies" table.
+	ViewedMoviesTable = &schema.Table{
+		Name:       "viewed_movies",
+		Columns:    ViewedMoviesColumns,
+		PrimaryKey: []*schema.Column{ViewedMoviesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "viewedmovie_viewed_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{ViewedMoviesColumns[2], ViewedMoviesColumns[0]},
+			},
+		},
+	}
 	// WatchHistoriesColumns holds the columns for the "watch_histories" table.
 	WatchHistoriesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -290,6 +309,7 @@ var (
 		SettingsTable,
 		TagsTable,
 		TasksTable,
+		ViewedMoviesTable,
 		WatchHistoriesTable,
 		MovieActorsTable,
 		MovieTagsTable,

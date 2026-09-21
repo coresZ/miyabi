@@ -133,3 +133,11 @@ func (service *DataService) retainedArtwork(ctx context.Context) (map[string]boo
 	}
 	return retained, nil
 }
+
+func valueOrZero[T any](value *T) T {
+	if value != nil {
+		return *value
+	}
+	var zero T
+	return zero
+}

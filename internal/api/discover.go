@@ -21,7 +21,10 @@ type Discoverer interface {
 	Route() service.JavDBRouteStatus
 	Reselect(context.Context) (service.JavDBRouteStatus, error)
 	SelectRoute(context.Context, string) (service.JavDBRouteStatus, error)
-	ViewedMovieIDs(context.Context) ([]string, error)
+}
+
+type ViewedManager interface {
+	ViewedMovieIDs(context.Context, ...int) ([]string, error)
 	AddViewedMovieIDs(context.Context, []string) error
 }
 
@@ -231,9 +234,9 @@ type addViewedInput struct {
 	IDs []string `json:"ids" binding:"required,min=1,max=1000"`
 }
 
-func discoverViewedHandler(discover Discoverer) gin.HandlerFunc {
+func discoverViewedHandler(viewed ViewedManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ids, err := discover.ViewedMovieIDs(c.Request.Context())
+		ids, err := viewed.ViewedMovieIDs(c.Request.Context())
 		if err != nil {
 			c.Error(err)
 			return
@@ -243,14 +246,14 @@ func discoverViewedHandler(discover Discoverer) gin.HandlerFunc {
 	}
 }
 
-func discoverAddViewedHandler(discover Discoverer) gin.HandlerFunc {
+func discoverAddViewedHandler(viewed ViewedManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input addViewedInput
 		if err := c.ShouldBindJSON(&input); err != nil {
 			c.Error(BadRequest(err))
 			return
 		}
-		if err := discover.AddViewedMovieIDs(c.Request.Context(), input.IDs); err != nil {
+		if err := viewed.AddViewedMovieIDs(c.Request.Context(), input.IDs); err != nil {
 			c.Error(err)
 			return
 		}

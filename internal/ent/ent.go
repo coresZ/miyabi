@@ -19,6 +19,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/ent/tag"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/ent/viewedmovie"
 	"github.com/ppxb/miyabi/internal/ent/watchhistory"
 )
 
@@ -87,6 +88,7 @@ func checkColumn(t, c string) error {
 			setting.Table:      setting.ValidColumn,
 			tag.Table:          tag.ValidColumn,
 			task.Table:         task.ValidColumn,
+			viewedmovie.Table:  viewedmovie.ValidColumn,
 			watchhistory.Table: watchhistory.ValidColumn,
 		})
 	})

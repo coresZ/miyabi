@@ -1,4 +1,4 @@
-package service
+package library
 
 import (
 	"context"
@@ -15,12 +15,15 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/predicate"
 	"github.com/ppxb/miyabi/internal/ent/watchhistory"
+	"github.com/ppxb/miyabi/internal/library/scan"
 )
 
 const WatchHistoryPageSize = 20
 
-var ErrWatchHistorySourceChanged = domain.E(domain.KindConflict, "媒体目录已切换，请刷新观看历史后重试", nil)
-var ErrInvalidWatchProgress = domain.E(domain.KindInvalid, "观看进度无效", nil)
+var (
+	ErrWatchHistorySourceChanged = domain.E(domain.KindConflict, "媒体目录已切换，请刷新观看历史后重试", nil)
+	ErrInvalidWatchProgress      = domain.E(domain.KindInvalid, "观看进度无效", nil)
+)
 
 type WatchHistoryScope struct {
 	AccountID   string `json:"account_id" form:"account_id" binding:"required,max=128"`
@@ -35,7 +38,6 @@ type WatchSession struct {
 	Duration  float64 `json:"duration"`
 }
 
-// WatchResume is read without creating a history entry or rotating its session.
 type WatchResume struct {
 	ID       int     `json:"id"`
 	FileID   string  `json:"file_id"`
@@ -75,20 +77,19 @@ func historyScope(source domain.LibrarySource) predicate.WatchHistory {
 	return watchhistory.And(watchhistory.AccountIDEQ(source.AccountID), watchhistory.RootIDEQ(source.Directory.ID))
 }
 
-// Opening a movie creates one source-scoped history entry and starts a fresh
-// progress session. Reopening preserves its saved position and watched badge.
-func (service *LibraryService) MarkWatched(ctx context.Context, movieID int, scope WatchHistoryScope) (WatchSession, error) {
+// MarkWatched opens a movie, creating a source-scoped history entry and starting a fresh progress session.
+func (s *Service) MarkWatched(ctx context.Context, movieID int, scope WatchHistoryScope) (WatchSession, error) {
 	var result WatchSession
 	libraryChanged := false
-	source := service.drive.Source()
+	source := s.drive.Source()
 	if source == nil {
 		return result, drive.ErrMediaDirectoryRequired
 	}
 	if source.AccountID != scope.AccountID || source.Directory.ID != scope.DirectoryID {
 		return result, ErrWatchHistorySourceChanged
 	}
-	err := ent.WithTx(ctx, service.database, func(tx *ent.Tx) error {
-		record, err := tx.Movie.Query().Where(movie.IDEQ(movieID), movie.HasFilesWith(libraryFiles(*source))).
+	err := ent.WithTx(ctx, s.database, func(tx *ent.Tx) error {
+		record, err := tx.Movie.Query().Where(movie.IDEQ(movieID), movie.HasFilesWith(scan.LibraryFiles(*source))).
 			Select(movie.FieldID, movie.FieldWatched).Only(ctx)
 		if err != nil {
 			return err
@@ -119,22 +120,22 @@ func (service *LibraryService) MarkWatched(ctx context.Context, movieID int, sco
 		return result, fmt.Errorf("record library watch: %w", err)
 	}
 	if libraryChanged {
-		service.tasks.NotifyLibraryChanged()
+		s.tasks.NotifyLibraryChanged()
 	} else {
-		service.tasks.NotifyWatchHistoryChanged()
+		s.tasks.NotifyWatchHistoryChanged()
 	}
 	return result, nil
 }
 
-func (service *LibraryService) WatchHistory(ctx context.Context, page int) (WatchHistoryPage, error) {
+func (s *Service) WatchHistory(ctx context.Context, page int) (WatchHistoryPage, error) {
 	result := WatchHistoryPage{Items: []WatchHistoryItem{}, Page: page}
-	source := service.drive.Source()
+	source := s.drive.Source()
 	if source == nil {
 		return result, nil
 	}
 	result.Source = source
-	query := service.database.WatchHistory.Query().Where(historyScope(*source),
-		watchhistory.HasMovieWith(movie.HasFilesWith(libraryFiles(*source))))
+	query := s.database.WatchHistory.Query().Where(historyScope(*source),
+		watchhistory.HasMovieWith(movie.HasFilesWith(scan.LibraryFiles(*source))))
 	total, err := query.Clone().Count(ctx)
 	if err != nil {
 		return result, fmt.Errorf("count watch history: %w", err)
@@ -167,28 +168,26 @@ func (service *LibraryService) WatchHistory(ctx context.Context, page int) (Watc
 	return result, nil
 }
 
-func (service *LibraryService) SaveWatchProgress(ctx context.Context, id int, progress WatchProgress) error {
+func (s *Service) SaveWatchProgress(ctx context.Context, id int, progress WatchProgress) error {
 	if progress.SessionID == "" || progress.FileID == "" || progress.Version < 1 || progress.Position < 0 ||
 		progress.Duration <= 0 || math.IsNaN(progress.Position) || math.IsInf(progress.Position, 0) ||
 		math.IsNaN(progress.Duration) || math.IsInf(progress.Duration, 0) {
 		return ErrInvalidWatchProgress
 	}
-	source := service.drive.Source()
+	source := s.drive.Source()
 	if source == nil {
 		return drive.ErrMediaDirectoryRequired
 	}
 	changed := false
-	err := ent.WithTx(ctx, service.database, func(tx *ent.Tx) error {
+	err := ent.WithTx(ctx, s.database, func(tx *ent.Tx) error {
 		record, err := tx.WatchHistory.Query().Where(historyScope(*source), watchhistory.IDEQ(id)).Only(ctx)
 		if err != nil {
 			return err
 		}
-		// A late request from another session or an older seek must not restore
-		// stale progress. Updating existing rows also cannot recreate cleared history.
 		if record.SessionID != progress.SessionID || record.ProgressVersion >= progress.Version {
 			return nil
 		}
-		found, err := tx.File.Query().Where(libraryFiles(*source), file.MovieIDEQ(record.MovieID), file.FileIDEQ(progress.FileID)).Exist(ctx)
+		found, err := tx.File.Query().Where(scan.LibraryFiles(*source), file.MovieIDEQ(record.MovieID), file.FileIDEQ(progress.FileID)).Exist(ctx)
 		if err != nil {
 			return err
 		}
@@ -208,29 +207,29 @@ func (service *LibraryService) SaveWatchProgress(ctx context.Context, id int, pr
 		return fmt.Errorf("save watch progress: %w", err)
 	}
 	if changed {
-		service.tasks.NotifyWatchHistoryChanged()
+		s.tasks.NotifyWatchHistoryChanged()
 	}
 	return nil
 }
 
-func (service *LibraryService) RemoveWatchHistory(ctx context.Context, scope WatchHistoryScope, ids []int) (int, error) {
+func (s *Service) RemoveWatchHistory(ctx context.Context, scope WatchHistoryScope, ids []int) (int, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	return service.deleteWatchHistory(ctx, scope, watchhistory.IDIn(ids...))
+	return s.deleteWatchHistory(ctx, scope, watchhistory.IDIn(ids...))
 }
 
-func (service *LibraryService) ClearWatchHistory(ctx context.Context, scope WatchHistoryScope) (int, error) {
-	return service.deleteWatchHistory(ctx, scope)
+func (s *Service) ClearWatchHistory(ctx context.Context, scope WatchHistoryScope) (int, error) {
+	return s.deleteWatchHistory(ctx, scope)
 }
 
-func (service *LibraryService) deleteWatchHistory(ctx context.Context, scope WatchHistoryScope, filters ...predicate.WatchHistory) (int, error) {
-	source := service.drive.Source()
+func (s *Service) deleteWatchHistory(ctx context.Context, scope WatchHistoryScope, filters ...predicate.WatchHistory) (int, error) {
+	source := s.drive.Source()
 	if source == nil || source.AccountID != scope.AccountID || source.Directory.ID != scope.DirectoryID {
 		return 0, ErrWatchHistorySourceChanged
 	}
 	count := 0
-	err := ent.WithTx(ctx, service.database, func(tx *ent.Tx) error {
+	err := ent.WithTx(ctx, s.database, func(tx *ent.Tx) error {
 		var err error
 		count, err = tx.WatchHistory.Delete().Where(historyScope(*source)).Where(filters...).Exec(ctx)
 		return err
@@ -239,7 +238,7 @@ func (service *LibraryService) deleteWatchHistory(ctx context.Context, scope Wat
 		return 0, fmt.Errorf("clear watch history: %w", err)
 	}
 	if count > 0 {
-		service.tasks.NotifyWatchHistoryChanged()
+		s.tasks.NotifyWatchHistoryChanged()
 	}
 	return count, nil
 }

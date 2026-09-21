@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"github.com/ppxb/miyabi/internal/tasks"
 	"io"
 	"log/slog"
 	"net/http"
@@ -22,8 +21,10 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/javdb"
+	"github.com/ppxb/miyabi/internal/library"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/service"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
 
 // Golden files freeze the JSON contract the frontend depends on. Run with
@@ -116,26 +117,34 @@ func goldenSource() domain.LibrarySource {
 
 func goldenTime() time.Time { return time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC) }
 
-func (goldenLibrary) Movies(context.Context, int, int) (service.LibraryPage, error) {
+func (goldenLibrary) Movies(context.Context, int, int) (library.Page, error) {
 	source := goldenSource()
 	cover, poster, javdbID := "/api/library/artwork/aa.jpg", "/api/library/artwork/bb.jpg", "movie-exact"
-	return service.LibraryPage{Source: &source, Total: 2, Page: 1, HasMore: false, Movies: []service.LibraryMovie{
+	return library.Page{Source: &source, Total: 2, Page: 1, HasMore: false, Movies: []library.Movie{
 		{ID: 7, Code: "ABP-123", Title: "Localized title", JavDBID: &javdbID, Cover: &cover, Poster: &poster, Fanart: "/api/library/artwork/cc.jpg",
 			ReleaseDate: "2026-08-01", Duration: 120, Rating: 4.5,
-			Director: &service.LibraryEntity{ID: "director-1", Name: "Director"}, Maker: &service.LibraryEntity{ID: "maker-1", Name: "Maker"},
-			Series: &service.LibraryEntity{ID: "series-1", Name: "Series"},
-			Actors: []service.LibraryEntity{{ID: "actor-1", Name: "Actor"}}, Tags: []service.LibraryTag{{ID: 3, JavDBID: "tag-1", Name: "Tag"}},
+			Director: &library.Entity{ID: "director-1", Name: "Director"}, Maker: &library.Entity{ID: "maker-1", Name: "Maker"},
+			Series: &library.Entity{ID: "series-1", Name: "Series"},
+			Actors: []library.Entity{{ID: "actor-1", Name: "Actor"}}, Tags: []library.Tag{{ID: 3, JavDBID: "tag-1", Name: "Tag"}},
 			ScrapeStatus: movie.ScrapeStatusDone, Watched: true},
-		{ID: 8, Code: "ZZZ-999", Actors: []service.LibraryEntity{}, Tags: []service.LibraryTag{}, ScrapeStatus: movie.ScrapeStatusFailed},
+		{ID: 8, Code: "ZZZ-999", Actors: []library.Entity{}, Tags: []library.Tag{}, ScrapeStatus: movie.ScrapeStatusFailed},
 	}}, nil
 }
 
-func (goldenLibrary) WatchHistory(context.Context, int) (service.WatchHistoryPage, error) {
+func (goldenLibrary) WatchHistory(context.Context, int) (library.WatchHistoryPage, error) {
 	source := goldenSource()
 	cover := "/api/library/artwork/aa.jpg"
-	return service.WatchHistoryPage{Source: &source, Total: 1, Page: 1, Items: []service.WatchHistoryItem{
+	return library.WatchHistoryPage{Source: &source, Total: 1, Page: 1, Items: []library.WatchHistoryItem{
 		{ID: 1, MovieID: 7, Code: "ABP-123", Title: "Localized title", Cover: &cover, WatchedAt: goldenTime(), Position: 61.5, Duration: 7200},
 	}}, nil
+}
+
+func (goldenLibrary) ViewedMovieIDs(context.Context, ...int) ([]string, error) {
+	return []string{"movie-exact"}, nil
+}
+
+func (goldenLibrary) AddViewedMovieIDs(context.Context, []string) error {
+	return nil
 }
 
 type goldenTasks struct {
@@ -207,9 +216,9 @@ type goldenPlay struct {
 
 func (goldenPlay) Files(context.Context, int) (service.PlayFiles, error) {
 	return service.PlayFiles{Code: "ABP-123", Title: "Localized title",
-		Files:  []service.LibraryFile{{ID: "101", Name: "ABP-123.mp4", Path: "/Movies/ABP-123/ABP-123.mp4", Size: 2 << 30}},
-		Source: service.WatchHistoryScope{AccountID: "100", DirectoryID: "10"},
-		Resume: &service.WatchResume{ID: 1, FileID: "101", Position: 61.5, Duration: 7200}}, nil
+		Files:  []library.File{{ID: "101", Name: "ABP-123.mp4", Path: "/Movies/ABP-123/ABP-123.mp4", Size: 2 << 30}},
+		Source: library.WatchHistoryScope{AccountID: "100", DirectoryID: "10"},
+		Resume: &library.WatchResume{ID: 1, FileID: "101", Position: 61.5, Duration: 7200}}, nil
 }
 
 func (goldenPlay) Start(context.Context, string) (service.Playback, error) {

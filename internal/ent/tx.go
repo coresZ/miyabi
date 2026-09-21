@@ -26,6 +26,8 @@ type Tx struct {
 	Tag *TagClient
 	// Task is the client for interacting with the Task builders.
 	Task *TaskClient
+	// ViewedMovie is the client for interacting with the ViewedMovie builders.
+	ViewedMovie *ViewedMovieClient
 	// WatchHistory is the client for interacting with the WatchHistory builders.
 	WatchHistory *WatchHistoryClient
 
@@ -166,6 +168,7 @@ func (tx *Tx) init() {
 	tx.Setting = NewSettingClient(tx.config)
 	tx.Tag = NewTagClient(tx.config)
 	tx.Task = NewTaskClient(tx.config)
+	tx.ViewedMovie = NewViewedMovieClient(tx.config)
 	tx.WatchHistory = NewWatchHistoryClient(tx.config)
 }
 

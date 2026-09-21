@@ -19,6 +19,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/javdb"
+	"github.com/ppxb/miyabi/internal/library"
 	scrapePkg "github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/nfo"
 	"github.com/ppxb/miyabi/internal/pan"
@@ -267,7 +268,7 @@ type pipelineFixture struct {
 	drive     *fakeDrive
 	catalogue *fakeCatalogue
 	tasks     *tasks.Service
-	library   *LibraryService
+	library   *library.Service
 	scrape    *scrapePkg.Service
 	discover  *DiscoverService
 	source    domain.LibrarySource
@@ -303,7 +304,7 @@ func newPipelineFixture(t *testing.T) *pipelineFixture {
 	discover.javdb.Close()
 	catalogue := &fakeCatalogue{ids: make(map[string]string), details: make(map[string]domain.MovieDetail), cover: fixtureJPEG(t, 600, 400)}
 	discover.javdb = catalogue
-	library := NewLibraryService(store.Client, d, taskSvc, images)
+	library := library.New(store.Client, d, taskSvc, images)
 	scrape := scrapePkg.New(store.Client, d, discover, images, taskSvc)
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScan, library.Scan, library.Finished))
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScrape, scrape.Scrape, scrape.Finished))
@@ -422,7 +423,7 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 		t.Fatalf("movie edges = actors %d tags %d files %+v", len(record.Edges.Actors), len(record.Edges.Tags), record.Edges.Files)
 	}
 	artwork := scrapePkg.MovieArtwork(record)
-	if exists, err := fixture.library.images.Exists(artwork); err != nil || !exists {
+	if exists, err := fixture.library.Images().Exists(artwork); err != nil || !exists {
 		t.Fatalf("artwork %+v cached = %t, %v", artwork, exists, err)
 	}
 
@@ -440,7 +441,7 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 	if doc.Poster() != "poster.jpg" || doc.Fanart != "fanart.jpg" || len(doc.Actors) != 2 || len(doc.Tags) != 1 || doc.Studio.Name != "Maker" {
 		t.Fatalf("nfo references = poster %q fanart %q actors %d tags %d studio %+v", doc.Poster(), doc.Fanart, len(doc.Actors), len(doc.Tags), doc.Studio)
 	}
-	poster, err := fixture.library.images.ReadURL(artwork.Poster)
+	poster, err := fixture.library.Images().ReadURL(artwork.Poster)
 	if err != nil || !bytes.Equal(poster, fixture.drive.uploads[0].body) {
 		t.Fatalf("uploaded poster differs from cached poster: %v", err)
 	}

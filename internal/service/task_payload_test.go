@@ -30,8 +30,8 @@ func TestTaskPayloadRoundTripKeepsMetadataAndIntegerPrecision(t *testing.T) {
 		Snapshot: &scrape.Snapshot{Videos: "fingerprint", Directories: []scrape.DirectorySnapshot{{ID: "10"}}},
 	}
 	encoded := taskPayloadJSON(t, input)
-	record := library.database.Task.Create().SetType("cover").SetPayload(encoded).SaveX(t.Context())
-	loaded := library.database.Task.GetX(t.Context(), record.ID)
+	record := library.Database().Task.Create().SetType("cover").SetPayload(encoded).SaveX(t.Context())
+	loaded := library.Database().Task.GetX(t.Context(), record.ID)
 	restored, err := tasks.DecodePayload[scrape.CoverPayload](loaded.Payload)
 	if err != nil || !reflect.DeepEqual(restored, input) {
 		t.Fatalf("task round trip changed metadata or IDs: %#v, %v", restored, err)
@@ -39,7 +39,7 @@ func TestTaskPayloadRoundTripKeepsMetadataAndIntegerPrecision(t *testing.T) {
 	if len(loaded.Payload) == 0 || loaded.Payload[0] != '{' {
 		t.Fatalf("task stored a JSON string instead of an object: %s", loaded.Payload)
 	}
-	if count := library.database.Task.Query().Where(task.TypeEQ("cover")).CountX(t.Context()); count != 1 {
+	if count := library.Database().Task.Query().Where(task.TypeEQ("cover")).CountX(t.Context()); count != 1 {
 		t.Fatalf("round trip changed task type: %d", count)
 	}
 }

@@ -2,19 +2,19 @@ package service
 
 import (
 	"errors"
-	"github.com/ppxb/miyabi/internal/tasks"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/library/scrape"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
 
 func TestTaskGroupsFoldChildCountsAndLatestState(t *testing.T) {
 	library, parent, payload := libraryFixture(t)
 	ctx := t.Context()
-	if err := library.tasks.Queue().Finish(ctx, parent.ID, nil); err != nil {
+	if err := library.Tasks().Queue().Finish(ctx, parent.ID, nil); err != nil {
 		t.Fatal(err)
 	}
 	var activeID int
@@ -34,7 +34,7 @@ func TestTaskGroupsFoldChildCountsAndLatestState(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		builder := library.database.Task.Create().SetType(child.kind).SetStatus(child.status).
+		builder := library.Database().Task.Create().SetType(child.kind).SetStatus(child.status).
 			SetPayload(input).SetUpdatedAt(latest.Add(time.Duration(i) * time.Second))
 		if child.status == task.StatusFailed {
 			builder.SetError("fixture metadata failure")
@@ -45,7 +45,7 @@ func TestTaskGroupsFoldChildCountsAndLatestState(t *testing.T) {
 		}
 		activeID = record.ID
 	}
-	info, err := library.tasks.Info(ctx, parent.ID)
+	info, err := library.Tasks().Info(ctx, parent.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,10 +55,10 @@ func TestTaskGroupsFoldChildCountsAndLatestState(t *testing.T) {
 	if !info.UpdatedAt.Equal(latest.Add(4 * time.Second)) {
 		t.Fatalf("latest change: %v", info.UpdatedAt)
 	}
-	if err := library.tasks.Queue().Finish(ctx, activeID, errors.New("fixture cover failure")); err != nil {
+	if err := library.Tasks().Queue().Finish(ctx, activeID, errors.New("fixture cover failure")); err != nil {
 		t.Fatal(err)
 	}
-	info, err = library.tasks.Info(ctx, parent.ID)
+	info, err = library.Tasks().Info(ctx, parent.ID)
 	if err != nil || info.Status != task.StatusFailed || info.Scan.MetadataCompleted != 3 || info.Progress != 100 {
 		t.Fatalf("finished workflow: %+v err=%v", info, err)
 	}
@@ -67,14 +67,14 @@ func TestTaskGroupsFoldChildCountsAndLatestState(t *testing.T) {
 func TestTaskListRetainsOlderActiveWorkflows(t *testing.T) {
 	library, parent, payload := libraryFixture(t)
 	ctx := t.Context()
-	if err := library.tasks.Queue().Finish(ctx, parent.ID, nil); err != nil {
+	if err := library.Tasks().Queue().Finish(ctx, parent.ID, nil); err != nil {
 		t.Fatal(err)
 	}
 	input, err := tasks.EncodePayload(scrape.MetadataPayload{Source: payload.Source, ScanTaskID: parent.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := library.database.Task.Create().SetType("scrape").SetPayload(input).Exec(ctx); err != nil {
+	if err := library.Database().Task.Create().SetType("scrape").SetPayload(input).Exec(ctx); err != nil {
 		t.Fatal(err)
 	}
 	encoded, err := tasks.EncodePayload(payload)
@@ -82,30 +82,12 @@ func TestTaskListRetainsOlderActiveWorkflows(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 21 {
-		if err := library.database.Task.Create().SetType("scan").SetStatus(task.StatusDone).SetPayload(encoded).Exec(ctx); err != nil {
+		if err := library.Database().Task.Create().SetType("scan").SetStatus(task.StatusDone).SetPayload(encoded).Exec(ctx); err != nil {
 			t.Fatal(err)
 		}
 	}
-	items, err := library.tasks.List(ctx)
+	items, err := library.Tasks().List(ctx)
 	if err != nil || len(items) != 21 || items[0].ID != parent.ID || items[0].Status != task.StatusQueued {
 		t.Fatalf("active workflows: %+v err=%v", items, err)
-	}
-}
-
-func TestScanProgressDoesNotInvalidateUnchangedLibrary(t *testing.T) {
-	library, parent, payload := libraryFixture(t)
-	video := []scanVideo{fixtureVideo("101", "ABP-001.mp4")}
-	if err := library.indexScanPage(t.Context(), parent.ID, "first", "/Movies", video, &payload); err != nil {
-		t.Fatal(err)
-	}
-	revision := library.tasks.Revisions()
-	if err := library.indexScanPage(t.Context(), parent.ID, "second", "/Movies", video, &payload); err != nil {
-		t.Fatal(err)
-	}
-	if err := library.reportScan(t.Context(), parent.ID, payload); err != nil {
-		t.Fatal(err)
-	}
-	if got := library.tasks.Revisions(); got != revision || got.Library != 1 {
-		t.Fatalf("progress invalidated library: before=%+v after=%+v", revision, got)
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/ppxb/miyabi/internal/drive"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/javdb"
+	"github.com/ppxb/miyabi/internal/library"
 	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/logging"
 	"github.com/ppxb/miyabi/internal/service"
@@ -79,7 +80,7 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	library := service.NewLibraryService(store.Client, driveSvc, taskSvc, images)
+	library := library.New(store.Client, driveSvc, taskSvc, images)
 	play := service.NewPlayService(library, driveSvc)
 	defer play.Close()
 	scrapeSvc := scrape.New(store.Client, driveSvc, discover, images, taskSvc)

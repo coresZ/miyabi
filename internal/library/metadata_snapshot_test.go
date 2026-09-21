@@ -1,42 +1,43 @@
-package service
+package library
 
 import (
 	"bytes"
-	"github.com/ppxb/miyabi/internal/domain"
-	"github.com/ppxb/miyabi/internal/tasks"
 	"image"
 	"image/jpeg"
 	"strings"
 	"testing"
 
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
+	"github.com/ppxb/miyabi/internal/library/scan"
 	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/pan"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
 
 type completedScanFixture struct {
-	library *LibraryService
+	lib     *Service
 	queued  tasks.TaskInfo
-	payload scanPayload
+	payload scan.Payload
 	covered *ent.Task
 	input   scrape.CoverPayload
 	movie   *ent.Movie
-	videos  []scanVideo
+	videos  []scan.Video
 	entries map[string][]pan.File
 }
 
 func newCompletedScanFixture(t *testing.T) *completedScanFixture {
 	t.Helper()
-	library, queued, payload := libraryFixture(t)
+	lib, queued, payload := libraryFixture(t)
 	ctx := t.Context()
-	videos := []scanVideo{fixtureVideo("101", "ABP-001.mp4")}
-	if err := library.indexScanPage(ctx, queued.ID, "baseline", "/Movies", videos, &payload); err != nil {
+	videos := []scan.Video{fixtureVideo("101", "ABP-001.mp4")}
+	if err := indexScanPage(ctx, lib, queued.ID, "baseline", "/Movies", videos, &payload); err != nil {
 		t.Fatal(err)
 	}
-	record, err := library.database.Movie.Query().Only(ctx)
+	record, err := lib.database.Movie.Query().Only(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +45,7 @@ func newCompletedScanFixture(t *testing.T) *completedScanFixture {
 	if err := jpeg.Encode(&body, image.NewRGBA(image.Rect(0, 0, 6, 4)), nil); err != nil {
 		t.Fatal(err)
 	}
-	artwork, err := library.images.FromCover(body.Bytes())
+	artwork, err := lib.images.FromCover(body.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +54,7 @@ func newCompletedScanFixture(t *testing.T) *completedScanFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nfo := pan.File{Name: "ABP-001.nfo", SHA1: strings.Repeat("1", 40)}
+	nfoFile := pan.File{Name: "ABP-001.nfo", SHA1: strings.Repeat("1", 40)}
 	poster := pan.File{Name: "ABP-001-poster.jpg", SHA1: strings.Repeat("2", 40)}
 	fanart := pan.File{Name: "ABP-001-fanart.jpg", SHA1: strings.Repeat("3", 40)}
 	input := scrape.CoverPayload{
@@ -61,27 +62,27 @@ func newCompletedScanFixture(t *testing.T) *completedScanFixture {
 		Artwork:         &artwork,
 		Snapshot: &scrape.Snapshot{
 			Videos:      scrape.VideoFingerprint([]pan.File{videos[0].File}),
-			Directories: []scrape.DirectorySnapshot{scrape.NewDirectorySnapshot("10", nfo, poster, fanart)},
+			Directories: []scrape.DirectorySnapshot{scrape.NewDirectorySnapshot("10", nfoFile, poster, fanart)},
 		},
 	}
 	encoded, err := tasks.EncodePayload(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	covered, err := library.database.Task.Create().SetType("cover").SetStatus(task.StatusDone).SetPayload(encoded).Save(ctx)
+	covered, err := lib.database.Task.Create().SetType("cover").SetStatus(task.StatusDone).SetPayload(encoded).Save(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := library.tasks.Queue().Finish(ctx, queued.ID, nil); err != nil {
+	if err := lib.tasks.Queue().Finish(ctx, queued.ID, nil); err != nil {
 		t.Fatal(err)
 	}
-	queued, err = library.tasks.EnqueueScan(ctx, payload.Source)
+	queued, err = lib.tasks.EnqueueScan(ctx, payload.Source)
 	if err != nil {
 		t.Fatal(err)
 	}
 	payload.Scan = domain.ScanProgress{Stage: "scanning"}
-	return &completedScanFixture{library: library, queued: queued, payload: payload, movie: record, covered: covered, input: input,
-		videos: videos, entries: map[string][]pan.File{"10": {videos[0].File, nfo, poster, fanart}},
+	return &completedScanFixture{lib: lib, queued: queued, payload: payload, movie: record, covered: covered, input: input,
+		videos: videos, entries: map[string][]pan.File{"10": {videos[0].File, nfoFile, poster, fanart}},
 	}
 }
 
@@ -144,17 +145,17 @@ func TestRescanSchedulesOnlyChangedOrIncompleteMetadata(t *testing.T) {
 			if scenario.change != nil {
 				scenario.change(t, f)
 			}
-			if err := f.library.indexScanPage(t.Context(), f.queued.ID, "rescan", "/Movies", f.videos, &f.payload); err != nil {
+			if err := indexScanPage(t.Context(), f.lib, f.queued.ID, "rescan", "/Movies", f.videos, &f.payload); err != nil {
 				t.Fatal(err)
 			}
-			observed := make(scanObservations)
+			observed := make(scrape.DirectoryObservations)
 			for id, entries := range f.entries {
 				observed.Add(id, entries)
 			}
-			if err := f.library.reconcileScan(t.Context(), f.queued.ID, "rescan", &f.payload, observed); err != nil {
+			if err := reconcileScan(t.Context(), f.lib, f.queued.ID, "rescan", &f.payload, observed); err != nil {
 				t.Fatal(err)
 			}
-			count, err := f.library.database.Task.Query().Where(task.TypeEQ("scrape")).Count(t.Context())
+			count, err := f.lib.database.Task.Query().Where(task.TypeEQ("scrape")).Count(t.Context())
 			if err != nil || count != scenario.jobs {
 				t.Fatalf("metadata jobs=%d want=%d err=%v", count, scenario.jobs, err)
 			}

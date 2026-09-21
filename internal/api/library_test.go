@@ -13,14 +13,14 @@ import (
 	"testing"
 
 	"github.com/ppxb/miyabi/internal/drive"
-	"github.com/ppxb/miyabi/internal/service"
+	"github.com/ppxb/miyabi/internal/library"
 )
 
 type libraryWatchStub struct {
 	LibraryManager
 	id    int
 	err   error
-	scope service.WatchHistoryScope
+	scope library.WatchHistoryScope
 }
 
 type libraryPageStub struct {
@@ -28,9 +28,9 @@ type libraryPageStub struct {
 	page, limit int
 }
 
-func (stub *libraryPageStub) Movies(_ context.Context, page, limit int) (service.LibraryPage, error) {
+func (stub *libraryPageStub) Movies(_ context.Context, page, limit int) (library.Page, error) {
 	stub.page, stub.limit = page, limit
-	return service.LibraryPage{Page: page, Movies: []service.LibraryMovie{}}, nil
+	return library.Page{Page: page, Movies: []library.Movie{}}, nil
 }
 
 func TestLibraryMoviesDefaultToTwentyPerPage(t *testing.T) {
@@ -53,10 +53,10 @@ func TestLibraryMoviesDefaultToTwentyPerPage(t *testing.T) {
 	}
 }
 
-func (stub *libraryWatchStub) MarkWatched(_ context.Context, id int, scope service.WatchHistoryScope) (service.WatchSession, error) {
+func (stub *libraryWatchStub) MarkWatched(_ context.Context, id int, scope library.WatchHistoryScope) (library.WatchSession, error) {
 	stub.id = id
 	stub.scope = scope
-	return service.WatchSession{ID: 7, SessionID: "session", FileID: "video", Position: 60, Duration: 600}, stub.err
+	return library.WatchSession{ID: 7, SessionID: "session", FileID: "video", Position: 60, Duration: 600}, stub.err
 }
 
 func TestLibraryWatchedEndpointValidatesIDsAndReturnsSavedState(t *testing.T) {
@@ -75,7 +75,7 @@ func TestLibraryWatchedEndpointValidatesIDsAndReturnsSavedState(t *testing.T) {
 		{name: "missing movie", id: "42", err: fs.ErrNotExist, status: http.StatusNotFound, called: true},
 		{name: "unmounted", id: "42", err: drive.ErrMediaDirectoryRequired, status: http.StatusBadRequest, called: true},
 		{name: "write failed", id: "42", err: errors.New("write failed"), status: http.StatusInternalServerError, called: true},
-		{name: "source changed", id: "42", err: service.ErrWatchHistorySourceChanged, status: http.StatusConflict, called: true},
+		{name: "source changed", id: "42", err: library.ErrWatchHistorySourceChanged, status: http.StatusConflict, called: true},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			stub := &libraryWatchStub{err: scenario.err}
@@ -93,7 +93,7 @@ func TestLibraryWatchedEndpointValidatesIDsAndReturnsSavedState(t *testing.T) {
 				var state struct {
 					ID      int                  `json:"id"`
 					Watched bool                 `json:"watched"`
-					History service.WatchSession `json:"history"`
+					History library.WatchSession `json:"history"`
 				}
 				if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil || state.ID != 42 || !state.Watched || state.History.Position != 60 {
 					t.Fatalf("incorrect watch response: %s, %v", response.Body, err)

@@ -13,11 +13,11 @@ import (
 )
 
 type viewedStub struct {
-	Discoverer
+	ViewedManager
 	ids []string
 }
 
-func (stub *viewedStub) ViewedMovieIDs(_ context.Context) ([]string, error) {
+func (stub *viewedStub) ViewedMovieIDs(_ context.Context, _ ...int) ([]string, error) {
 	return stub.ids, nil
 }
 

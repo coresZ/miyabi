@@ -1,4 +1,4 @@
-package service
+package library
 
 import (
 	"context"
@@ -13,9 +13,9 @@ import (
 )
 
 func TestLibraryPageLoadsCardMetadataWithScopedCounts(t *testing.T) {
-	library, _, payload := libraryFixture(t)
+	lib, _, payload := libraryFixture(t)
 	ctx := t.Context()
-	database := library.database
+	database := lib.database
 	tagB := database.Tag.Create().SetJavdbID("tag-b").SetName("B tag").SetCategoryID("category").SaveX(ctx)
 	tagA := database.Tag.Create().SetJavdbID("tag-a").SetName("A tag").SetCategoryID("category").SaveX(ctx)
 	actorB := database.Actor.Create().SetJavdbID("actor-b").SetName("B actor").SaveX(ctx)
@@ -51,7 +51,7 @@ func TestLibraryPageLoadsCardMetadataWithScopedCounts(t *testing.T) {
 			return next.Query(ctx, query)
 		})
 	}))
-	page, err := library.Movies(ctx, 1, 20)
+	page, err := lib.Movies(ctx, 1, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,19 +66,19 @@ func TestLibraryPageLoadsCardMetadataWithScopedCounts(t *testing.T) {
 		if item.ID == film.ID {
 			if item.Title != film.Title || item.Cover == nil || *item.Cover != "/cover" ||
 				item.ScrapeStatus != movie.ScrapeStatusDone || !item.Watched ||
-				!reflect.DeepEqual(item.Tags, []LibraryTag{{ID: tagA.ID, JavDBID: tagA.JavdbID, Name: tagA.Name}, {ID: tagB.ID, JavDBID: tagB.JavdbID, Name: tagB.Name}}) {
+				!reflect.DeepEqual(item.Tags, []Tag{{ID: tagA.ID, JavDBID: tagA.JavdbID, Name: tagA.Name}, {ID: tagB.ID, JavDBID: tagB.JavdbID, Name: tagB.Name}}) {
 				t.Fatalf("card lost or reordered catalogue data: %#v", item)
 			}
 			if item.ReleaseDate != "2026-09-12" || item.Duration != 125 || item.Rating != 4.5 || item.Fanart != "/api/library/artwork/fanart" ||
-				!reflect.DeepEqual(item.Maker, &LibraryEntity{ID: "maker-id", Name: "Studio"}) ||
-				!reflect.DeepEqual(item.Series, &LibraryEntity{ID: "series-id", Name: "Series"}) ||
-				!reflect.DeepEqual(item.Director, &LibraryEntity{ID: "director-id", Name: "Director"}) ||
-				!reflect.DeepEqual(item.Actors, []LibraryEntity{{ID: actorA.JavdbID, Name: actorA.Name}, {ID: actorB.JavdbID, Name: actorB.Name}}) {
+				!reflect.DeepEqual(item.Maker, &Entity{ID: "maker-id", Name: "Studio"}) ||
+				!reflect.DeepEqual(item.Series, &Entity{ID: "series-id", Name: "Series"}) ||
+				!reflect.DeepEqual(item.Director, &Entity{ID: "director-id", Name: "Director"}) ||
+				!reflect.DeepEqual(item.Actors, []Entity{{ID: actorA.JavdbID, Name: actorA.Name}, {ID: actorB.JavdbID, Name: actorB.Name}}) {
 				t.Fatalf("local hover details were omitted or lost their search IDs: %#v", item)
 			}
 		} else if item.ID != empty.ID || item.Title != "" || item.Code != empty.Code || item.Tags == nil || len(item.Tags) != 0 ||
 			item.Actors == nil || len(item.Actors) != 0 || item.ScrapeStatus != movie.ScrapeStatusPending || item.Watched ||
-			!reflect.DeepEqual(item.Maker, &LibraryEntity{Name: "Legacy studio"}) {
+			!reflect.DeepEqual(item.Maker, &Entity{Name: "Legacy studio"}) {
 			t.Fatalf("unscraped card is not usable: %#v", item)
 		}
 		body, err := json.Marshal(item)
@@ -100,34 +100,34 @@ func TestLibraryPageLoadsCardMetadataWithScopedCounts(t *testing.T) {
 			}
 		}
 	}
-	first, err := library.Movies(ctx, 1, 1)
+	first, err := lib.Movies(ctx, 1, 1)
 	if err != nil || len(first.Movies) != 1 || !first.HasMore {
 		t.Fatalf("first page: %#v, %v", first, err)
 	}
-	second, err := library.Movies(ctx, 2, 1)
+	second, err := lib.Movies(ctx, 2, 1)
 	if err != nil || len(second.Movies) != 1 || second.HasMore || first.Movies[0].ID == second.Movies[0].ID {
 		t.Fatalf("second page: %#v, %v", second, err)
 	}
-	if beyond, err := library.Movies(ctx, 3, 1); err != nil || beyond.Movies == nil || len(beyond.Movies) != 0 || beyond.HasMore {
+	if beyond, err := lib.Movies(ctx, 3, 1); err != nil || beyond.Movies == nil || len(beyond.Movies) != 0 || beyond.HasMore {
 		t.Fatalf("out-of-range page: %#v, %v", beyond, err)
 	}
 }
 
 func TestLibraryPagesContainTwentyDistinctMoviesAndTheRemainder(t *testing.T) {
-	library, _, _ := libraryFixture(t)
+	lib, _, _ := libraryFixture(t)
 	ctx := t.Context()
 	created := time.Date(2026, time.September, 12, 0, 0, 0, 0, time.UTC)
 	for index := range 21 {
-		film := library.database.Movie.Create().SetCode(fmt.Sprintf("PAGE-%03d", index)).SetCreatedAt(created).SaveX(ctx)
+		film := lib.database.Movie.Create().SetCode(fmt.Sprintf("PAGE-%03d", index)).SetCreatedAt(created).SaveX(ctx)
 		for part := range 2 {
-			library.database.File.Create().SetFileID(fmt.Sprintf("%d-%d", index, part)).SetName("video.mp4").SetSize(1024).
+			lib.database.File.Create().SetFileID(fmt.Sprintf("%d-%d", index, part)).SetName("video.mp4").SetSize(1024).
 				SetAccountID("100").SetRootID("10").SetMovieID(film.ID).ExecX(ctx)
 		}
 	}
 	seen := make(map[int]bool)
 	previousID := 0
 	for pageNumber, count := range []int{20, 1, 0} {
-		page, err := library.Movies(ctx, pageNumber+1, 20)
+		page, err := lib.Movies(ctx, pageNumber+1, 20)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -147,13 +147,13 @@ func TestLibraryPagesContainTwentyDistinctMoviesAndTheRemainder(t *testing.T) {
 }
 
 func TestLibraryPageKeepsEmptyAndUnmatchedSourcesUsable(t *testing.T) {
-	library, _, _ := libraryFixture(t)
+	lib, _, _ := libraryFixture(t)
 	for _, unmatched := range []bool{false, true} {
 		if unmatched {
-			library.database.File.Create().SetFileID("unmatched").SetName("recording.mp4").SetSize(1024).
+			lib.database.File.Create().SetFileID("unmatched").SetName("recording.mp4").SetSize(1024).
 				SetAccountID("100").SetRootID("10").ExecX(t.Context())
 		}
-		page, err := library.Movies(t.Context(), 1, 24)
+		page, err := lib.Movies(t.Context(), 1, 24)
 		if err != nil || page.Total != 0 || page.Movies == nil || len(page.Movies) != 0 || page.HasMore {
 			t.Fatalf("empty/unmatched source: %#v, %v", page, err)
 		}

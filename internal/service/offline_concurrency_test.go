@@ -25,7 +25,7 @@ func offlineAddFixture(t *testing.T) (*OfflineService, *panStub) {
 	t.Helper()
 	library, client := panConcurrencyFixture(t)
 	discover := &DiscoverService{
-		database: library.database, details: newResponseCache[domain.MovieDetail](2, time.Hour),
+		database: library.Database(), details: newResponseCache[domain.MovieDetail](2, time.Hour),
 		magnets: newResponseCache[[]domain.Magnet](2, time.Hour),
 	}
 	if _, err := discover.details.get(t.Context(), "fixture-movie", func(context.Context) (domain.MovieDetail, error) {
@@ -38,7 +38,7 @@ func offlineAddFixture(t *testing.T) (*OfflineService, *panStub) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return NewOfflineService(library.database, discover, library.drive, library.tasks), client
+	return NewOfflineService(library.Database(), discover, library.Drive(), library.Tasks()), client
 }
 
 type offlineAddResult struct {

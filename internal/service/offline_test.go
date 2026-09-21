@@ -9,22 +9,23 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/library/scan"
 	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
-func offlineFixture(t *testing.T) (*OfflineService, *ent.Task, offlinePayload, domain.LibrarySource) {
+func offlineFixture(t testing.TB) (*OfflineService, *ent.Task, offlinePayload, domain.LibrarySource) {
 	t.Helper()
 	library, _, scan := libraryFixture(t)
-	service := NewOfflineService(library.database, nil, library.drive, library.tasks)
+	service := NewOfflineService(library.Database(), nil, library.Drive(), library.Tasks())
 	input := offlinePayload{AccountID: scan.Source.AccountID, DirectoryID: scan.Source.Directory.ID,
 		Code: "ABP-001", JavDBID: "fixture-movie", Hash: "fixture-hash", InfoHash: "fixture-hash"}
 	encoded, err := tasks.EncodePayload(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	record, err := library.database.Task.Create().SetType("offline").SetStatus(task.StatusRunning).SetPayload(encoded).Save(t.Context())
+	record, err := library.Database().Task.Create().SetType("offline").SetStatus(task.StatusRunning).SetPayload(encoded).Save(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,11 +116,11 @@ func TestOfflineCompletionAndTargetedScanCommitTogether(t *testing.T) {
 	if done.Status != task.StatusDone || saved.ScanTaskID == 0 {
 		t.Fatalf("completion: %#v %#v", done, saved)
 	}
-	scan, err := service.database.Task.Get(ctx, saved.ScanTaskID)
+	scanTask, err := service.database.Task.Get(ctx, saved.ScanTaskID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, err := tasks.DecodePayload[scanPayload](scan.Payload)
+	target, err := tasks.DecodePayload[scan.Payload](scanTask.Payload)
 	if err != nil {
 		t.Fatal(err)
 	}

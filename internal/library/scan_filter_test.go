@@ -1,9 +1,8 @@
-package service
+package library
 
 import (
 	"context"
 	"fmt"
-	"github.com/ppxb/miyabi/internal/tasks"
 	"path"
 	"testing"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/nfo"
 	"github.com/ppxb/miyabi/internal/pan"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
 
 type scanMetadataClient struct {
@@ -33,9 +33,9 @@ func (client *scanMetadataClient) ReadMetadata(_ context.Context, _, pickCode st
 // Reproduce the reported 14 movies / 27 videos, including existing incorrect
 // associations that already acquired a JavDB ID through a directory NFO.
 func TestRescanRepairsAuxiliaryVideosAndSSNISubtitleAlias(t *testing.T) {
-	library, client := panConcurrencyFixture(t)
+	lib, client := panConcurrencyFixture(t)
 	ctx := t.Context()
-	source := *library.drive.Source()
+	source := *lib.drive.Source()
 	records := []struct {
 		path, code string
 		size       int64
@@ -55,7 +55,7 @@ func TestRescanRepairsAuxiliaryVideosAndSSNISubtitleAlias(t *testing.T) {
 		{"FC2PPV-4973170/社 區 最 新 情 報.mp4", "FC2-PPV-4973170", 15089802},
 		{"FC2PPV-4973170/台湾uu美少女直播 20年信誉保证服务全球.mp4", "FC2-PPV-4973170", 13890047},
 		{"HEZ-916/489155.com@HEZ-916.mp4", "HEZ-916", 8910846876},
-		{"HEZ-916/社 區 最 新 情 報.mp4", "HEZ-916", 15089802},
+		{"HEZ-916/社 區 最 新 情 报.mp4", "HEZ-916", 15089802},
 		{"HEZ-916/台湾uu美少女直播 20年信誉保证服务全球.mp4", "HEZ-916", 13890047},
 		{"ssni-574-C/ssni-574-C.mp4", "SSNI-574", 5219311140},
 		{"ssni-574-C/UUE29.mp4", "UUE-29", 65753642},
@@ -83,12 +83,12 @@ func TestRescanRepairsAuxiliaryVideosAndSSNISubtitleAlias(t *testing.T) {
 		id, parentID := fmt.Sprintf("video-%d", index), directories[parent]
 		video := pan.File{ID: id, ParentID: parentID, Name: path.Base(entry.path), Size: entry.size, SHA1: "hash-" + id}
 		entries[parentID] = append(entries[parentID], video)
-		create := library.database.File.Create().SetFileID(id).SetParentID(parentID).SetName(video.Name).
+		create := lib.database.File.Create().SetFileID(id).SetParentID(parentID).SetName(video.Name).
 			SetSize(video.Size).SetSha1(video.SHA1).SetAccountID(source.AccountID).SetRootID(source.Directory.ID).
 			SetPath(path.Join(source.Directory.Path, entry.path))
 		if entry.code != "" {
 			if movies[entry.code] == nil {
-				builder := library.database.Movie.Create().SetCode(entry.code)
+				builder := lib.database.Movie.Create().SetCode(entry.code)
 				if entry.code == "UUE-29" || entry.code == "UUP-87" || entry.code == "SSNI-748C" {
 					builder.SetScrapeStatus(movie.ScrapeStatusFailed)
 				} else {
@@ -108,32 +108,32 @@ func TestRescanRepairsAuxiliaryVideosAndSSNISubtitleAlias(t *testing.T) {
 	}
 	metadata := &scanMetadataClient{}
 	client.readMetadata = metadata.ReadMetadata
-	queued := library.database.Task.Query().Where(task.TypeEQ("scan")).OnlyX(ctx)
-	if err := library.Scan(ctx, tasks.Job{ID: queued.ID, Payload: queued.Payload}); err != nil {
+	queued := lib.database.Task.Query().Where(task.TypeEQ("scan")).OnlyX(ctx)
+	if err := lib.Scan(ctx, tasks.Job{ID: queued.ID, Payload: queued.Payload}); err != nil {
 		t.Fatal(err)
 	}
-	page, err := library.Movies(ctx, 1, 24)
-	if err != nil || page.Total != 11 || library.database.File.Query().CountX(ctx) != 27 ||
-		library.database.File.Query().Where(file.MovieIDIsNil()).CountX(ctx) != 16 {
+	page, err := lib.Movies(ctx, 1, 24)
+	if err != nil || page.Total != 11 || lib.database.File.Query().CountX(ctx) != 27 ||
+		lib.database.File.Query().Where(file.MovieIDIsNil()).CountX(ctx) != 16 {
 		t.Fatalf("rescan did not repair the reported library: %+v err=%v", page, err)
 	}
 	if metadata.reads != 0 {
 		t.Fatal("auxiliary files triggered directory NFO inference")
 	}
 	for _, code := range []string{"SSNI-748C", "UUE-29", "UUP-87"} {
-		if library.database.Movie.Query().Where(movie.CodeEQ(code)).ExistX(ctx) {
+		if lib.database.Movie.Query().Where(movie.CodeEQ(code)).ExistX(ctx) {
 			t.Fatalf("incorrect movie %s survived rescan", code)
 		}
 	}
-	canonical := library.database.Movie.Query().Where(movie.CodeEQ("SSNI-748")).OnlyX(ctx)
+	canonical := lib.database.Movie.Query().Where(movie.CodeEQ("SSNI-748")).OnlyX(ctx)
 	if canonical.ID != movies["SSNI-748"].ID || valueOrZero(canonical.JavdbID) != "catalogue-SSNI-748" {
 		t.Fatal("subtitle alias repair replaced valid catalogue metadata")
 	}
-	files := library.database.File.Query().Where(file.MovieIDEQ(canonical.ID)).AllX(ctx)
+	files := lib.database.File.Query().Where(file.MovieIDEQ(canonical.ID)).AllX(ctx)
 	if len(files) != 1 || files[0].Name != "SSNI748C.mp4" {
 		t.Fatalf("SSNI-748 playback still points at an auxiliary file: %+v", files)
 	}
-	for _, job := range library.database.Task.Query().Where(task.TypeEQ("scrape")).AllX(ctx) {
+	for _, job := range lib.database.Task.Query().Where(task.TypeEQ("scrape")).AllX(ctx) {
 		input, err := tasks.DecodePayload[scrape.MetadataPayload](job.Payload)
 		if err != nil {
 			t.Fatal(err)
@@ -145,9 +145,9 @@ func TestRescanRepairsAuxiliaryVideosAndSSNISubtitleAlias(t *testing.T) {
 }
 
 func TestNFOIdentifiesOnlyEligibleVideosAndSmallFilesDoNotMakeDirectoryShared(t *testing.T) {
-	library, client := panConcurrencyFixture(t)
+	lib, client := panConcurrencyFixture(t)
 	ctx := t.Context()
-	source := *library.drive.Source()
+	source := *lib.drive.Source()
 	body, err := nfo.Encode(nfo.Movie{Code: "ABP-001", Title: "Fixture"})
 	if err != nil {
 		t.Fatal(err)
@@ -164,17 +164,17 @@ func TestNFOIdentifiesOnlyEligibleVideosAndSmallFilesDoNotMakeDirectoryShared(t 
 	}
 	metadata := &scanMetadataClient{bodies: map[string][]byte{"nfo": body}}
 	client.readMetadata = metadata.ReadMetadata
-	queued := library.database.Task.Query().Where(task.TypeEQ("scan")).OnlyX(ctx)
-	if err := library.Scan(ctx, tasks.Job{ID: queued.ID, Payload: queued.Payload}); err != nil {
+	queued := lib.database.Task.Query().Where(task.TypeEQ("scan")).OnlyX(ctx)
+	if err := lib.Scan(ctx, tasks.Job{ID: queued.ID, Payload: queued.Payload}); err != nil {
 		t.Fatal(err)
 	}
-	film := library.database.Movie.Query().OnlyX(ctx)
+	film := lib.database.Movie.Query().OnlyX(ctx)
 	if metadata.reads != 1 || film.Code != "ABP-001" ||
-		library.database.File.Query().Where(file.FileIDEQ("auxiliary")).OnlyX(ctx).MovieID != nil {
+		lib.database.File.Query().Where(file.FileIDEQ("auxiliary")).OnlyX(ctx).MovieID != nil {
 		t.Fatal("NFO inference did not distinguish the feature from its auxiliary file")
 	}
-	scrapeSvc := scrape.New(library.database, library.drive, nil, library.images, library.tasks)
-	sess, err := library.drive.OpenSource(ctx, source)
+	scrapeSvc := scrape.New(lib.database, lib.drive, nil, lib.images, lib.tasks)
+	sess, err := lib.drive.OpenSource(ctx, source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,9 +183,9 @@ func TestNFOIdentifiesOnlyEligibleVideosAndSmallFilesDoNotMakeDirectoryShared(t 
 		t.Fatalf("small video blocked reuse of the movie NFO: %+v err=%v", directories, err)
 	}
 	live, found := scrape.FindDirectoryNFO(film.Code, directories[0])
-	observed := make(scanObservations)
+	observed := make(scrape.DirectoryObservations)
 	observed.Add("10", entries)
-	compact, compactFound := scrape.FindNFO(film.Code, false, observed["10"], func(entry observedFile) string { return entry.Name })
+	compact, compactFound := scrape.FindNFO(film.Code, false, observed["10"], func(entry scrape.ObservedFile) string { return entry.Name })
 	if !found || !compactFound || live.Name != "movie.nfo" || compact.Name != live.Name {
 		t.Fatal("live metadata reads and scan observations selected different NFOs")
 	}
@@ -193,14 +193,14 @@ func TestNFOIdentifiesOnlyEligibleVideosAndSmallFilesDoNotMakeDirectoryShared(t 
 		Videos:      scrape.VideoFingerprint([]pan.File{entries[0]}),
 		Directories: []scrape.DirectorySnapshot{scrape.NewDirectorySnapshot("10", entries[2], entries[3], entries[4])},
 	}
-	indexed := library.database.Movie.Query().Where(movie.IDEQ(film.ID)).WithFiles().OnlyX(ctx)
+	indexed := lib.database.Movie.Query().Where(movie.IDEQ(film.ID)).WithFiles().OnlyX(ctx)
 	if !snapshot.Matches(indexed, observed) {
 		t.Fatal("an auxiliary video invalidated an unchanged NFO snapshot")
 	}
 }
 
 func TestFixedVideoSizeThresholdAppliesToFilenameAndOfflineIdentity(t *testing.T) {
-	library, _, payload := libraryFixture(t)
+	lib, _, payload := libraryFixture(t)
 	entries := []pan.File{
 		{ID: "negative", Name: "ABP-001.mp4", Size: -1},
 		{ID: "unknown-size", Name: "ABP-001.mp4"},
@@ -212,7 +212,7 @@ func TestFixedVideoSizeThresholdAppliesToFilenameAndOfflineIdentity(t *testing.T
 		if offline {
 			payload.OfflineTaskID, payload.TargetID, payload.Code, payload.JavDBID = 1, "folder", "ABP-001", "catalogue"
 		}
-		videos, err := identifyScanVideosForTest(t.Context(), library, payload, entries)
+		videos, err := identifyScanVideosForTest(t.Context(), lib, payload, entries)
 		if err != nil || videos["negative"].Code != "" || videos["unknown-size"].Code != "" ||
 			videos["small"].Code != "" || videos["boundary"].Code != "ABP-001" || videos["large"].Code != "ABP-001" {
 			t.Fatalf("fixed size threshold changed for offline=%t: %+v err=%v", offline, videos, err)

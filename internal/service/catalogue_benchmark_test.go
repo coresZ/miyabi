@@ -3,59 +3,28 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/ppxb/miyabi/internal/domain"
-	"github.com/ppxb/miyabi/internal/tasks"
 	"testing"
 
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/nfo"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
 
 var catalogueBenchmarkResult any
 
-func BenchmarkLibraryPage(b *testing.B) {
-	library, _, payload := libraryFixture(b)
-	if err := ent.WithTx(b.Context(), library.database, func(tx *ent.Tx) error {
-		label := tx.Tag.Create().SetJavdbID("tag").SetName("Fixture tag").SetCategoryID("category").SaveX(b.Context())
-		for i := range 500 {
-			film := tx.Movie.Create().SetCode(fmt.Sprintf("ABP-%04d", i)).SetTitle("Fixture title").AddTags(label).SaveX(b.Context())
-			var files []*ent.FileCreate
-			for part := range 10 {
-				files = append(files, tx.File.Create().SetFileID(fmt.Sprintf("%d-%d", i, part)).
-					SetName("video.mp4").SetSize(1024).SetAccountID(payload.Source.AccountID).
-					SetRootID(payload.Source.Directory.ID).SetMovie(film))
-			}
-			if err := tx.File.CreateBulk(files...).Exec(b.Context()); err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
-		b.Fatal(err)
-	}
-	b.ReportAllocs()
-	for b.Loop() {
-		page, err := library.Movies(b.Context(), 1, 24)
-		if err != nil {
-			b.Fatal(err)
-		}
-		catalogueBenchmarkResult = page
-	}
-}
-
 func BenchmarkOfflineActivityHistory(b *testing.B) {
-	library, _, payload := libraryFixture(b)
-	service := &OfflineService{database: library.database, tasks: library.tasks}
-	if err := ent.WithTx(b.Context(), library.database, func(tx *ent.Tx) error {
+	service, _, _, payload := offlineFixture(b)
+	if err := ent.WithTx(b.Context(), service.database, func(tx *ent.Tx) error {
 		for batch := range 10 {
 			var jobs []*ent.TaskCreate
 			for i := range 500 {
 				input, err := tasks.EncodePayload(offlinePayload{
 					Code: "ABP-001", JavDBID: "movie", Hash: fmt.Sprintf("%040d", i%50),
-					InfoHash: fmt.Sprintf("%040d", i%50), AccountID: payload.Source.AccountID,
-					DirectoryID: payload.Source.Directory.ID,
+					InfoHash: fmt.Sprintf("%040d", i%50), AccountID: payload.AccountID,
+					DirectoryID: payload.Directory.ID,
 				})
 				if err != nil {
 					return err
@@ -123,25 +92,4 @@ func BenchmarkTaskPayload(b *testing.B) {
 			catalogueBenchmarkResult = decoded
 		}
 	})
-}
-
-func BenchmarkIdentifyAndIndexScanPage(b *testing.B) {
-	library, queued, payload := libraryFixture(b)
-	videos := make([]scanVideo, 100)
-	for i := range videos {
-		videos[i] = fixtureVideo(fmt.Sprint(i), fmt.Sprintf("ABP-%03d.mp4", i))
-	}
-	if err := library.indexScanPage(b.Context(), queued.ID, "initial", "/Movies", videos, &payload); err != nil {
-		b.Fatal(err)
-	}
-	for _, film := range library.database.Movie.Query().AllX(b.Context()) {
-		film.Update().SetJavdbID(fmt.Sprint(film.ID)).ExecX(b.Context())
-	}
-	b.ReportAllocs()
-	for b.Loop() {
-		if err := library.processScanPage(b.Context(), queued.ID, "rescan", "/Movies", videos, &payload,
-			func(videos []scanVideo) []scanVideo { return videos }); err != nil {
-			b.Fatal(err)
-		}
-	}
 }

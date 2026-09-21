@@ -1,4 +1,4 @@
-package service
+package library
 
 import (
 	"context"
@@ -8,68 +8,23 @@ import (
 
 	"github.com/ppxb/miyabi/internal/domain"
 	drivePkg "github.com/ppxb/miyabi/internal/drive"
-	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/library/scan"
 	scrapePkg "github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
-func TestPanDatabaseCommitDoesNotBlockPlaybackOrCanceledWaiters(t *testing.T) {
-	play, source := playFixture(t)
-	drive := play.drive
-	playback, err := play.createSession(source, authorizationVersion(t, drive), []pan.PlaySource{{URL: "https://cdn.example/video", Height: 1080}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	started := make(chan struct{}, 1)
-	hold, release := panTestGate(t)
-	committed := make(chan error, 1)
-	go func() {
-		sess, err := drive.OpenSource(t.Context(), source)
-		if err != nil {
-			committed <- err
-			return
-		}
-		committed <- sess.Commit(t.Context(), func(tx *ent.Tx) error {
-			started <- struct{}{}
-			<-hold
-			return nil
-		})
-	}()
-	awaitPan(t, started)
-	checked := make(chan error, 1)
-	go func() {
-		_, _, err := play.resource(playback.ID, 0)
-		checked <- err
-	}()
-	if err := awaitPan(t, checked); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	changed := make(chan error, 1)
-	go func() { changed <- drive.ClearDirectory(ctx) }()
-	cancel()
-	if err := awaitPan(t, changed); !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled commit waiter = %v", err)
-	}
-	release()
-	if err := awaitPan(t, committed); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestScanDiscardsLatePageAfterSourceChange(t *testing.T) {
-	library, client := panConcurrencyFixture(t)
-	drive, ctx := library.drive, t.Context()
+	lib, client := panConcurrencyFixture(t)
+	drive, ctx := lib.drive, t.Context()
 	source := *drive.Source()
-	queued := library.database.Task.Query().Where(task.TypeEQ("scan")).OnlyX(ctx)
-	payload := scanPayload{Source: source, Scan: domain.ScanProgress{Stage: "scanning"}}
-	if err := library.indexScanPage(ctx, queued.ID, "previous-scan", "/Movies", []scanVideo{fixtureVideo("101", "ABP-001.mp4")}, &payload); err != nil {
+	queued := lib.database.Task.Query().Where(task.TypeEQ("scan")).OnlyX(ctx)
+	payload := scan.Payload{Source: source, Scan: domain.ScanProgress{Stage: "scanning"}}
+	if err := indexScanPage(ctx, lib, queued.ID, "previous-scan", "/Movies", []scan.Video{fixtureVideo("101", "ABP-001.mp4")}, &payload); err != nil {
 		t.Fatal(err)
 	}
-	queued = library.database.Task.GetX(ctx, queued.ID)
+	queued = lib.database.Task.GetX(ctx, queued.ID)
 	started := make(chan struct{}, 1)
 	hold, release := panTestGate(t)
 	client.list = func(context.Context, string, string, int, int) (pan.FilePage, error) {
@@ -79,7 +34,7 @@ func TestScanDiscardsLatePageAfterSourceChange(t *testing.T) {
 			Path: []pan.Directory{{ID: source.Directory.ID, Name: source.Directory.Name}}}, nil
 	}
 	finished := make(chan error, 1)
-	go func() { finished <- library.Scan(ctx, tasks.Job{ID: queued.ID, Type: "scan", Payload: queued.Payload}) }()
+	go func() { finished <- lib.Scan(ctx, tasks.Job{ID: queued.ID, Type: "scan", Payload: queued.Payload}) }()
 	awaitPan(t, started)
 	if err := drive.ClearDirectory(ctx); err != nil {
 		t.Fatal(err)
@@ -88,18 +43,18 @@ func TestScanDiscardsLatePageAfterSourceChange(t *testing.T) {
 	if err := awaitPan(t, finished); !errors.Is(err, drivePkg.ErrSourceChanged) {
 		t.Fatalf("stale scan = %v", err)
 	}
-	files := library.database.File.Query().AllX(ctx)
+	files := lib.database.File.Query().AllX(ctx)
 	if len(files) != 1 || files[0].FileID != "101" || files[0].ScanID != "previous-scan" {
 		t.Fatalf("stale page indexed or pruned files: %+v", files)
 	}
-	if library.database.Task.Query().Where(task.TypeEQ("scrape")).ExistX(ctx) {
+	if lib.database.Task.Query().Where(task.TypeEQ("scrape")).ExistX(ctx) {
 		t.Fatal("stale scan enqueued metadata work")
 	}
 }
 
 func TestMetadataSourceChangeAfterInfoPreventsUpload(t *testing.T) {
-	library, client := panConcurrencyFixture(t)
-	source := *library.drive.Source()
+	lib, client := panConcurrencyFixture(t)
+	source := *lib.drive.Source()
 	started := make(chan struct{}, 1)
 	hold, release := panTestGate(t)
 	video := pan.File{ID: "video", ParentID: source.Directory.ID, Name: "ABP-001.mp4"}
@@ -115,7 +70,7 @@ func TestMetadataSourceChangeAfterInfoPreventsUpload(t *testing.T) {
 	}
 	finished := make(chan error, 1)
 	go func() {
-		sess, err := library.drive.OpenSource(t.Context(), source)
+		sess, err := lib.drive.OpenSource(t.Context(), source)
 		if err != nil {
 			finished <- err
 			return
@@ -125,7 +80,7 @@ func TestMetadataSourceChangeAfterInfoPreventsUpload(t *testing.T) {
 		}, "movie.nfo", []byte("fixture"))
 	}()
 	awaitPan(t, started)
-	if err := library.drive.ClearDirectory(t.Context()); err != nil {
+	if err := lib.drive.ClearDirectory(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	release()

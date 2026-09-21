@@ -20,6 +20,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/ent/tag"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/ent/viewedmovie"
 	"github.com/ppxb/miyabi/internal/ent/watchhistory"
 )
 
@@ -39,6 +40,7 @@ const (
 	TypeSetting      = "Setting"
 	TypeTag          = "Tag"
 	TypeTask         = "Task"
+	TypeViewedMovie  = "ViewedMovie"
 	TypeWatchHistory = "WatchHistory"
 )
 
@@ -6984,6 +6986,386 @@ func (m *TaskMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *TaskMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Task edge %s", name)
+}
+
+// ViewedMovieMutation represents an operation that mutates the ViewedMovie nodes in the graph.
+type ViewedMovieMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int
+	javdb_id      *string
+	viewed_at     *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*ViewedMovie, error)
+	predicates    []predicate.ViewedMovie
+}
+
+var _ ent.Mutation = (*ViewedMovieMutation)(nil)
+
+// viewedmovieOption allows management of the mutation configuration using functional options.
+type viewedmovieOption func(*ViewedMovieMutation)
+
+// newViewedMovieMutation creates new mutation for the ViewedMovie entity.
+func newViewedMovieMutation(c config, op Op, opts ...viewedmovieOption) *ViewedMovieMutation {
+	m := &ViewedMovieMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeViewedMovie,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withViewedMovieID sets the ID field of the mutation.
+func withViewedMovieID(id int) viewedmovieOption {
+	return func(m *ViewedMovieMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ViewedMovie
+		)
+		m.oldValue = func(ctx context.Context) (*ViewedMovie, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ViewedMovie.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withViewedMovie sets the old ViewedMovie of the mutation.
+func withViewedMovie(node *ViewedMovie) viewedmovieOption {
+	return func(m *ViewedMovieMutation) {
+		m.oldValue = func(context.Context) (*ViewedMovie, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ViewedMovieMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ViewedMovieMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ViewedMovieMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ViewedMovieMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ViewedMovie.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetJavdbID sets the "javdb_id" field.
+func (m *ViewedMovieMutation) SetJavdbID(s string) {
+	m.javdb_id = &s
+}
+
+// JavdbID returns the value of the "javdb_id" field in the mutation.
+func (m *ViewedMovieMutation) JavdbID() (r string, exists bool) {
+	v := m.javdb_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldJavdbID returns the old "javdb_id" field's value of the ViewedMovie entity.
+// If the ViewedMovie object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ViewedMovieMutation) OldJavdbID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldJavdbID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldJavdbID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldJavdbID: %w", err)
+	}
+	return oldValue.JavdbID, nil
+}
+
+// ResetJavdbID resets all changes to the "javdb_id" field.
+func (m *ViewedMovieMutation) ResetJavdbID() {
+	m.javdb_id = nil
+}
+
+// SetViewedAt sets the "viewed_at" field.
+func (m *ViewedMovieMutation) SetViewedAt(t time.Time) {
+	m.viewed_at = &t
+}
+
+// ViewedAt returns the value of the "viewed_at" field in the mutation.
+func (m *ViewedMovieMutation) ViewedAt() (r time.Time, exists bool) {
+	v := m.viewed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldViewedAt returns the old "viewed_at" field's value of the ViewedMovie entity.
+// If the ViewedMovie object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ViewedMovieMutation) OldViewedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldViewedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldViewedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldViewedAt: %w", err)
+	}
+	return oldValue.ViewedAt, nil
+}
+
+// ResetViewedAt resets all changes to the "viewed_at" field.
+func (m *ViewedMovieMutation) ResetViewedAt() {
+	m.viewed_at = nil
+}
+
+// Where appends a list predicates to the ViewedMovieMutation builder.
+func (m *ViewedMovieMutation) Where(ps ...predicate.ViewedMovie) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ViewedMovieMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ViewedMovieMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ViewedMovie, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ViewedMovieMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ViewedMovieMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ViewedMovie).
+func (m *ViewedMovieMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ViewedMovieMutation) Fields() []string {
+	fields := make([]string, 0, 2)
+	if m.javdb_id != nil {
+		fields = append(fields, viewedmovie.FieldJavdbID)
+	}
+	if m.viewed_at != nil {
+		fields = append(fields, viewedmovie.FieldViewedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ViewedMovieMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case viewedmovie.FieldJavdbID:
+		return m.JavdbID()
+	case viewedmovie.FieldViewedAt:
+		return m.ViewedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ViewedMovieMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case viewedmovie.FieldJavdbID:
+		return m.OldJavdbID(ctx)
+	case viewedmovie.FieldViewedAt:
+		return m.OldViewedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ViewedMovie field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ViewedMovieMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case viewedmovie.FieldJavdbID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetJavdbID(v)
+		return nil
+	case viewedmovie.FieldViewedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetViewedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ViewedMovie field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ViewedMovieMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ViewedMovieMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ViewedMovieMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ViewedMovie numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ViewedMovieMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ViewedMovieMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ViewedMovieMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown ViewedMovie nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ViewedMovieMutation) ResetField(name string) error {
+	switch name {
+	case viewedmovie.FieldJavdbID:
+		m.ResetJavdbID()
+		return nil
+	case viewedmovie.FieldViewedAt:
+		m.ResetViewedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ViewedMovie field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ViewedMovieMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ViewedMovieMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ViewedMovieMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ViewedMovieMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ViewedMovieMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ViewedMovieMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ViewedMovieMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ViewedMovie unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ViewedMovieMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ViewedMovie edge %s", name)
 }
 
 // WatchHistoryMutation represents an operation that mutates the WatchHistory nodes in the graph.

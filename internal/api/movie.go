@@ -2,20 +2,21 @@ package api
 
 import (
 	"context"
-	"github.com/ppxb/miyabi/internal/tasks"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ppxb/miyabi/internal/service"
+	lib "github.com/ppxb/miyabi/internal/library"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
 
 type LibraryManager interface {
-	Movies(context.Context, int, int) (service.LibraryPage, error)
-	MarkWatched(context.Context, int, service.WatchHistoryScope) (service.WatchSession, error)
-	WatchHistory(context.Context, int) (service.WatchHistoryPage, error)
-	SaveWatchProgress(context.Context, int, service.WatchProgress) error
-	RemoveWatchHistory(context.Context, service.WatchHistoryScope, []int) (int, error)
-	ClearWatchHistory(context.Context, service.WatchHistoryScope) (int, error)
+	ViewedManager
+	Movies(context.Context, int, int) (lib.Page, error)
+	MarkWatched(context.Context, int, lib.WatchHistoryScope) (lib.WatchSession, error)
+	WatchHistory(context.Context, int) (lib.WatchHistoryPage, error)
+	SaveWatchProgress(context.Context, int, lib.WatchProgress) error
+	RemoveWatchHistory(context.Context, lib.WatchHistoryScope, []int) (int, error)
+	ClearWatchHistory(context.Context, lib.WatchHistoryScope) (int, error)
 	StartScan(context.Context) (tasks.TaskInfo, error)
 }
 
@@ -72,7 +73,7 @@ func libraryWatchedHandler(library LibraryManager) gin.HandlerFunc {
 			c.Error(BadRequest(err))
 			return
 		}
-		var scope service.WatchHistoryScope
+		var scope lib.WatchHistoryScope
 		if err := c.ShouldBindJSON(&scope); err != nil {
 			c.Error(BadRequest(err))
 			return

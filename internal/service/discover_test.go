@@ -222,7 +222,7 @@ func TestProjectEmptyMoviesSkipsDatabase(t *testing.T) {
 func TestProjectionUsesSourceIDBeforeCatalogueSpelling(t *testing.T) {
 	library, _, payload := libraryFixture(t)
 	ctx := t.Context()
-	db := library.database
+	db := library.Database()
 	known := db.Movie.Create().SetCode("OLD-001").SetJavdbID("known-id").SaveX(ctx)
 	pending := db.Movie.Create().SetCode("KNB-M014").SaveX(ctx)
 	conflicting := db.Movie.Create().SetCode("GLOD-0436").SetJavdbID("different-id").SaveX(ctx)
@@ -234,7 +234,7 @@ func TestProjectionUsesSourceIDBeforeCatalogueSpelling(t *testing.T) {
 		"javdb_id": "queued-id", "code": "PREVIOUS-002",
 		"account_id": payload.Source.AccountID, "directory_id": payload.Source.Directory.ID,
 	})).SaveX(ctx)
-	service := &DiscoverService{database: db, local: library.drive}
+	service := &DiscoverService{database: db, local: library.Drive()}
 	source := []domain.Movie{
 		{ID: "known-id", Code: "作品/新版 #001"},
 		{ID: "pending-id", Code: "knb_m014"},

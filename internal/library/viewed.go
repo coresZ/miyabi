@@ -1,0 +1,151 @@
+package library
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/ppxb/miyabi/internal/ent"
+	"github.com/ppxb/miyabi/internal/ent/setting"
+	"github.com/ppxb/miyabi/internal/ent/viewedmovie"
+)
+
+const (
+	viewedMoviesLegacySetting = "browse.viewed_movies"
+	maxViewedMovies           = 5000
+)
+
+type legacyViewedMoviesPayload struct {
+	IDs []string `json:"ids"`
+}
+
+// ViewedMovieIDs returns viewed JavDB IDs, ordered by most recently viewed first.
+func (s *Service) ViewedMovieIDs(ctx context.Context, limit ...int) ([]string, error) {
+	max := maxViewedMovies
+	if len(limit) > 0 && limit[0] > 0 {
+		max = limit[0]
+	}
+	records, err := s.database.ViewedMovie.Query().
+		Order(ent.Desc(viewedmovie.FieldViewedAt), ent.Desc(viewedmovie.FieldID)).
+		Limit(max).
+		Select(viewedmovie.FieldJavdbID).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load viewed movie IDs: %w", err)
+	}
+	ids := make([]string, 0, len(records))
+	for _, r := range records {
+		ids = append(ids, r.JavdbID)
+	}
+	return ids, nil
+}
+
+// AddViewedMovieIDs records viewed JavDB IDs, updating viewed_at timestamps and evicting
+// the oldest entries when the table exceeds maxViewedMovies.
+func (s *Service) AddViewedMovieIDs(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	now := time.Now().UTC()
+	seen := make(map[string]struct{}, len(ids))
+	var clean []string
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		clean = append(clean, id)
+	}
+	if len(clean) == 0 {
+		return nil
+	}
+
+	return ent.WithTx(ctx, s.database, func(tx *ent.Tx) error {
+		var builders []*ent.ViewedMovieCreate
+		for _, id := range clean {
+			builders = append(builders, tx.ViewedMovie.Create().SetJavdbID(id).SetViewedAt(now))
+		}
+		if err := tx.ViewedMovie.CreateBulk(builders...).
+			OnConflictColumns(viewedmovie.FieldJavdbID).
+			UpdateViewedAt().
+			Exec(ctx); err != nil {
+			return fmt.Errorf("upsert viewed movies: %w", err)
+		}
+
+		total, err := tx.ViewedMovie.Query().Count(ctx)
+		if err != nil {
+			return err
+		}
+		if total > maxViewedMovies {
+			excess := total - maxViewedMovies
+			oldestIDs, err := tx.ViewedMovie.Query().
+				Order(ent.Asc(viewedmovie.FieldViewedAt), ent.Asc(viewedmovie.FieldID)).
+				Limit(excess).
+				IDs(ctx)
+			if err != nil {
+				return err
+			}
+			if len(oldestIDs) > 0 {
+				if _, err := tx.ViewedMovie.Delete().Where(viewedmovie.IDIn(oldestIDs...)).Exec(ctx); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// migrateViewedMovies transfers legacy settings "browse.viewed_movies" JSON blob into the viewed_movie table.
+func migrateViewedMovies(ctx context.Context, client *ent.Client) error {
+	record, err := client.Setting.Query().Where(setting.KeyEQ(viewedMoviesLegacySetting)).Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	var payload legacyViewedMoviesPayload
+	if err := json.Unmarshal([]byte(record.Value), &payload); err != nil {
+		return fmt.Errorf("unmarshal legacy viewed movies: %w", err)
+	}
+
+	if len(payload.IDs) > 0 {
+		now := time.Now().UTC()
+		err := ent.WithTx(ctx, client, func(tx *ent.Tx) error {
+			// Insert in chunks of 500
+			for start := 0; start < len(payload.IDs); start += 500 {
+				end := min(start+500, len(payload.IDs))
+				chunk := payload.IDs[start:end]
+				var builders []*ent.ViewedMovieCreate
+				for _, id := range chunk {
+					id = strings.TrimSpace(id)
+					if id != "" {
+						builders = append(builders, tx.ViewedMovie.Create().SetJavdbID(id).SetViewedAt(now))
+					}
+				}
+				if len(builders) > 0 {
+					if err := tx.ViewedMovie.CreateBulk(builders...).
+						OnConflictColumns(viewedmovie.FieldJavdbID).
+						Ignore().
+						Exec(ctx); err != nil {
+						return err
+					}
+				}
+			}
+			return tx.Setting.DeleteOneID(record.ID).Exec(ctx)
+		})
+		if err != nil {
+			return fmt.Errorf("migrate legacy viewed movies to table: %w", err)
+		}
+	} else {
+		_ = client.Setting.DeleteOneID(record.ID).Exec(ctx)
+	}
+	return nil
+}

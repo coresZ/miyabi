@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ppxb/miyabi/internal/service"
+	"github.com/ppxb/miyabi/internal/library"
 )
 
 type watchHistoryStub struct {
@@ -17,27 +17,27 @@ type watchHistoryStub struct {
 	called   string
 	page     int
 	ids      []int
-	scope    service.WatchHistoryScope
-	progress service.WatchProgress
+	scope    library.WatchHistoryScope
+	progress library.WatchProgress
 	err      error
 }
 
-func (stub *watchHistoryStub) WatchHistory(_ context.Context, page int) (service.WatchHistoryPage, error) {
+func (stub *watchHistoryStub) WatchHistory(_ context.Context, page int) (library.WatchHistoryPage, error) {
 	stub.called, stub.page = "list", page
-	return service.WatchHistoryPage{Page: page, Items: []service.WatchHistoryItem{}}, stub.err
+	return library.WatchHistoryPage{Page: page, Items: []library.WatchHistoryItem{}}, stub.err
 }
 
-func (stub *watchHistoryStub) SaveWatchProgress(_ context.Context, id int, progress service.WatchProgress) error {
+func (stub *watchHistoryStub) SaveWatchProgress(_ context.Context, id int, progress library.WatchProgress) error {
 	stub.called, stub.ids, stub.progress = "progress", []int{id}, progress
 	return stub.err
 }
 
-func (stub *watchHistoryStub) RemoveWatchHistory(_ context.Context, scope service.WatchHistoryScope, ids []int) (int, error) {
+func (stub *watchHistoryStub) RemoveWatchHistory(_ context.Context, scope library.WatchHistoryScope, ids []int) (int, error) {
 	stub.called, stub.scope, stub.ids = "remove", scope, ids
 	return len(ids), stub.err
 }
 
-func (stub *watchHistoryStub) ClearWatchHistory(_ context.Context, scope service.WatchHistoryScope) (int, error) {
+func (stub *watchHistoryStub) ClearWatchHistory(_ context.Context, scope library.WatchHistoryScope) (int, error) {
 	stub.called, stub.scope = "clear", scope
 	return 2, stub.err
 }
@@ -61,7 +61,7 @@ func TestHistoryEndpointsValidatePaginationScopeSelectionAndProgress(t *testing.
 		{name: "missing selection source", method: "POST", path: "/api/library/history/remove", body: `{"ids":[1]}`, status: 400},
 		{name: "clear", method: "DELETE", path: "/api/library/history?account_id=100&directory_id=10", called: "clear", status: 200},
 		{name: "clear without source", method: "DELETE", path: "/api/library/history", status: 400},
-		{name: "source changed", method: "DELETE", path: "/api/library/history?account_id=100&directory_id=10", called: "clear", err: service.ErrWatchHistorySourceChanged, status: 409},
+		{name: "source changed", method: "DELETE", path: "/api/library/history?account_id=100&directory_id=10", called: "clear", err: library.ErrWatchHistorySourceChanged, status: 409},
 		{name: "progress", method: "PUT", path: "/api/library/history/7/progress", body: progress, called: "progress", status: 200},
 		{name: "invalid history id", method: "PUT", path: "/api/library/history/0/progress", body: progress, status: 400},
 		{name: "missing session", method: "PUT", path: "/api/library/history/7/progress", body: `{"file_id":"video","duration":600,"version":1}`, status: 400},
