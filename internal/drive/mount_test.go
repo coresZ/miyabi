@@ -328,3 +328,39 @@ func TestWithinSource(t *testing.T) {
 		t.Fatal("the 115 root should contain everything")
 	}
 }
+
+func TestDirectoryPath(t *testing.T) {
+	for name, tt := range map[string]struct {
+		segments []pan.Directory
+		want     string
+	}{
+		"empty": {segments: nil, want: "/"},
+		"root only": {
+			segments: []pan.Directory{{ID: "0", Name: "根目录"}},
+			want:     "/",
+		},
+		"single level": {
+			segments: []pan.Directory{{ID: "0", Name: "根目录"}, {ID: "1", Name: "Movies"}},
+			want:     "/Movies",
+		},
+		"multi level": {
+			segments: []pan.Directory{{ID: "0", Name: "根目录"}, {ID: "1", Name: "Media"}, {ID: "2", Name: "Jav"}},
+			want:     "/Media/Jav",
+		},
+	} {
+		if got := DirectoryPath(tt.segments); got != tt.want {
+			t.Errorf("%s: DirectoryPath() = %q, want %q", name, got, tt.want)
+		}
+	}
+}
+
+func TestFilePath(t *testing.T) {
+	segments := []pan.Directory{{ID: "0", Name: "根目录"}, {ID: "1", Name: "Movies"}}
+	if got := FilePath(segments, "SSIS-589.mp4"); got != "/Movies/SSIS-589.mp4" {
+		t.Errorf("FilePath() = %q, want %q", got, "/Movies/SSIS-589.mp4")
+	}
+	if got := FilePath(nil, "root.mp4"); got != "/root.mp4" {
+		t.Errorf("FilePath() = %q, want %q", got, "/root.mp4")
+	}
+}
+

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"path"
 	"slices"
 	"strings"
 
@@ -12,14 +11,7 @@ import (
 )
 
 func fileInfoPath(info pan.FileInfo) string {
-	names := []string{"/"}
-	for _, directory := range info.Path {
-		if directory.ID != "0" {
-			names = append(names, directory.Name)
-		}
-	}
-	names = append(names, info.Name)
-	return path.Join(names...)
+	return drive.FilePath(info.Path, info.Name)
 }
 
 func (service *LibraryService) sourceInfo(ctx context.Context, sess drive.Session, id string) (pan.FileInfo, error) {

@@ -122,3 +122,72 @@ func Normalize(raw string) string {
 	}
 	return value
 }
+
+// IsEquivalent reports whether two catalogue numbers identify the same movie
+// under bidirectional tolerance rules (e.g. distributor-prefixed codes like
+// 200GANA-3458 vs GANA-3458, or studio-prefixed date codes like CARIB-060326-001
+// vs 060326-001).
+func IsEquivalent(a, b string) bool {
+	normA := Normalize(a)
+	normB := Normalize(b)
+	if normA == "" || normB == "" {
+		return false
+	}
+	if normA == normB {
+		return true
+	}
+
+	prefixA, seqA := splitCode(normA)
+	prefixB, seqB := splitCode(normB)
+
+	// Core sequence must be non-empty and equal.
+	if seqA == "" || seqA != seqB {
+		return false
+	}
+
+	// Case 1: Pure numeric/date sequence without prefix matched against a studio-prefixed date code.
+	// e.g. "060326-001" vs "CARIB-060326-001"
+	if prefixA == "" || prefixB == "" {
+		return numericPattern.MatchString(seqA)
+	}
+
+	// Case 2: Distributor prepended digits to a catalogue prefix.
+	// e.g. "200GANA" vs "GANA", "259LUXU" vs "LUXU"
+	if strings.HasSuffix(prefixA, prefixB) {
+		leading := strings.TrimSuffix(prefixA, prefixB)
+		if isDigits(leading) {
+			return true
+		}
+	}
+	if strings.HasSuffix(prefixB, prefixA) {
+		leading := strings.TrimSuffix(prefixB, prefixA)
+		if isDigits(leading) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func splitCode(norm string) (string, string) {
+	if numericPattern.MatchString(norm) {
+		return "", norm
+	}
+	if index := strings.IndexByte(norm, '-'); index > 0 {
+		return norm[:index], norm[index+1:]
+	}
+	return "", norm
+}
+
