@@ -1,4 +1,4 @@
-package service
+package playback
 
 import (
 	"context"
@@ -13,10 +13,7 @@ import (
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
-	mediaimage "github.com/ppxb/miyabi/internal/image"
-	"github.com/ppxb/miyabi/internal/library"
 	"github.com/ppxb/miyabi/internal/library/scan"
-	scrapePkg "github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
@@ -82,25 +79,25 @@ func (client *panStub) ExchangeToken(ctx context.Context, login *pan.Login) (pan
 	if client.Client != nil {
 		return client.Client.ExchangeToken(ctx, login)
 	}
-	return panTestTokens("login"), nil
+	return panTestTokens("fixture"), nil
 }
 
-func (client *panStub) RefreshToken(ctx context.Context, token string) (pan.Tokens, error) {
+func (client *panStub) RefreshToken(ctx context.Context, refresh string) (pan.Tokens, error) {
 	if client.refreshToken != nil {
-		return client.refreshToken(ctx, token)
+		return client.refreshToken(ctx, refresh)
 	}
 	if client.Client != nil {
-		return client.Client.RefreshToken(ctx, token)
+		return client.Client.RefreshToken(ctx, refresh)
 	}
 	return panTestTokens("refreshed"), nil
 }
 
-func (client *panStub) List(ctx context.Context, token, directory string, offset, limit int) (pan.FilePage, error) {
+func (client *panStub) List(ctx context.Context, token, id string, offset, limit int) (pan.FilePage, error) {
 	if client.list != nil {
-		return client.list(ctx, token, directory, offset, limit)
+		return client.list(ctx, token, id, offset, limit)
 	}
 	if client.Client != nil {
-		return client.Client.List(ctx, token, directory, offset, limit)
+		return client.Client.List(ctx, token, id, offset, limit)
 	}
 	return pan.FilePage{}, nil
 }
@@ -115,32 +112,32 @@ func (client *panStub) Info(ctx context.Context, token, id string) (pan.FileInfo
 	return pan.FileInfo{}, nil
 }
 
-func (client *panStub) ReadMetadata(ctx context.Context, token, pickCode string, limit int64) ([]byte, error) {
+func (client *panStub) ReadMetadata(ctx context.Context, token, pickCode string, size int64) ([]byte, error) {
 	if client.readMetadata != nil {
-		return client.readMetadata(ctx, token, pickCode, limit)
+		return client.readMetadata(ctx, token, pickCode, size)
 	}
 	if client.Client != nil {
-		return client.Client.ReadMetadata(ctx, token, pickCode, limit)
+		return client.Client.ReadMetadata(ctx, token, pickCode, size)
 	}
 	return nil, nil
 }
 
-func (client *panStub) UploadMetadata(ctx context.Context, token, directory, name string, body []byte) error {
+func (client *panStub) UploadMetadata(ctx context.Context, token, parentID, name string, content []byte) error {
 	if client.uploadMetadata != nil {
-		return client.uploadMetadata(ctx, token, directory, name, body)
+		return client.uploadMetadata(ctx, token, parentID, name, content)
 	}
 	if client.Client != nil {
-		return client.Client.UploadMetadata(ctx, token, directory, name, body)
+		return client.Client.UploadMetadata(ctx, token, parentID, name, content)
 	}
 	return nil
 }
 
-func (client *panStub) AddOffline(ctx context.Context, token, uri, directory string) (string, error) {
+func (client *panStub) AddOffline(ctx context.Context, token, url, saveDirID string) (string, error) {
 	if client.addOffline != nil {
-		return client.addOffline(ctx, token, uri, directory)
+		return client.addOffline(ctx, token, url, saveDirID)
 	}
 	if client.Client != nil {
-		return client.Client.AddOffline(ctx, token, uri, directory)
+		return client.Client.AddOffline(ctx, token, url, saveDirID)
 	}
 	return "", nil
 }
@@ -189,8 +186,6 @@ func panTestTokens(prefix string) pan.Tokens {
 	return pan.Tokens{AccessToken: prefix + "-access", RefreshToken: prefix + "-refresh", ExpiresAt: time.Now().Add(time.Hour)}
 }
 
-// directoryPage is what 115 answers when a directory is listed: its ancestry.
-// Mounting it yields exactly the given LibraryDirectory.
 func directoryPage(directory domain.LibraryDirectory) pan.FilePage {
 	page := pan.FilePage{Path: []pan.Directory{{ID: "0", Name: "Root"}}}
 	segments := strings.Split(strings.Trim(directory.Path, "/"), "/")
@@ -205,9 +200,6 @@ func directoryPage(directory domain.LibraryDirectory) pan.FilePage {
 	return page
 }
 
-// loginAccount completes a QR login for the account through the real state
-// machine, replacing any current credentials. The stub keeps answering for
-// that account afterwards.
 func loginAccount(t testing.TB, d *drive.Drive, client *panStub, accountID string) {
 	t.Helper()
 	client.account = func(context.Context, string) (pan.Account, error) { return pan.Account{ID: accountID}, nil }
@@ -220,9 +212,6 @@ func loginAccount(t testing.TB, d *drive.Drive, client *panStub, accountID strin
 	}
 }
 
-// mountSource mounts the source's directory as the settings page would,
-// logging its account in first unless it already is. An empty directory ID
-// only ensures the login.
 func mountSource(t testing.TB, d *drive.Drive, client *panStub, source domain.LibrarySource) {
 	t.Helper()
 	status, err := d.Account(t.Context())
@@ -248,8 +237,6 @@ func mountSource(t testing.TB, d *drive.Drive, client *panStub, source domain.Li
 	}
 }
 
-// fixtureStubs remembers which stub backs each fixture drive so tests can
-// script 115 without threading the stub through every fixture signature.
 var fixtureStubs sync.Map
 
 func stubOf(t testing.TB, d *drive.Drive) *panStub {
@@ -261,8 +248,6 @@ func stubOf(t testing.TB, d *drive.Drive) *panStub {
 	return client.(*panStub)
 }
 
-// newMountedDrive builds a drive on the fixture database with the source
-// mounted through the real login and mount paths.
 func newMountedDrive(t testing.TB, database *ent.Client, client *panStub, source domain.LibrarySource) *drive.Drive {
 	t.Helper()
 	d, err := drive.NewWithClient(t.Context(), database, client)
@@ -275,7 +260,6 @@ func newMountedDrive(t testing.TB, database *ent.Client, client *panStub, source
 	return d
 }
 
-// authorizationVersion is the version a session issued right now would carry.
 func authorizationVersion(t testing.TB, d *drive.Drive) uint64 {
 	t.Helper()
 	sess, err := d.Open(t.Context())
@@ -285,15 +269,7 @@ func authorizationVersion(t testing.TB, d *drive.Drive) uint64 {
 	return sess.Version()
 }
 
-func valueOrZero[T any](value *T) T {
-	if value != nil {
-		return *value
-	}
-	var zero T
-	return zero
-}
-
-func libraryFixture(t testing.TB) testLibraryFixture {
+func playFixture(t *testing.T) (*Service, domain.LibrarySource) {
 	t.Helper()
 	store, err := database.Open(t.Context(), t.TempDir())
 	if err != nil {
@@ -307,40 +283,16 @@ func libraryFixture(t testing.TB) testLibraryFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	images, err := mediaimage.NewCache(t.TempDir())
-	if err != nil {
+	payload := scan.Payload{Source: source, Scan: domain.ScanProgress{Stage: "scanning"}}
+	if err := scan.ProcessScanPage(t.Context(), store.Client, queued.ID, "fixture", "/Movies", []scan.Video{
+		scan.IdentifyVideo(pan.File{ID: "101", ParentID: "10", Name: "ABP-001-CD1.mp4", Size: 1 << 30}),
+		scan.IdentifyVideo(pan.File{ID: "102", ParentID: "10", Name: "ABP-001-CD2.mkv", Size: 1 << 30}),
+	}, &payload, nil, taskSvc); err != nil {
 		t.Fatal(err)
 	}
-	lib := library.New(store.Client, driveSvc, taskSvc, images)
-	scrapeSvc := scrapePkg.New(store.Client, driveSvc, nil, images, taskSvc)
-	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScan, lib.Scan, lib.Finished))
-	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScrape, scrapeSvc.Scrape, scrapeSvc.Finished))
-	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindCover, scrapeSvc.Cover, scrapeSvc.Finished))
-	return testLibraryFixture{
-		Service: lib,
-		Drive:   driveSvc,
-		DB:      store.Client,
-		Tasks:   taskSvc,
-		Images:  images,
-		Queued:  queued,
-		Payload: scan.Payload{Source: source, Scan: domain.ScanProgress{Stage: "scanning"}},
-	}
-}
-
-type testLibraryFixture struct {
-	Service *library.Service
-	Drive   *drive.Drive
-	DB      *ent.Client
-	Tasks   *tasks.Service
-	Images  *mediaimage.Cache
-	Queued  tasks.TaskInfo
-	Payload scan.Payload
-}
-
-func panConcurrencyFixture(t *testing.T) (*library.Service, *panStub) {
-	t.Helper()
-	fix := libraryFixture(t)
-	return fix.Service, stubOf(t, fix.Drive)
+	service := New(store.Client, driveSvc)
+	t.Cleanup(service.Close)
+	return service, payload.Source
 }
 
 func panTestGate(t *testing.T) (<-chan struct{}, func()) {
@@ -360,20 +312,5 @@ func awaitPan[T any](t *testing.T, ready <-chan T) T {
 		t.Fatal("timed out waiting for concurrent 115 operation")
 		var zero T
 		return zero
-	}
-}
-
-func awaitPanCondition(t *testing.T, ready func() bool) {
-	t.Helper()
-	ticker := time.NewTicker(time.Millisecond)
-	defer ticker.Stop()
-	deadline := time.NewTimer(3 * time.Second)
-	defer deadline.Stop()
-	for !ready() {
-		select {
-		case <-ticker.C:
-		case <-deadline.C:
-			t.Fatal("concurrent 115 operation did not reach the expected state")
-		}
 	}
 }

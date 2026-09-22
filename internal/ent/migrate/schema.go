@@ -68,37 +68,6 @@ var (
 			},
 		},
 	}
-	// MonitorsColumns holds the columns for the "monitors" table.
-	MonitorsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeInt, Increment: true},
-		{Name: "created_at", Type: field.TypeTime},
-		{Name: "updated_at", Type: field.TypeTime},
-		{Name: "movie_id", Type: field.TypeString, Unique: true},
-		{Name: "code", Type: field.TypeString},
-		{Name: "title", Type: field.TypeString, Default: ""},
-		{Name: "cover", Type: field.TypeString, Default: ""},
-		{Name: "release_date", Type: field.TypeString, Default: ""},
-		{Name: "status", Type: field.TypeEnum, Enums: []string{"waiting", "added", "stale"}, Default: "waiting"},
-		{Name: "hash", Type: field.TypeString, Default: ""},
-		{Name: "task_id", Type: field.TypeInt, Nullable: true},
-		{Name: "next_check_at", Type: field.TypeTime, Nullable: true},
-		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
-		{Name: "checks", Type: field.TypeInt, Default: 0},
-		{Name: "error", Type: field.TypeString, Nullable: true},
-	}
-	// MonitorsTable holds the schema information for the "monitors" table.
-	MonitorsTable = &schema.Table{
-		Name:       "monitors",
-		Columns:    MonitorsColumns,
-		PrimaryKey: []*schema.Column{MonitorsColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "monitor_status_next_check_at",
-				Unique:  false,
-				Columns: []*schema.Column{MonitorsColumns[8], MonitorsColumns[11]},
-			},
-		},
-	}
 	// MoviesColumns holds the columns for the "movies" table.
 	MoviesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -141,6 +110,47 @@ var (
 		Name:       "settings",
 		Columns:    SettingsColumns,
 		PrimaryKey: []*schema.Column{SettingsColumns[0]},
+	}
+	// SubscriptionsColumns holds the columns for the "subscriptions" table.
+	SubscriptionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"movie", "actor"}, Default: "movie"},
+		{Name: "target_id", Type: field.TypeString},
+		{Name: "code", Type: field.TypeString, Default: ""},
+		{Name: "title", Type: field.TypeString, Default: ""},
+		{Name: "cover", Type: field.TypeString, Default: ""},
+		{Name: "release_date", Type: field.TypeString, Default: ""},
+		{Name: "origin_id", Type: field.TypeInt, Nullable: true},
+		{Name: "auto_download", Type: field.TypeBool, Default: true},
+		{Name: "zone", Type: field.TypeString, Default: ""},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"waiting", "added", "stale", "active", "paused", "error"}, Default: "waiting"},
+		{Name: "cursor", Type: field.TypeString, Default: ""},
+		{Name: "hash", Type: field.TypeString, Default: ""},
+		{Name: "task_id", Type: field.TypeInt, Nullable: true},
+		{Name: "next_check_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "checks", Type: field.TypeInt, Default: 0},
+		{Name: "error", Type: field.TypeString, Nullable: true},
+	}
+	// SubscriptionsTable holds the schema information for the "subscriptions" table.
+	SubscriptionsTable = &schema.Table{
+		Name:       "subscriptions",
+		Columns:    SubscriptionsColumns,
+		PrimaryKey: []*schema.Column{SubscriptionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "subscription_kind_target_id",
+				Unique:  true,
+				Columns: []*schema.Column{SubscriptionsColumns[3], SubscriptionsColumns[4]},
+			},
+			{
+				Name:    "subscription_status_next_check_at",
+				Unique:  false,
+				Columns: []*schema.Column{SubscriptionsColumns[12], SubscriptionsColumns[16]},
+			},
+		},
 	}
 	// TagsColumns holds the columns for the "tags" table.
 	TagsColumns = []*schema.Column{
@@ -304,9 +314,9 @@ var (
 	Tables = []*schema.Table{
 		ActorsTable,
 		FilesTable,
-		MonitorsTable,
 		MoviesTable,
 		SettingsTable,
+		SubscriptionsTable,
 		TagsTable,
 		TasksTable,
 		ViewedMoviesTable,

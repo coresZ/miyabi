@@ -9,11 +9,11 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/ppxb/miyabi/internal/ent/monitor"
+	"github.com/ppxb/miyabi/internal/ent/subscription"
 )
 
-// Monitor is the model entity for the Monitor schema.
-type Monitor struct {
+// Subscription is the model entity for the Subscription schema.
+type Subscription struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID int `json:"id,omitempty"`
@@ -21,8 +21,10 @@ type Monitor struct {
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
-	// MovieID holds the value of the "movie_id" field.
-	MovieID string `json:"movie_id,omitempty"`
+	// Kind holds the value of the "kind" field.
+	Kind subscription.Kind `json:"kind,omitempty"`
+	// TargetID holds the value of the "target_id" field.
+	TargetID string `json:"target_id,omitempty"`
 	// Code holds the value of the "code" field.
 	Code string `json:"code,omitempty"`
 	// Title holds the value of the "title" field.
@@ -31,8 +33,16 @@ type Monitor struct {
 	Cover string `json:"cover,omitempty"`
 	// ReleaseDate holds the value of the "release_date" field.
 	ReleaseDate string `json:"release_date,omitempty"`
+	// OriginID holds the value of the "origin_id" field.
+	OriginID *int `json:"origin_id,omitempty"`
+	// AutoDownload holds the value of the "auto_download" field.
+	AutoDownload bool `json:"auto_download,omitempty"`
+	// Zone holds the value of the "zone" field.
+	Zone string `json:"zone,omitempty"`
 	// Status holds the value of the "status" field.
-	Status monitor.Status `json:"status,omitempty"`
+	Status subscription.Status `json:"status,omitempty"`
+	// Cursor holds the value of the "cursor" field.
+	Cursor string `json:"cursor,omitempty"`
 	// Hash holds the value of the "hash" field.
 	Hash string `json:"hash,omitempty"`
 	// TaskID holds the value of the "task_id" field.
@@ -49,15 +59,17 @@ type Monitor struct {
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
-func (*Monitor) scanValues(columns []string) ([]any, error) {
+func (*Subscription) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case monitor.FieldID, monitor.FieldTaskID, monitor.FieldChecks:
+		case subscription.FieldAutoDownload:
+			values[i] = new(sql.NullBool)
+		case subscription.FieldID, subscription.FieldOriginID, subscription.FieldTaskID, subscription.FieldChecks:
 			values[i] = new(sql.NullInt64)
-		case monitor.FieldMovieID, monitor.FieldCode, monitor.FieldTitle, monitor.FieldCover, monitor.FieldReleaseDate, monitor.FieldStatus, monitor.FieldHash, monitor.FieldError:
+		case subscription.FieldKind, subscription.FieldTargetID, subscription.FieldCode, subscription.FieldTitle, subscription.FieldCover, subscription.FieldReleaseDate, subscription.FieldZone, subscription.FieldStatus, subscription.FieldCursor, subscription.FieldHash, subscription.FieldError:
 			values[i] = new(sql.NullString)
-		case monitor.FieldCreatedAt, monitor.FieldUpdatedAt, monitor.FieldNextCheckAt, monitor.FieldLastCheckedAt:
+		case subscription.FieldCreatedAt, subscription.FieldUpdatedAt, subscription.FieldNextCheckAt, subscription.FieldLastCheckedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -67,101 +79,132 @@ func (*Monitor) scanValues(columns []string) ([]any, error) {
 }
 
 // assignValues assigns the values that were returned from sql.Rows (after scanning)
-// to the Monitor fields.
-func (_m *Monitor) assignValues(columns []string, values []any) error {
+// to the Subscription fields.
+func (_m *Subscription) assignValues(columns []string, values []any) error {
 	if m, n := len(values), len(columns); m < n {
 		return fmt.Errorf("mismatch number of scan values: %d != %d", m, n)
 	}
 	for i := range columns {
 		switch columns[i] {
-		case monitor.FieldID:
+		case subscription.FieldID:
 			value, ok := values[i].(*sql.NullInt64)
 			if !ok {
 				return fmt.Errorf("unexpected type %T for field id", value)
 			}
 			_m.ID = int(value.Int64)
-		case monitor.FieldCreatedAt:
+		case subscription.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
 				_m.CreatedAt = value.Time
 			}
-		case monitor.FieldUpdatedAt:
+		case subscription.FieldUpdatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
 			} else if value.Valid {
 				_m.UpdatedAt = value.Time
 			}
-		case monitor.FieldMovieID:
+		case subscription.FieldKind:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field movie_id", values[i])
+				return fmt.Errorf("unexpected type %T for field kind", values[i])
 			} else if value.Valid {
-				_m.MovieID = value.String
+				_m.Kind = subscription.Kind(value.String)
 			}
-		case monitor.FieldCode:
+		case subscription.FieldTargetID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field target_id", values[i])
+			} else if value.Valid {
+				_m.TargetID = value.String
+			}
+		case subscription.FieldCode:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field code", values[i])
 			} else if value.Valid {
 				_m.Code = value.String
 			}
-		case monitor.FieldTitle:
+		case subscription.FieldTitle:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field title", values[i])
 			} else if value.Valid {
 				_m.Title = value.String
 			}
-		case monitor.FieldCover:
+		case subscription.FieldCover:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field cover", values[i])
 			} else if value.Valid {
 				_m.Cover = value.String
 			}
-		case monitor.FieldReleaseDate:
+		case subscription.FieldReleaseDate:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field release_date", values[i])
 			} else if value.Valid {
 				_m.ReleaseDate = value.String
 			}
-		case monitor.FieldStatus:
+		case subscription.FieldOriginID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field origin_id", values[i])
+			} else if value.Valid {
+				_m.OriginID = new(int)
+				*_m.OriginID = int(value.Int64)
+			}
+		case subscription.FieldAutoDownload:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field auto_download", values[i])
+			} else if value.Valid {
+				_m.AutoDownload = value.Bool
+			}
+		case subscription.FieldZone:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field zone", values[i])
+			} else if value.Valid {
+				_m.Zone = value.String
+			}
+		case subscription.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
-				_m.Status = monitor.Status(value.String)
+				_m.Status = subscription.Status(value.String)
 			}
-		case monitor.FieldHash:
+		case subscription.FieldCursor:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field cursor", values[i])
+			} else if value.Valid {
+				_m.Cursor = value.String
+			}
+		case subscription.FieldHash:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field hash", values[i])
 			} else if value.Valid {
 				_m.Hash = value.String
 			}
-		case monitor.FieldTaskID:
+		case subscription.FieldTaskID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field task_id", values[i])
 			} else if value.Valid {
 				_m.TaskID = new(int)
 				*_m.TaskID = int(value.Int64)
 			}
-		case monitor.FieldNextCheckAt:
+		case subscription.FieldNextCheckAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field next_check_at", values[i])
 			} else if value.Valid {
 				_m.NextCheckAt = new(time.Time)
 				*_m.NextCheckAt = value.Time
 			}
-		case monitor.FieldLastCheckedAt:
+		case subscription.FieldLastCheckedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field last_checked_at", values[i])
 			} else if value.Valid {
 				_m.LastCheckedAt = new(time.Time)
 				*_m.LastCheckedAt = value.Time
 			}
-		case monitor.FieldChecks:
+		case subscription.FieldChecks:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field checks", values[i])
 			} else if value.Valid {
 				_m.Checks = int(value.Int64)
 			}
-		case monitor.FieldError:
+		case subscription.FieldError:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field error", values[i])
 			} else if value.Valid {
@@ -175,34 +218,34 @@ func (_m *Monitor) assignValues(columns []string, values []any) error {
 	return nil
 }
 
-// Value returns the ent.Value that was dynamically selected and assigned to the Monitor.
+// Value returns the ent.Value that was dynamically selected and assigned to the Subscription.
 // This includes values selected through modifiers, order, etc.
-func (_m *Monitor) Value(name string) (ent.Value, error) {
+func (_m *Subscription) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
 }
 
-// Update returns a builder for updating this Monitor.
-// Note that you need to call Monitor.Unwrap() before calling this method if this Monitor
+// Update returns a builder for updating this Subscription.
+// Note that you need to call Subscription.Unwrap() before calling this method if this Subscription
 // was returned from a transaction, and the transaction was committed or rolled back.
-func (_m *Monitor) Update() *MonitorUpdateOne {
-	return NewMonitorClient(_m.config).UpdateOne(_m)
+func (_m *Subscription) Update() *SubscriptionUpdateOne {
+	return NewSubscriptionClient(_m.config).UpdateOne(_m)
 }
 
-// Unwrap unwraps the Monitor entity that was returned from a transaction after it was closed,
+// Unwrap unwraps the Subscription entity that was returned from a transaction after it was closed,
 // so that all future queries will be executed through the driver which created the transaction.
-func (_m *Monitor) Unwrap() *Monitor {
+func (_m *Subscription) Unwrap() *Subscription {
 	_tx, ok := _m.config.driver.(*txDriver)
 	if !ok {
-		panic("ent: Monitor is not a transactional entity")
+		panic("ent: Subscription is not a transactional entity")
 	}
 	_m.config.driver = _tx.drv
 	return _m
 }
 
 // String implements the fmt.Stringer.
-func (_m *Monitor) String() string {
+func (_m *Subscription) String() string {
 	var builder strings.Builder
-	builder.WriteString("Monitor(")
+	builder.WriteString("Subscription(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
@@ -210,8 +253,11 @@ func (_m *Monitor) String() string {
 	builder.WriteString("updated_at=")
 	builder.WriteString(_m.UpdatedAt.Format(time.ANSIC))
 	builder.WriteString(", ")
-	builder.WriteString("movie_id=")
-	builder.WriteString(_m.MovieID)
+	builder.WriteString("kind=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Kind))
+	builder.WriteString(", ")
+	builder.WriteString("target_id=")
+	builder.WriteString(_m.TargetID)
 	builder.WriteString(", ")
 	builder.WriteString("code=")
 	builder.WriteString(_m.Code)
@@ -225,8 +271,22 @@ func (_m *Monitor) String() string {
 	builder.WriteString("release_date=")
 	builder.WriteString(_m.ReleaseDate)
 	builder.WriteString(", ")
+	if v := _m.OriginID; v != nil {
+		builder.WriteString("origin_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("auto_download=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AutoDownload))
+	builder.WriteString(", ")
+	builder.WriteString("zone=")
+	builder.WriteString(_m.Zone)
+	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Status))
+	builder.WriteString(", ")
+	builder.WriteString("cursor=")
+	builder.WriteString(_m.Cursor)
 	builder.WriteString(", ")
 	builder.WriteString("hash=")
 	builder.WriteString(_m.Hash)
@@ -257,5 +317,5 @@ func (_m *Monitor) String() string {
 	return builder.String()
 }
 
-// Monitors is a parsable slice of Monitor.
-type Monitors []*Monitor
+// Subscriptions is a parsable slice of Subscription.
+type Subscriptions []*Subscription

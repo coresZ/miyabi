@@ -44,12 +44,36 @@ func Open(ctx context.Context, dataDir string) (*Store, error) {
 		client.Close()
 		return nil, fmt.Errorf("migrate database schema: %w", err)
 	}
+	if err := migrateSubscriptions(ctx, db); err != nil {
+		client.Close()
+		return nil, fmt.Errorf("migrate subscriptions: %w", err)
+	}
 	if err := createTaskHistoryIndexes(ctx, db); err != nil {
 		client.Close()
 		return nil, err
 	}
 
 	return &Store{Client: client, db: db}, nil
+}
+
+func migrateSubscriptions(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='monitors'").Scan(&count)
+	if err != nil || count == 0 {
+		return err
+	}
+	_, err = db.ExecContext(ctx, `
+		INSERT OR IGNORE INTO subscriptions (
+			id, created_at, updated_at, kind, target_id, code, title, cover, release_date,
+			status, hash, task_id, next_check_at, last_checked_at, checks, error, auto_download, zone, cursor
+		)
+		SELECT
+			id, created_at, updated_at, 'movie', movie_id, code, title, cover, release_date,
+			status, hash, task_id, next_check_at, last_checked_at, checks, error, 1, '', ''
+		FROM monitors;
+		DROP TABLE monitors;
+	`)
+	return err
 }
 
 func (store *Store) Ping(ctx context.Context) error {

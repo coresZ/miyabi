@@ -1,9 +1,8 @@
-package service
+package playback
 
 import (
 	"context"
 	"errors"
-	"github.com/ppxb/miyabi/internal/domain"
 	"io"
 	"io/fs"
 	"net/http"
@@ -14,26 +13,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
-	"github.com/ppxb/miyabi/internal/library/scan"
 	"github.com/ppxb/miyabi/internal/pan"
 )
-
-func playFixture(t *testing.T) (*PlayService, domain.LibrarySource) {
-	t.Helper()
-	library, queued, payload := libraryFixture(t)
-	if err := scan.ProcessScanPage(t.Context(), library.Database(), queued.ID, "fixture", "/Movies", []scan.Video{
-		scan.IdentifyVideo(pan.File{ID: "101", ParentID: "10", Name: "ABP-001-CD1.mp4", Size: 1 << 30}),
-		scan.IdentifyVideo(pan.File{ID: "102", ParentID: "10", Name: "ABP-001-CD2.mkv", Size: 1 << 30}),
-	}, &payload, nil, library.Tasks()); err != nil {
-		t.Fatal(err)
-	}
-	service := NewPlayService(library, library.Drive())
-	t.Cleanup(service.Close)
-	return service, payload.Source
-}
 
 func testWatchScope(source domain.LibrarySource) WatchHistoryScope {
 	return WatchHistoryScope{AccountID: source.AccountID, DirectoryID: source.Directory.ID}
@@ -41,7 +26,7 @@ func testWatchScope(source domain.LibrarySource) WatchHistoryScope {
 
 func TestPlayFilesUsesOnlyCurrentLibrarySource(t *testing.T) {
 	service, source := playFixture(t)
-	db := service.library.Database()
+	db := service.database
 	movieID := db.Movie.Query().Where(movie.CodeEQ("ABP-001")).OnlyIDX(t.Context())
 	db.File.Create().SetFileID("201").SetName("ABP-001-other.mp4").SetSize(1).
 		SetAccountID(source.AccountID).SetRootID("other").SetMovieID(movieID).SaveX(t.Context())
@@ -61,9 +46,9 @@ func TestPlayFilesUsesOnlyCurrentLibrarySource(t *testing.T) {
 
 func TestPlayFilesPrefersLargestVideo(t *testing.T) {
 	service, _ := playFixture(t)
-	service.library.Database().File.Update().Where(file.FileIDEQ("102")).SetSize(2 << 30).SaveX(t.Context())
+	service.database.File.Update().Where(file.FileIDEQ("102")).SetSize(2 << 30).SaveX(t.Context())
 
-	movieID := service.library.Database().Movie.Query().Where(movie.CodeEQ("ABP-001")).OnlyIDX(t.Context())
+	movieID := service.database.Movie.Query().Where(movie.CodeEQ("ABP-001")).OnlyIDX(t.Context())
 	files, err := service.Files(t.Context(), movieID)
 	if err != nil {
 		t.Fatal(err)
@@ -76,8 +61,8 @@ func TestPlayFilesPrefersLargestVideo(t *testing.T) {
 func TestPlayFilesUsesLocalIDForUnfamiliarNumbers(t *testing.T) {
 	service, _ := playFixture(t)
 	ctx := t.Context()
-	local := service.library.Database().Movie.Query().Where(movie.CodeEQ("ABP-001")).OnlyX(ctx)
-	service.library.Database().Movie.UpdateOne(local).SetCode("作品/限定 #007").ExecX(ctx)
+	local := service.database.Movie.Query().Where(movie.CodeEQ("ABP-001")).OnlyX(ctx)
+	service.database.Movie.UpdateOne(local).SetCode("作品/限定 #007").ExecX(ctx)
 	files, err := service.Files(ctx, local.ID)
 	if err != nil || files.Code != "作品/限定 #007" || len(files.Files) != 2 {
 		t.Fatalf("playback still depends on catalogue recognition: %#v, %v", files, err)
@@ -86,7 +71,7 @@ func TestPlayFilesUsesLocalIDForUnfamiliarNumbers(t *testing.T) {
 
 func TestPlayFilesReadsResumeWithoutRecordingWatch(t *testing.T) {
 	service, source := playFixture(t)
-	db, ctx := service.library.Database(), t.Context()
+	db, ctx := service.database, t.Context()
 	movieID := db.Movie.Query().Where(movie.CodeEQ("ABP-001")).OnlyIDX(ctx)
 	files, err := service.Files(ctx, movieID)
 	if err != nil || files.Resume != nil || files.Source != testWatchScope(source) || db.WatchHistory.Query().CountX(ctx) != 0 {
@@ -96,7 +81,6 @@ func TestPlayFilesReadsResumeWithoutRecordingWatch(t *testing.T) {
 		SetMovieID(movieID).SetSessionID("saved-session").SetFileID("102").SetPosition(120).SetDuration(600).SaveX(ctx)
 	db.WatchHistory.Create().SetAccountID("other-account").SetRootID(source.Directory.ID).
 		SetMovieID(movieID).SetSessionID("other-session").SetFileID("101").SetPosition(500).SetDuration(600).ExecX(ctx)
-	before := service.library.Tasks().Revisions()
 	// Readiness must remain available even while every watch mutation fails.
 	db.Use(func(ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(context.Context, ent.Mutation) (ent.Value, error) {
@@ -108,9 +92,8 @@ func TestPlayFilesReadsResumeWithoutRecordingWatch(t *testing.T) {
 		files.Resume.Position != 120 || files.Resume.Duration != 600 {
 		t.Fatalf("read-only playback lost the saved file or position: %+v, %v", files, err)
 	}
-	if db.Movie.GetX(ctx, movieID).Watched || db.WatchHistory.GetX(ctx, history.ID).SessionID != "saved-session" ||
-		service.library.Tasks().Revisions() != before {
-		t.Fatal("reading playback mutated the badge, session, or revisions")
+	if db.Movie.GetX(ctx, movieID).Watched || db.WatchHistory.GetX(ctx, history.ID).SessionID != "saved-session" {
+		t.Fatal("reading playback mutated the badge or session")
 	}
 }
 

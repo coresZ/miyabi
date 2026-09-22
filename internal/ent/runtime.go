@@ -8,10 +8,10 @@ import (
 
 	"github.com/ppxb/miyabi/internal/ent/actor"
 	"github.com/ppxb/miyabi/internal/ent/file"
-	"github.com/ppxb/miyabi/internal/ent/monitor"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/schema"
 	"github.com/ppxb/miyabi/internal/ent/setting"
+	"github.com/ppxb/miyabi/internal/ent/subscription"
 	"github.com/ppxb/miyabi/internal/ent/tag"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/ent/viewedmovie"
@@ -100,51 +100,6 @@ func init() {
 	fileDescScanID := fileFields[9].Descriptor()
 	// file.DefaultScanID holds the default value on creation for the scan_id field.
 	file.DefaultScanID = fileDescScanID.Default.(string)
-	monitorMixin := schema.Monitor{}.Mixin()
-	monitorMixinFields0 := monitorMixin[0].Fields()
-	_ = monitorMixinFields0
-	monitorFields := schema.Monitor{}.Fields()
-	_ = monitorFields
-	// monitorDescCreatedAt is the schema descriptor for created_at field.
-	monitorDescCreatedAt := monitorMixinFields0[0].Descriptor()
-	// monitor.DefaultCreatedAt holds the default value on creation for the created_at field.
-	monitor.DefaultCreatedAt = monitorDescCreatedAt.Default.(func() time.Time)
-	// monitorDescUpdatedAt is the schema descriptor for updated_at field.
-	monitorDescUpdatedAt := monitorMixinFields0[1].Descriptor()
-	// monitor.DefaultUpdatedAt holds the default value on creation for the updated_at field.
-	monitor.DefaultUpdatedAt = monitorDescUpdatedAt.Default.(func() time.Time)
-	// monitor.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
-	monitor.UpdateDefaultUpdatedAt = monitorDescUpdatedAt.UpdateDefault.(func() time.Time)
-	// monitorDescMovieID is the schema descriptor for movie_id field.
-	monitorDescMovieID := monitorFields[0].Descriptor()
-	// monitor.MovieIDValidator is a validator for the "movie_id" field. It is called by the builders before save.
-	monitor.MovieIDValidator = monitorDescMovieID.Validators[0].(func(string) error)
-	// monitorDescCode is the schema descriptor for code field.
-	monitorDescCode := monitorFields[1].Descriptor()
-	// monitor.CodeValidator is a validator for the "code" field. It is called by the builders before save.
-	monitor.CodeValidator = monitorDescCode.Validators[0].(func(string) error)
-	// monitorDescTitle is the schema descriptor for title field.
-	monitorDescTitle := monitorFields[2].Descriptor()
-	// monitor.DefaultTitle holds the default value on creation for the title field.
-	monitor.DefaultTitle = monitorDescTitle.Default.(string)
-	// monitorDescCover is the schema descriptor for cover field.
-	monitorDescCover := monitorFields[3].Descriptor()
-	// monitor.DefaultCover holds the default value on creation for the cover field.
-	monitor.DefaultCover = monitorDescCover.Default.(string)
-	// monitorDescReleaseDate is the schema descriptor for release_date field.
-	monitorDescReleaseDate := monitorFields[4].Descriptor()
-	// monitor.DefaultReleaseDate holds the default value on creation for the release_date field.
-	monitor.DefaultReleaseDate = monitorDescReleaseDate.Default.(string)
-	// monitorDescHash is the schema descriptor for hash field.
-	monitorDescHash := monitorFields[6].Descriptor()
-	// monitor.DefaultHash holds the default value on creation for the hash field.
-	monitor.DefaultHash = monitorDescHash.Default.(string)
-	// monitorDescChecks is the schema descriptor for checks field.
-	monitorDescChecks := monitorFields[10].Descriptor()
-	// monitor.DefaultChecks holds the default value on creation for the checks field.
-	monitor.DefaultChecks = monitorDescChecks.Default.(int)
-	// monitor.ChecksValidator is a validator for the "checks" field. It is called by the builders before save.
-	monitor.ChecksValidator = monitorDescChecks.Validators[0].(func(int) error)
 	movieMixin := schema.Movie{}.Mixin()
 	movieMixinFields0 := movieMixin[0].Fields()
 	_ = movieMixinFields0
@@ -195,6 +150,63 @@ func init() {
 	settingDescKey := settingFields[0].Descriptor()
 	// setting.KeyValidator is a validator for the "key" field. It is called by the builders before save.
 	setting.KeyValidator = settingDescKey.Validators[0].(func(string) error)
+	subscriptionMixin := schema.Subscription{}.Mixin()
+	subscriptionMixinFields0 := subscriptionMixin[0].Fields()
+	_ = subscriptionMixinFields0
+	subscriptionFields := schema.Subscription{}.Fields()
+	_ = subscriptionFields
+	// subscriptionDescCreatedAt is the schema descriptor for created_at field.
+	subscriptionDescCreatedAt := subscriptionMixinFields0[0].Descriptor()
+	// subscription.DefaultCreatedAt holds the default value on creation for the created_at field.
+	subscription.DefaultCreatedAt = subscriptionDescCreatedAt.Default.(func() time.Time)
+	// subscriptionDescUpdatedAt is the schema descriptor for updated_at field.
+	subscriptionDescUpdatedAt := subscriptionMixinFields0[1].Descriptor()
+	// subscription.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	subscription.DefaultUpdatedAt = subscriptionDescUpdatedAt.Default.(func() time.Time)
+	// subscription.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	subscription.UpdateDefaultUpdatedAt = subscriptionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// subscriptionDescTargetID is the schema descriptor for target_id field.
+	subscriptionDescTargetID := subscriptionFields[1].Descriptor()
+	// subscription.TargetIDValidator is a validator for the "target_id" field. It is called by the builders before save.
+	subscription.TargetIDValidator = subscriptionDescTargetID.Validators[0].(func(string) error)
+	// subscriptionDescCode is the schema descriptor for code field.
+	subscriptionDescCode := subscriptionFields[2].Descriptor()
+	// subscription.DefaultCode holds the default value on creation for the code field.
+	subscription.DefaultCode = subscriptionDescCode.Default.(string)
+	// subscriptionDescTitle is the schema descriptor for title field.
+	subscriptionDescTitle := subscriptionFields[3].Descriptor()
+	// subscription.DefaultTitle holds the default value on creation for the title field.
+	subscription.DefaultTitle = subscriptionDescTitle.Default.(string)
+	// subscriptionDescCover is the schema descriptor for cover field.
+	subscriptionDescCover := subscriptionFields[4].Descriptor()
+	// subscription.DefaultCover holds the default value on creation for the cover field.
+	subscription.DefaultCover = subscriptionDescCover.Default.(string)
+	// subscriptionDescReleaseDate is the schema descriptor for release_date field.
+	subscriptionDescReleaseDate := subscriptionFields[5].Descriptor()
+	// subscription.DefaultReleaseDate holds the default value on creation for the release_date field.
+	subscription.DefaultReleaseDate = subscriptionDescReleaseDate.Default.(string)
+	// subscriptionDescAutoDownload is the schema descriptor for auto_download field.
+	subscriptionDescAutoDownload := subscriptionFields[7].Descriptor()
+	// subscription.DefaultAutoDownload holds the default value on creation for the auto_download field.
+	subscription.DefaultAutoDownload = subscriptionDescAutoDownload.Default.(bool)
+	// subscriptionDescZone is the schema descriptor for zone field.
+	subscriptionDescZone := subscriptionFields[8].Descriptor()
+	// subscription.DefaultZone holds the default value on creation for the zone field.
+	subscription.DefaultZone = subscriptionDescZone.Default.(string)
+	// subscriptionDescCursor is the schema descriptor for cursor field.
+	subscriptionDescCursor := subscriptionFields[10].Descriptor()
+	// subscription.DefaultCursor holds the default value on creation for the cursor field.
+	subscription.DefaultCursor = subscriptionDescCursor.Default.(string)
+	// subscriptionDescHash is the schema descriptor for hash field.
+	subscriptionDescHash := subscriptionFields[11].Descriptor()
+	// subscription.DefaultHash holds the default value on creation for the hash field.
+	subscription.DefaultHash = subscriptionDescHash.Default.(string)
+	// subscriptionDescChecks is the schema descriptor for checks field.
+	subscriptionDescChecks := subscriptionFields[15].Descriptor()
+	// subscription.DefaultChecks holds the default value on creation for the checks field.
+	subscription.DefaultChecks = subscriptionDescChecks.Default.(int)
+	// subscription.ChecksValidator is a validator for the "checks" field. It is called by the builders before save.
+	subscription.ChecksValidator = subscriptionDescChecks.Validators[0].(func(int) error)
 	tagMixin := schema.Tag{}.Mixin()
 	tagMixinFields0 := tagMixin[0].Fields()
 	_ = tagMixinFields0

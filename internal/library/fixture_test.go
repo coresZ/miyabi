@@ -240,7 +240,7 @@ func libraryFixture(t testing.TB) (*Service, tasks.TaskInfo, scan.Payload) {
 func panConcurrencyFixture(t *testing.T) (*Service, *panStub) {
 	t.Helper()
 	lib, _, _ := libraryFixture(t)
-	return lib, stubOf(t, lib.Drive())
+	return lib, stubOf(t, lib.drive)
 }
 
 func fixtureVideo(id, name string) scan.Video {

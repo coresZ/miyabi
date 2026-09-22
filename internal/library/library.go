@@ -97,22 +97,6 @@ func New(database *ent.Client, d *drive.Drive, tasks *tasks.Service, images *med
 	return svc
 }
 
-func (s *Service) Database() *ent.Client {
-	return s.database
-}
-
-func (s *Service) Drive() *drive.Drive {
-	return s.drive
-}
-
-func (s *Service) Tasks() *tasks.Service {
-	return s.tasks
-}
-
-func (s *Service) Images() *mediaimage.Cache {
-	return s.images
-}
-
 func (s *Service) StartScan(ctx context.Context) (tasks.TaskInfo, error) {
 	sess, err := s.drive.Open(ctx)
 	if err != nil {

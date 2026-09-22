@@ -215,3 +215,66 @@ func TestOfflineHistoryIndexesSurviveReopenAndSupportGrouping(t *testing.T) {
 		}
 	}
 }
+
+func TestMigrateMonitorsToSubscriptions(t *testing.T) {
+	directory := t.TempDir()
+	store, err := Open(t.Context(), directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if store != nil {
+			_ = store.Close()
+		}
+	})
+
+	// Simulate legacy monitors table
+	_, err = store.db.ExecContext(t.Context(), `
+		CREATE TABLE monitors (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			movie_id TEXT NOT NULL UNIQUE,
+			code TEXT NOT NULL,
+			title TEXT NOT NULL DEFAULT '',
+			cover TEXT NOT NULL DEFAULT '',
+			release_date TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'waiting',
+			hash TEXT NOT NULL DEFAULT '',
+			task_id INTEGER,
+			next_check_at DATETIME,
+			last_checked_at DATETIME,
+			checks INTEGER NOT NULL DEFAULT 0,
+			error TEXT
+		);
+		INSERT INTO monitors (id, created_at, updated_at, movie_id, code, title, status, checks)
+		VALUES (1, '2026-01-01 00:00:00', '2026-01-01 00:00:00', 'm-001', 'ABC-001', 'Test Movie', 'waiting', 2);
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := migrateSubscriptions(t.Context(), store.db); err != nil {
+		t.Fatal(err)
+	}
+
+	subs, err := store.Client.Subscription.Query().All(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 subscription, got %d", len(subs))
+	}
+	sub := subs[0]
+	if sub.ID != 1 || sub.TargetID != "m-001" || sub.Code != "ABC-001" || sub.Kind != "movie" || sub.Status != "waiting" || sub.Checks != 2 {
+		t.Fatalf("unexpected subscription content: %+v", sub)
+	}
+
+	// Verify monitors table was dropped
+	var count int
+	err = store.db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='monitors'").Scan(&count)
+	if err != nil || count != 0 {
+		t.Fatalf("monitors table should be dropped, count=%d, err=%v", count, err)
+	}
+}
+

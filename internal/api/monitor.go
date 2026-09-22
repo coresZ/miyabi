@@ -5,14 +5,14 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ppxb/miyabi/internal/service"
+	"github.com/ppxb/miyabi/internal/monitor"
 )
 
 type MonitorManager interface {
-	List(context.Context) ([]service.MonitorItem, error)
-	Add(context.Context, string) (service.MonitorItem, error)
+	List(context.Context) ([]monitor.Item, error)
+	Add(context.Context, string) (monitor.Item, error)
 	Remove(context.Context, string) error
-	Retry(context.Context, string) (service.MonitorItem, error)
+	Retry(context.Context, string) (monitor.Item, error)
 }
 
 type monitorInput struct {

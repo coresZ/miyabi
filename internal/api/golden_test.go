@@ -16,14 +16,16 @@ import (
 
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
-	"github.com/ppxb/miyabi/internal/ent/monitor"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/javdb"
 	"github.com/ppxb/miyabi/internal/library"
+	"github.com/ppxb/miyabi/internal/maintenance"
+	"github.com/ppxb/miyabi/internal/monitor"
 	"github.com/ppxb/miyabi/internal/offline"
 	"github.com/ppxb/miyabi/internal/pan"
+	"github.com/ppxb/miyabi/internal/playback"
 	"github.com/ppxb/miyabi/internal/service"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
@@ -188,10 +190,10 @@ type goldenMonitor struct {
 	MonitorManager
 }
 
-func (goldenMonitor) List(context.Context) ([]service.MonitorItem, error) {
+func (goldenMonitor) List(context.Context) ([]monitor.Item, error) {
 	taskID, failure, next := 9, "JavDB 暂不可用", goldenTime().Add(time.Hour)
 	last := goldenTime()
-	return []service.MonitorItem{
+	return []monitor.Item{
 		{ID: 2, MovieID: "movie-upcoming", Code: "SONE-002", Title: "Upcoming", Cover: "https://media.example/upcoming.jpg", ReleaseDate: "2026-10-01",
 			Status: monitor.StatusWaiting, NextCheckAt: &next, LastCheckedAt: &last, Checks: 3, Error: &failure, CreatedAt: goldenTime(), UpdatedAt: goldenTime()},
 		{ID: 1, MovieID: "movie-exact", Code: "ABP-123", Title: "Localized title", Cover: "https://media.example/cover.jpg", ReleaseDate: "2026-08-01",
@@ -215,15 +217,15 @@ type goldenPlay struct {
 	PlayManager
 }
 
-func (goldenPlay) Files(context.Context, int) (service.PlayFiles, error) {
-	return service.PlayFiles{Code: "ABP-123", Title: "Localized title",
+func (goldenPlay) Files(context.Context, int) (playback.PlayFiles, error) {
+	return playback.PlayFiles{Code: "ABP-123", Title: "Localized title",
 		Files:  []library.File{{ID: "101", Name: "ABP-123.mp4", Path: "/Movies/ABP-123/ABP-123.mp4", Size: 2 << 30}},
 		Source: library.WatchHistoryScope{AccountID: "100", DirectoryID: "10"},
 		Resume: &library.WatchResume{ID: 1, FileID: "101", Position: 61.5, Duration: 7200}}, nil
 }
 
-func (goldenPlay) Start(context.Context, string) (service.Playback, error) {
-	return service.Playback{ID: "session-1", Sources: []service.MediaSource{
+func (goldenPlay) Start(context.Context, string) (playback.Playback, error) {
+	return playback.Playback{ID: "session-1", Sources: []playback.MediaSource{
 		{Src: "/api/play/session-1/stream/0", Type: "application/x-mpegurl", Label: "原画 · 1080p"},
 		{Src: "/api/play/session-1/stream/1", Type: "application/x-mpegurl", Label: "720p"},
 	}}, nil
@@ -233,8 +235,8 @@ type goldenData struct {
 	DataManager
 }
 
-func (goldenData) Info(context.Context) (service.DataInfo, error) {
-	return service.DataInfo{DataDirectory: "/app/data", DatabaseSizeBytes: 4 << 20,
+func (goldenData) Info(context.Context) (maintenance.Info, error) {
+	return maintenance.Info{DataDirectory: "/app/data", DatabaseSizeBytes: 4 << 20,
 		Cache: mediaimage.CacheStats{SizeBytes: 3 << 20, EntryCount: 12, UnusedSizeBytes: 1 << 20, UnusedEntryCount: 2}}, nil
 }
 

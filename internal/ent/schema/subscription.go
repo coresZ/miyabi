@@ -6,32 +6,42 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// Monitor watches a JavDB movie without a magnet and submits the first
-// magnet to 115 once it appears.
-type Monitor struct {
+// Subscription tracks wanted movies or actors to automate library intake.
+type Subscription struct {
 	ent.Schema
 }
 
-func (Monitor) Mixin() []ent.Mixin {
+func (Subscription) Mixin() []ent.Mixin {
 	return []ent.Mixin{TimeMixin{}}
 }
 
-func (Monitor) Fields() []ent.Field {
+func (Subscription) Fields() []ent.Field {
 	return []ent.Field{
-		field.String("movie_id").
-			NotEmpty().
-			Unique(),
-		field.String("code").
+		field.Enum("kind").
+			Values("movie", "actor").
+			Default("movie"),
+		field.String("target_id").
 			NotEmpty(),
+		field.String("code").
+			Default(""),
 		field.String("title").
 			Default(""),
 		field.String("cover").
 			Default(""),
 		field.String("release_date").
 			Default(""),
+		field.Int("origin_id").
+			Optional().
+			Nillable(),
+		field.Bool("auto_download").
+			Default(true),
+		field.String("zone").
+			Default(""),
 		field.Enum("status").
-			Values("waiting", "added", "stale").
+			Values("waiting", "added", "stale", "active", "paused", "error").
 			Default("waiting"),
+		field.String("cursor").
+			Default(""),
 		field.String("hash").
 			Default(""),
 		field.Int("task_id").
@@ -52,8 +62,9 @@ func (Monitor) Fields() []ent.Field {
 	}
 }
 
-func (Monitor) Indexes() []ent.Index {
+func (Subscription) Indexes() []ent.Index {
 	return []ent.Index{
+		index.Fields("kind", "target_id").Unique(),
 		index.Fields("status", "next_check_at"),
 	}
 }

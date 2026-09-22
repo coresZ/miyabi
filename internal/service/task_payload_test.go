@@ -22,16 +22,16 @@ func taskPayloadJSON(t testing.TB, value any) json.RawMessage {
 }
 
 func TestTaskPayloadRoundTripKeepsMetadataAndIntegerPrecision(t *testing.T) {
-	library, _, payload := libraryFixture(t)
+	fix := libraryFixture(t)
 	input := scrape.CoverPayload{
-		MetadataPayload: scrape.MetadataPayload{Source: payload.Source, ScanTaskID: 9007199254740993, MovieID: 2, Code: "ABP-001"},
+		MetadataPayload: scrape.MetadataPayload{Source: fix.Payload.Source, ScanTaskID: 9007199254740993, MovieID: 2, Code: "ABP-001"},
 		Document: nfo.Movie{Code: "ABP-001", Title: "Fixture title", Rating: 4.5,
 			Tags: []nfo.Tag{{ID: "tag", Name: "标签", CategoryID: "category"}}},
 		Snapshot: &scrape.Snapshot{Videos: "fingerprint", Directories: []scrape.DirectorySnapshot{{ID: "10"}}},
 	}
 	encoded := taskPayloadJSON(t, input)
-	record := library.Database().Task.Create().SetType("cover").SetPayload(encoded).SaveX(t.Context())
-	loaded := library.Database().Task.GetX(t.Context(), record.ID)
+	record := fix.DB.Task.Create().SetType("cover").SetPayload(encoded).SaveX(t.Context())
+	loaded := fix.DB.Task.GetX(t.Context(), record.ID)
 	restored, err := tasks.DecodePayload[scrape.CoverPayload](loaded.Payload)
 	if err != nil || !reflect.DeepEqual(restored, input) {
 		t.Fatalf("task round trip changed metadata or IDs: %#v, %v", restored, err)
@@ -39,7 +39,7 @@ func TestTaskPayloadRoundTripKeepsMetadataAndIntegerPrecision(t *testing.T) {
 	if len(loaded.Payload) == 0 || loaded.Payload[0] != '{' {
 		t.Fatalf("task stored a JSON string instead of an object: %s", loaded.Payload)
 	}
-	if count := library.Database().Task.Query().Where(task.TypeEQ("cover")).CountX(t.Context()); count != 1 {
+	if count := fix.DB.Task.Query().Where(task.TypeEQ("cover")).CountX(t.Context()); count != 1 {
 		t.Fatalf("round trip changed task type: %d", count)
 	}
 }

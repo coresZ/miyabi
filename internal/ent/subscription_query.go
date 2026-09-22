@@ -11,68 +11,68 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/ppxb/miyabi/internal/ent/monitor"
 	"github.com/ppxb/miyabi/internal/ent/predicate"
+	"github.com/ppxb/miyabi/internal/ent/subscription"
 )
 
-// MonitorQuery is the builder for querying Monitor entities.
-type MonitorQuery struct {
+// SubscriptionQuery is the builder for querying Subscription entities.
+type SubscriptionQuery struct {
 	config
 	ctx        *QueryContext
-	order      []monitor.OrderOption
+	order      []subscription.OrderOption
 	inters     []Interceptor
-	predicates []predicate.Monitor
+	predicates []predicate.Subscription
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
 }
 
-// Where adds a new predicate for the MonitorQuery builder.
-func (_q *MonitorQuery) Where(ps ...predicate.Monitor) *MonitorQuery {
+// Where adds a new predicate for the SubscriptionQuery builder.
+func (_q *SubscriptionQuery) Where(ps ...predicate.Subscription) *SubscriptionQuery {
 	_q.predicates = append(_q.predicates, ps...)
 	return _q
 }
 
 // Limit the number of records to be returned by this query.
-func (_q *MonitorQuery) Limit(limit int) *MonitorQuery {
+func (_q *SubscriptionQuery) Limit(limit int) *SubscriptionQuery {
 	_q.ctx.Limit = &limit
 	return _q
 }
 
 // Offset to start from.
-func (_q *MonitorQuery) Offset(offset int) *MonitorQuery {
+func (_q *SubscriptionQuery) Offset(offset int) *SubscriptionQuery {
 	_q.ctx.Offset = &offset
 	return _q
 }
 
 // Unique configures the query builder to filter duplicate records on query.
 // By default, unique is set to true, and can be disabled using this method.
-func (_q *MonitorQuery) Unique(unique bool) *MonitorQuery {
+func (_q *SubscriptionQuery) Unique(unique bool) *SubscriptionQuery {
 	_q.ctx.Unique = &unique
 	return _q
 }
 
 // Order specifies how the records should be ordered.
-func (_q *MonitorQuery) Order(o ...monitor.OrderOption) *MonitorQuery {
+func (_q *SubscriptionQuery) Order(o ...subscription.OrderOption) *SubscriptionQuery {
 	_q.order = append(_q.order, o...)
 	return _q
 }
 
-// First returns the first Monitor entity from the query.
-// Returns a *NotFoundError when no Monitor was found.
-func (_q *MonitorQuery) First(ctx context.Context) (*Monitor, error) {
+// First returns the first Subscription entity from the query.
+// Returns a *NotFoundError when no Subscription was found.
+func (_q *SubscriptionQuery) First(ctx context.Context) (*Subscription, error) {
 	nodes, err := _q.Limit(1).All(setContextOp(ctx, _q.ctx, ent.OpQueryFirst))
 	if err != nil {
 		return nil, err
 	}
 	if len(nodes) == 0 {
-		return nil, &NotFoundError{monitor.Label}
+		return nil, &NotFoundError{subscription.Label}
 	}
 	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
-func (_q *MonitorQuery) FirstX(ctx context.Context) *Monitor {
+func (_q *SubscriptionQuery) FirstX(ctx context.Context) *Subscription {
 	node, err := _q.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -80,22 +80,22 @@ func (_q *MonitorQuery) FirstX(ctx context.Context) *Monitor {
 	return node
 }
 
-// FirstID returns the first Monitor ID from the query.
-// Returns a *NotFoundError when no Monitor ID was found.
-func (_q *MonitorQuery) FirstID(ctx context.Context) (id int, err error) {
+// FirstID returns the first Subscription ID from the query.
+// Returns a *NotFoundError when no Subscription ID was found.
+func (_q *SubscriptionQuery) FirstID(ctx context.Context) (id int, err error) {
 	var ids []int
 	if ids, err = _q.Limit(1).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryFirstID)); err != nil {
 		return
 	}
 	if len(ids) == 0 {
-		err = &NotFoundError{monitor.Label}
+		err = &NotFoundError{subscription.Label}
 		return
 	}
 	return ids[0], nil
 }
 
 // FirstIDX is like FirstID, but panics if an error occurs.
-func (_q *MonitorQuery) FirstIDX(ctx context.Context) int {
+func (_q *SubscriptionQuery) FirstIDX(ctx context.Context) int {
 	id, err := _q.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -103,10 +103,10 @@ func (_q *MonitorQuery) FirstIDX(ctx context.Context) int {
 	return id
 }
 
-// Only returns a single Monitor entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when more than one Monitor entity is found.
-// Returns a *NotFoundError when no Monitor entities are found.
-func (_q *MonitorQuery) Only(ctx context.Context) (*Monitor, error) {
+// Only returns a single Subscription entity found by the query, ensuring it only returns one.
+// Returns a *NotSingularError when more than one Subscription entity is found.
+// Returns a *NotFoundError when no Subscription entities are found.
+func (_q *SubscriptionQuery) Only(ctx context.Context) (*Subscription, error) {
 	nodes, err := _q.Limit(2).All(setContextOp(ctx, _q.ctx, ent.OpQueryOnly))
 	if err != nil {
 		return nil, err
@@ -115,14 +115,14 @@ func (_q *MonitorQuery) Only(ctx context.Context) (*Monitor, error) {
 	case 1:
 		return nodes[0], nil
 	case 0:
-		return nil, &NotFoundError{monitor.Label}
+		return nil, &NotFoundError{subscription.Label}
 	default:
-		return nil, &NotSingularError{monitor.Label}
+		return nil, &NotSingularError{subscription.Label}
 	}
 }
 
 // OnlyX is like Only, but panics if an error occurs.
-func (_q *MonitorQuery) OnlyX(ctx context.Context) *Monitor {
+func (_q *SubscriptionQuery) OnlyX(ctx context.Context) *Subscription {
 	node, err := _q.Only(ctx)
 	if err != nil {
 		panic(err)
@@ -130,10 +130,10 @@ func (_q *MonitorQuery) OnlyX(ctx context.Context) *Monitor {
 	return node
 }
 
-// OnlyID is like Only, but returns the only Monitor ID in the query.
-// Returns a *NotSingularError when more than one Monitor ID is found.
+// OnlyID is like Only, but returns the only Subscription ID in the query.
+// Returns a *NotSingularError when more than one Subscription ID is found.
 // Returns a *NotFoundError when no entities are found.
-func (_q *MonitorQuery) OnlyID(ctx context.Context) (id int, err error) {
+func (_q *SubscriptionQuery) OnlyID(ctx context.Context) (id int, err error) {
 	var ids []int
 	if ids, err = _q.Limit(2).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryOnlyID)); err != nil {
 		return
@@ -142,15 +142,15 @@ func (_q *MonitorQuery) OnlyID(ctx context.Context) (id int, err error) {
 	case 1:
 		id = ids[0]
 	case 0:
-		err = &NotFoundError{monitor.Label}
+		err = &NotFoundError{subscription.Label}
 	default:
-		err = &NotSingularError{monitor.Label}
+		err = &NotSingularError{subscription.Label}
 	}
 	return
 }
 
 // OnlyIDX is like OnlyID, but panics if an error occurs.
-func (_q *MonitorQuery) OnlyIDX(ctx context.Context) int {
+func (_q *SubscriptionQuery) OnlyIDX(ctx context.Context) int {
 	id, err := _q.OnlyID(ctx)
 	if err != nil {
 		panic(err)
@@ -158,18 +158,18 @@ func (_q *MonitorQuery) OnlyIDX(ctx context.Context) int {
 	return id
 }
 
-// All executes the query and returns a list of Monitors.
-func (_q *MonitorQuery) All(ctx context.Context) ([]*Monitor, error) {
+// All executes the query and returns a list of Subscriptions.
+func (_q *SubscriptionQuery) All(ctx context.Context) ([]*Subscription, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryAll)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return nil, err
 	}
-	qr := querierAll[[]*Monitor, *MonitorQuery]()
-	return withInterceptors[[]*Monitor](ctx, _q, qr, _q.inters)
+	qr := querierAll[[]*Subscription, *SubscriptionQuery]()
+	return withInterceptors[[]*Subscription](ctx, _q, qr, _q.inters)
 }
 
 // AllX is like All, but panics if an error occurs.
-func (_q *MonitorQuery) AllX(ctx context.Context) []*Monitor {
+func (_q *SubscriptionQuery) AllX(ctx context.Context) []*Subscription {
 	nodes, err := _q.All(ctx)
 	if err != nil {
 		panic(err)
@@ -177,20 +177,20 @@ func (_q *MonitorQuery) AllX(ctx context.Context) []*Monitor {
 	return nodes
 }
 
-// IDs executes the query and returns a list of Monitor IDs.
-func (_q *MonitorQuery) IDs(ctx context.Context) (ids []int, err error) {
+// IDs executes the query and returns a list of Subscription IDs.
+func (_q *SubscriptionQuery) IDs(ctx context.Context) (ids []int, err error) {
 	if _q.ctx.Unique == nil && _q.path != nil {
 		_q.Unique(true)
 	}
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryIDs)
-	if err = _q.Select(monitor.FieldID).Scan(ctx, &ids); err != nil {
+	if err = _q.Select(subscription.FieldID).Scan(ctx, &ids); err != nil {
 		return nil, err
 	}
 	return ids, nil
 }
 
 // IDsX is like IDs, but panics if an error occurs.
-func (_q *MonitorQuery) IDsX(ctx context.Context) []int {
+func (_q *SubscriptionQuery) IDsX(ctx context.Context) []int {
 	ids, err := _q.IDs(ctx)
 	if err != nil {
 		panic(err)
@@ -199,16 +199,16 @@ func (_q *MonitorQuery) IDsX(ctx context.Context) []int {
 }
 
 // Count returns the count of the given query.
-func (_q *MonitorQuery) Count(ctx context.Context) (int, error) {
+func (_q *SubscriptionQuery) Count(ctx context.Context) (int, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryCount)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return 0, err
 	}
-	return withInterceptors[int](ctx, _q, querierCount[*MonitorQuery](), _q.inters)
+	return withInterceptors[int](ctx, _q, querierCount[*SubscriptionQuery](), _q.inters)
 }
 
 // CountX is like Count, but panics if an error occurs.
-func (_q *MonitorQuery) CountX(ctx context.Context) int {
+func (_q *SubscriptionQuery) CountX(ctx context.Context) int {
 	count, err := _q.Count(ctx)
 	if err != nil {
 		panic(err)
@@ -217,7 +217,7 @@ func (_q *MonitorQuery) CountX(ctx context.Context) int {
 }
 
 // Exist returns true if the query has elements in the graph.
-func (_q *MonitorQuery) Exist(ctx context.Context) (bool, error) {
+func (_q *SubscriptionQuery) Exist(ctx context.Context) (bool, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryExist)
 	switch _, err := _q.FirstID(ctx); {
 	case IsNotFound(err):
@@ -230,7 +230,7 @@ func (_q *MonitorQuery) Exist(ctx context.Context) (bool, error) {
 }
 
 // ExistX is like Exist, but panics if an error occurs.
-func (_q *MonitorQuery) ExistX(ctx context.Context) bool {
+func (_q *SubscriptionQuery) ExistX(ctx context.Context) bool {
 	exist, err := _q.Exist(ctx)
 	if err != nil {
 		panic(err)
@@ -238,18 +238,18 @@ func (_q *MonitorQuery) ExistX(ctx context.Context) bool {
 	return exist
 }
 
-// Clone returns a duplicate of the MonitorQuery builder, including all associated steps. It can be
+// Clone returns a duplicate of the SubscriptionQuery builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
-func (_q *MonitorQuery) Clone() *MonitorQuery {
+func (_q *SubscriptionQuery) Clone() *SubscriptionQuery {
 	if _q == nil {
 		return nil
 	}
-	return &MonitorQuery{
+	return &SubscriptionQuery{
 		config:     _q.config,
 		ctx:        _q.ctx.Clone(),
-		order:      append([]monitor.OrderOption{}, _q.order...),
+		order:      append([]subscription.OrderOption{}, _q.order...),
 		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.Monitor{}, _q.predicates...),
+		predicates: append([]predicate.Subscription{}, _q.predicates...),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -266,15 +266,15 @@ func (_q *MonitorQuery) Clone() *MonitorQuery {
 //		Count int `json:"count,omitempty"`
 //	}
 //
-//	client.Monitor.Query().
-//		GroupBy(monitor.FieldCreatedAt).
+//	client.Subscription.Query().
+//		GroupBy(subscription.FieldCreatedAt).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
-func (_q *MonitorQuery) GroupBy(field string, fields ...string) *MonitorGroupBy {
+func (_q *SubscriptionQuery) GroupBy(field string, fields ...string) *SubscriptionGroupBy {
 	_q.ctx.Fields = append([]string{field}, fields...)
-	grbuild := &MonitorGroupBy{build: _q}
+	grbuild := &SubscriptionGroupBy{build: _q}
 	grbuild.flds = &_q.ctx.Fields
-	grbuild.label = monitor.Label
+	grbuild.label = subscription.Label
 	grbuild.scan = grbuild.Scan
 	return grbuild
 }
@@ -288,23 +288,23 @@ func (_q *MonitorQuery) GroupBy(field string, fields ...string) *MonitorGroupBy 
 //		CreatedAt time.Time `json:"created_at,omitempty"`
 //	}
 //
-//	client.Monitor.Query().
-//		Select(monitor.FieldCreatedAt).
+//	client.Subscription.Query().
+//		Select(subscription.FieldCreatedAt).
 //		Scan(ctx, &v)
-func (_q *MonitorQuery) Select(fields ...string) *MonitorSelect {
+func (_q *SubscriptionQuery) Select(fields ...string) *SubscriptionSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)
-	sbuild := &MonitorSelect{MonitorQuery: _q}
-	sbuild.label = monitor.Label
+	sbuild := &SubscriptionSelect{SubscriptionQuery: _q}
+	sbuild.label = subscription.Label
 	sbuild.flds, sbuild.scan = &_q.ctx.Fields, sbuild.Scan
 	return sbuild
 }
 
-// Aggregate returns a MonitorSelect configured with the given aggregations.
-func (_q *MonitorQuery) Aggregate(fns ...AggregateFunc) *MonitorSelect {
+// Aggregate returns a SubscriptionSelect configured with the given aggregations.
+func (_q *SubscriptionQuery) Aggregate(fns ...AggregateFunc) *SubscriptionSelect {
 	return _q.Select().Aggregate(fns...)
 }
 
-func (_q *MonitorQuery) prepareQuery(ctx context.Context) error {
+func (_q *SubscriptionQuery) prepareQuery(ctx context.Context) error {
 	for _, inter := range _q.inters {
 		if inter == nil {
 			return fmt.Errorf("ent: uninitialized interceptor (forgotten import ent/runtime?)")
@@ -316,7 +316,7 @@ func (_q *MonitorQuery) prepareQuery(ctx context.Context) error {
 		}
 	}
 	for _, f := range _q.ctx.Fields {
-		if !monitor.ValidColumn(f) {
+		if !subscription.ValidColumn(f) {
 			return &ValidationError{Name: f, err: fmt.Errorf("ent: invalid field %q for query", f)}
 		}
 	}
@@ -330,16 +330,16 @@ func (_q *MonitorQuery) prepareQuery(ctx context.Context) error {
 	return nil
 }
 
-func (_q *MonitorQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Monitor, error) {
+func (_q *SubscriptionQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Subscription, error) {
 	var (
-		nodes = []*Monitor{}
+		nodes = []*Subscription{}
 		_spec = _q.querySpec()
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
-		return (*Monitor).scanValues(nil, columns)
+		return (*Subscription).scanValues(nil, columns)
 	}
 	_spec.Assign = func(columns []string, values []any) error {
-		node := &Monitor{config: _q.config}
+		node := &Subscription{config: _q.config}
 		nodes = append(nodes, node)
 		return node.assignValues(columns, values)
 	}
@@ -355,7 +355,7 @@ func (_q *MonitorQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Moni
 	return nodes, nil
 }
 
-func (_q *MonitorQuery) sqlCount(ctx context.Context) (int, error) {
+func (_q *SubscriptionQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
 	_spec.Node.Columns = _q.ctx.Fields
 	if len(_q.ctx.Fields) > 0 {
@@ -364,8 +364,8 @@ func (_q *MonitorQuery) sqlCount(ctx context.Context) (int, error) {
 	return sqlgraph.CountNodes(ctx, _q.driver, _spec)
 }
 
-func (_q *MonitorQuery) querySpec() *sqlgraph.QuerySpec {
-	_spec := sqlgraph.NewQuerySpec(monitor.Table, monitor.Columns, sqlgraph.NewFieldSpec(monitor.FieldID, field.TypeInt))
+func (_q *SubscriptionQuery) querySpec() *sqlgraph.QuerySpec {
+	_spec := sqlgraph.NewQuerySpec(subscription.Table, subscription.Columns, sqlgraph.NewFieldSpec(subscription.FieldID, field.TypeInt))
 	_spec.From = _q.sql
 	if unique := _q.ctx.Unique; unique != nil {
 		_spec.Unique = *unique
@@ -374,9 +374,9 @@ func (_q *MonitorQuery) querySpec() *sqlgraph.QuerySpec {
 	}
 	if fields := _q.ctx.Fields; len(fields) > 0 {
 		_spec.Node.Columns = make([]string, 0, len(fields))
-		_spec.Node.Columns = append(_spec.Node.Columns, monitor.FieldID)
+		_spec.Node.Columns = append(_spec.Node.Columns, subscription.FieldID)
 		for i := range fields {
-			if fields[i] != monitor.FieldID {
+			if fields[i] != subscription.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
 		}
@@ -404,12 +404,12 @@ func (_q *MonitorQuery) querySpec() *sqlgraph.QuerySpec {
 	return _spec
 }
 
-func (_q *MonitorQuery) sqlQuery(ctx context.Context) *sql.Selector {
+func (_q *SubscriptionQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(_q.driver.Dialect())
-	t1 := builder.Table(monitor.Table)
+	t1 := builder.Table(subscription.Table)
 	columns := _q.ctx.Fields
 	if len(columns) == 0 {
-		columns = monitor.Columns
+		columns = subscription.Columns
 	}
 	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if _q.sql != nil {
@@ -436,28 +436,28 @@ func (_q *MonitorQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	return selector
 }
 
-// MonitorGroupBy is the group-by builder for Monitor entities.
-type MonitorGroupBy struct {
+// SubscriptionGroupBy is the group-by builder for Subscription entities.
+type SubscriptionGroupBy struct {
 	selector
-	build *MonitorQuery
+	build *SubscriptionQuery
 }
 
 // Aggregate adds the given aggregation functions to the group-by query.
-func (_g *MonitorGroupBy) Aggregate(fns ...AggregateFunc) *MonitorGroupBy {
+func (_g *SubscriptionGroupBy) Aggregate(fns ...AggregateFunc) *SubscriptionGroupBy {
 	_g.fns = append(_g.fns, fns...)
 	return _g
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_g *MonitorGroupBy) Scan(ctx context.Context, v any) error {
+func (_g *SubscriptionGroupBy) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _g.build.ctx, ent.OpQueryGroupBy)
 	if err := _g.build.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*MonitorQuery, *MonitorGroupBy](ctx, _g.build, _g, _g.build.inters, v)
+	return scanWithInterceptors[*SubscriptionQuery, *SubscriptionGroupBy](ctx, _g.build, _g, _g.build.inters, v)
 }
 
-func (_g *MonitorGroupBy) sqlScan(ctx context.Context, root *MonitorQuery, v any) error {
+func (_g *SubscriptionGroupBy) sqlScan(ctx context.Context, root *SubscriptionQuery, v any) error {
 	selector := root.sqlQuery(ctx).Select()
 	aggregation := make([]string, 0, len(_g.fns))
 	for _, fn := range _g.fns {
@@ -484,28 +484,28 @@ func (_g *MonitorGroupBy) sqlScan(ctx context.Context, root *MonitorQuery, v any
 	return sql.ScanSlice(rows, v)
 }
 
-// MonitorSelect is the builder for selecting fields of Monitor entities.
-type MonitorSelect struct {
-	*MonitorQuery
+// SubscriptionSelect is the builder for selecting fields of Subscription entities.
+type SubscriptionSelect struct {
+	*SubscriptionQuery
 	selector
 }
 
 // Aggregate adds the given aggregation functions to the selector query.
-func (_s *MonitorSelect) Aggregate(fns ...AggregateFunc) *MonitorSelect {
+func (_s *SubscriptionSelect) Aggregate(fns ...AggregateFunc) *SubscriptionSelect {
 	_s.fns = append(_s.fns, fns...)
 	return _s
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_s *MonitorSelect) Scan(ctx context.Context, v any) error {
+func (_s *SubscriptionSelect) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _s.ctx, ent.OpQuerySelect)
 	if err := _s.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*MonitorQuery, *MonitorSelect](ctx, _s.MonitorQuery, _s, _s.inters, v)
+	return scanWithInterceptors[*SubscriptionQuery, *SubscriptionSelect](ctx, _s.SubscriptionQuery, _s, _s.inters, v)
 }
 
-func (_s *MonitorSelect) sqlScan(ctx context.Context, root *MonitorQuery, v any) error {
+func (_s *SubscriptionSelect) sqlScan(ctx context.Context, root *SubscriptionQuery, v any) error {
 	selector := root.sqlQuery(ctx)
 	aggregation := make([]string, 0, len(_s.fns))
 	for _, fn := range _s.fns {

@@ -1,4 +1,4 @@
-package service
+package maintenance
 
 import (
 	"context"
@@ -19,81 +19,84 @@ import (
 
 var ErrCacheBusy = domain.E(domain.KindBusy, "封面正在处理或缓存正在清理，请稍后重试", nil)
 
-type DataInfo struct {
+type Info struct {
 	DataDirectory     string                `json:"data_directory"`
 	DatabaseSizeBytes int64                 `json:"database_size_bytes"`
 	Cache             mediaimage.CacheStats `json:"cache"`
 }
 
-type DataService struct {
+// DataInfo is kept as an alias for compatibility.
+type DataInfo = Info
+
+type Service struct {
 	directory string
 	db        *ent.Client
 	images    *mediaimage.Cache
 	scrape    *scrape.Service
 }
 
-func NewDataService(directory string, db *ent.Client, images *mediaimage.Cache, scrapeSvc *scrape.Service) (*DataService, error) {
+func New(directory string, db *ent.Client, images *mediaimage.Cache, scrapeSvc *scrape.Service) (*Service, error) {
 	absolute, err := filepath.Abs(directory)
 	if err != nil {
 		return nil, fmt.Errorf("resolve data directory: %w", err)
 	}
-	return &DataService{directory: absolute, db: db, images: images, scrape: scrapeSvc}, nil
+	return &Service{directory: absolute, db: db, images: images, scrape: scrapeSvc}, nil
 }
 
-func (service *DataService) Info(ctx context.Context) (DataInfo, error) {
+func (service *Service) Info(ctx context.Context) (Info, error) {
 	retained, err := service.retainedArtwork(ctx)
 	if err != nil {
-		return DataInfo{}, err
+		return Info{}, err
 	}
 	return service.info(ctx, retained)
 }
 
-func (service *DataService) ClearCache(ctx context.Context) (DataInfo, error) {
+func (service *Service) ClearCache(ctx context.Context) (Info, error) {
 	if err := ctx.Err(); err != nil {
-		return DataInfo{}, err
+		return Info{}, err
 	}
 	if !service.scrape.TryLockArtwork() {
-		return DataInfo{}, ErrCacheBusy
+		return Info{}, ErrCacheBusy
 	}
 	defer service.scrape.UnlockArtwork()
 
 	retained, err := service.retainedArtwork(ctx)
 	if err != nil {
-		return DataInfo{}, err
+		return Info{}, err
 	}
 	if err := service.images.Prune(ctx, retained); err != nil {
-		return DataInfo{}, err
+		return Info{}, err
 	}
 	return service.info(ctx, retained)
 }
 
-func (service *DataService) info(ctx context.Context, retained map[string]bool) (DataInfo, error) {
-	result := DataInfo{DataDirectory: service.directory}
+func (service *Service) info(ctx context.Context, retained map[string]bool) (Info, error) {
+	result := Info{DataDirectory: service.directory}
 	var err error
 	result.Cache, err = service.images.Stats(ctx, retained)
 	if err != nil {
-		return DataInfo{}, err
+		return Info{}, err
 	}
 	for _, suffix := range []string{"", "-wal", "-shm"} {
 		if err := ctx.Err(); err != nil {
-			return DataInfo{}, err
+			return Info{}, err
 		}
 		info, err := os.Stat(filepath.Join(service.directory, "miyabi.db"+suffix))
 		if suffix != "" && os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
-			return DataInfo{}, fmt.Errorf("read database size: %w", err)
+			return Info{}, fmt.Errorf("read database size: %w", err)
 		}
 		if !info.Mode().IsRegular() {
-			return DataInfo{}, errors.New("database path is not a regular file")
+			return Info{}, errors.New("database path is not a regular file")
 		}
 		result.DatabaseSizeBytes += info.Size()
 	}
 	return result, nil
 }
 
-func (service *DataService) retainedArtwork(ctx context.Context) (map[string]bool, error) {
+func (service *Service) retainedArtwork(ctx context.Context) (map[string]bool, error) {
 	// Include every account and directory, including films temporarily without
 	// indexed files. Switching the active library must not make their covers disposable.
 	records, err := service.db.Movie.Query().

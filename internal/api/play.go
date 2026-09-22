@@ -6,12 +6,12 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ppxb/miyabi/internal/service"
+	"github.com/ppxb/miyabi/internal/playback"
 )
 
 type PlayManager interface {
-	Files(context.Context, int) (service.PlayFiles, error)
-	Start(context.Context, string) (service.Playback, error)
+	Files(context.Context, int) (playback.PlayFiles, error)
+	Start(context.Context, string) (playback.Playback, error)
 	Stream(context.Context, string, int, string, http.Header) (*http.Response, error)
 	Release(string)
 }

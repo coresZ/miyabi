@@ -1,4 +1,4 @@
-package service
+package playback
 
 import (
 	"bufio"
@@ -7,15 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/ppxb/miyabi/internal/domain"
 )
-
-const maxPlaylistSize = 2 << 20
 
 type playBody struct {
 	io.Reader
@@ -28,7 +24,7 @@ func (body *playBody) Close() error {
 	return body.Closer.Close()
 }
 
-func (service *PlayService) Stream(ctx context.Context, id string, index int, method string, headers http.Header) (*http.Response, error) {
+func (service *Service) Stream(ctx context.Context, id string, index int, method string, headers http.Header) (*http.Response, error) {
 	session, resource, err := service.resource(id, index)
 	if err != nil {
 		return nil, err
@@ -110,55 +106,4 @@ func (service *PlayService) Stream(ctx context.Context, id string, index int, me
 		response.Header.Del(name)
 	}
 	return response, nil
-}
-
-var playlistURI = regexp.MustCompile(`([:,])URI="([^"]*)"`)
-
-// Rewrites URI lines and URI attributes, preserving HLS tags and byte-range metadata.
-func rewritePlaylist(body []byte, base *url.URL, register func(*url.URL, bool) (string, error)) (string, error) {
-	rewrite := func(value string, playlist bool) (string, error) {
-		reference, err := url.Parse(value)
-		if err != nil {
-			return "", fmt.Errorf("115 playlist contains an invalid URI")
-		}
-		return register(base.ResolveReference(reference), playlist)
-	}
-	lines := strings.Split(string(body), "\n")
-	nextPlaylist := false
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		if !strings.HasPrefix(trimmed, "#") {
-			local, err := rewrite(trimmed, nextPlaylist)
-			if err != nil {
-				return "", err
-			}
-			lines[i] = local
-			nextPlaylist = false
-			continue
-		}
-		if strings.HasPrefix(trimmed, "#EXT-X-STREAM-INF:") {
-			nextPlaylist = true
-		}
-		playlist := strings.HasPrefix(trimmed, "#EXT-X-MEDIA:") ||
-			strings.HasPrefix(trimmed, "#EXT-X-I-FRAME-STREAM-INF:") ||
-			strings.HasPrefix(trimmed, "#EXT-X-IMAGE-STREAM-INF:") ||
-			strings.HasPrefix(trimmed, "#EXT-X-RENDITION-REPORT:")
-		var rewriteError error
-		lines[i] = playlistURI.ReplaceAllStringFunc(line, func(attribute string) string {
-			match := playlistURI.FindStringSubmatch(attribute)
-			local, err := rewrite(match[2], playlist)
-			if err != nil {
-				rewriteError = err
-				return ""
-			}
-			return match[1] + `URI="` + local + `"`
-		})
-		if rewriteError != nil {
-			return "", rewriteError
-		}
-	}
-	return strings.Join(lines, "\n"), nil
 }

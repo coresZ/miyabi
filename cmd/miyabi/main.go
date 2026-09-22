@@ -22,10 +22,12 @@ import (
 	"github.com/ppxb/miyabi/internal/library"
 	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/logging"
+	"github.com/ppxb/miyabi/internal/maintenance"
+	"github.com/ppxb/miyabi/internal/monitor"
 	"github.com/ppxb/miyabi/internal/offline"
+	"github.com/ppxb/miyabi/internal/playback"
 	"github.com/ppxb/miyabi/internal/service"
 	"github.com/ppxb/miyabi/internal/tasks"
-	"github.com/ppxb/miyabi/internal/worker"
 )
 
 func main() {
@@ -81,11 +83,11 @@ func run(args []string) error {
 	}
 	library := library.New(store.Client, driveSvc, taskSvc, images)
 	offline := offline.New(store.Client, discover, driveSvc, taskSvc, library)
-	monitors := service.NewMonitorService(store.Client, discover, offline, taskSvc)
-	play := service.NewPlayService(library, driveSvc)
+	monitors := monitor.New(store.Client, discover, offline, taskSvc)
+	play := playback.New(store.Client, driveSvc)
 	defer play.Close()
 	scrapeSvc := scrape.New(store.Client, driveSvc, discover, images, taskSvc)
-	data, err := service.NewDataService(cfg.DataDir, store.Client, images, scrapeSvc)
+	data, err := maintenance.New(cfg.DataDir, store.Client, images, scrapeSvc)
 	if err != nil {
 		return fmt.Errorf("initialize data service: %w", err)
 	}
@@ -134,7 +136,7 @@ func run(args []string) error {
 	}()
 	go func() {
 		defer close(monitorDone)
-		worker.RunMonitor(ctx, monitors, logger)
+		tasks.RunPeriodic(ctx, logger, "monitor", 5*time.Minute, monitors.Pending(), monitors.Check)
 	}()
 	defer func() {
 		stop()

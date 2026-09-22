@@ -11,22 +11,22 @@ import (
 	"testing"
 
 	mediaimage "github.com/ppxb/miyabi/internal/image"
-	"github.com/ppxb/miyabi/internal/service"
+	"github.com/ppxb/miyabi/internal/maintenance"
 )
 
 type dataStub struct {
-	info    service.DataInfo
+	info    maintenance.Info
 	err     error
 	reads   int
 	cleared int
 }
 
-func (stub *dataStub) Info(context.Context) (service.DataInfo, error) {
+func (stub *dataStub) Info(context.Context) (maintenance.Info, error) {
 	stub.reads++
 	return stub.info, stub.err
 }
 
-func (stub *dataStub) ClearCache(context.Context) (service.DataInfo, error) {
+func (stub *dataStub) ClearCache(context.Context) (maintenance.Info, error) {
 	stub.cleared++
 	return stub.info, stub.err
 }
@@ -41,12 +41,12 @@ func TestDataEndpointsReturnUncachedStatsAndCleanupErrors(t *testing.T) {
 	}{
 		{name: "statistics", method: http.MethodGet, path: "/api/settings/system", status: http.StatusOK},
 		{name: "cleanup", method: http.MethodDelete, path: "/api/settings/cache", status: http.StatusOK},
-		{name: "busy", method: http.MethodDelete, path: "/api/settings/cache", err: service.ErrCacheBusy, status: http.StatusConflict},
+		{name: "busy", method: http.MethodDelete, path: "/api/settings/cache", err: maintenance.ErrCacheBusy, status: http.StatusConflict},
 		{name: "cleanup failure", method: http.MethodDelete, path: "/api/settings/cache", err: errors.New("cleanup failed"), status: http.StatusInternalServerError},
 		{name: "statistics failure", method: http.MethodGet, path: "/api/settings/system", err: errors.New("statistics failed"), status: http.StatusInternalServerError},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			stub := &dataStub{err: scenario.err, info: service.DataInfo{
+			stub := &dataStub{err: scenario.err, info: maintenance.Info{
 				DataDirectory: "/app/data", DatabaseSizeBytes: 1024,
 				Cache: mediaimage.CacheStats{SizeBytes: 4096, EntryCount: 2},
 			}}
@@ -68,7 +68,7 @@ func TestDataEndpointsReturnUncachedStatsAndCleanupErrors(t *testing.T) {
 					t.Fatalf("error response=%s %v", response.Body, err)
 				}
 			} else {
-				var info service.DataInfo
+				var info maintenance.Info
 				if err := json.Unmarshal(response.Body.Bytes(), &info); err != nil || info != stub.info {
 					t.Fatalf("data response=%s %v", response.Body, err)
 				}

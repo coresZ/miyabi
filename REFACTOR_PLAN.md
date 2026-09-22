@@ -197,9 +197,9 @@ B4 与原计划的偏差与遗留（后续里程碑处理）：
 4. `viewed_movie` 同批 upsert 共用一个 `now`，Windows 时钟粒度下相邻两次调用可撞同一时间戳，`TestViewedMovies_CRUDAndOrdering` 间歇失败（约 1/5）。修法：upsert 时取 `max(now, 表内最大 viewed_at + 1µs)`。**下一个提交先修。**
 5. `scan.Scan(ctx, job, drive, db, images, tasks)` 六参数入口；`library.Service` 已持有全部依赖，B8 前改为 `scan.New(deps).Run(ctx, job)`。
 
-**B5 `offline`**（现 `service/offline.go` 712 行 + `offline_operations.go`）拆为 `add.go`（入口与锁）、`submit.go`（115 去重启发式）、`sync.go`（轮询与状态转换 `updateTask / markMissing / completeTask`）、`projection.go`（phase 计算）、`locks.go`。`offline.go:693` 对 `scan.Payload` 的直接构造改为调用 `library.EnqueueTargetedScan(...)`。`worker/offline.go` 并入 `tasks.RunPeriodic`。
+**B5 `offline`（已完成，2026-09-22，提交 `3408cfc`）**：拆为 `add.go`（入口与锁）、`submit.go`（115 去重启发式）、`sync.go`（轮询与状态转换 `updateTask / markMissing / completeTask`）、`projection.go`（phase 计算）、`locks.go`。`offline.go:693` 对 `scan.Payload` 的直接构造改为调用 `library.EnqueueTargetedScan(...)`。`worker/offline.go` 并入 `tasks.RunPeriodic`。
 
-**B6 `monitor`、`playback`、`maintenance`**：基本原样迁移；`play.go/play_stream.go` 拆为 `session.go / files.go / proxy.go / playlist.go`，自持 ent 客户端，不再经 `library.Database()`；`monitor` 表更名 `subscription` 与字段扩展在此一并做（见 4.5）；`worker/monitor.go` 并入 `tasks.RunPeriodic`。
+**B6 `monitor`、`playback`、`maintenance`（已完成，2026-09-22）**：`playback` 拆为 `service.go / session.go / files.go / proxy.go / playlist.go`，自持 ent 客户端，不再经 `library.Database()`；`maintenance` 抽出自持数据目录；`monitor` 表兼容更名为 `subscription` 并扩展字段（见 4.5），自动迁移旧表数据；`library.Service` 四个依赖 getter 删除；`worker/monitor.go` 并入 `tasks.RunPeriodic`，`internal/worker` 目录彻底删除。
 
 **B7 `catalogue`**：`discover.go、discover_cache.go、discover_tags.go、movie_state.go` 迁入。`MovieStates` 所需本地库状态通过 `catalogue.LocalState` 接口由 `library` 实现注入（现 `SourceProvider` 扩展）。`DiscoverService.javdb` 改为 `catalogue.Provider` 接口，JavDB 是唯一实现；`Facets()` 暴露 zones、排序、分类槽位供前端后续数据驱动（本轮前端不接）。
 
@@ -227,8 +227,8 @@ B4 与原计划的偏差与遗留（后续里程碑处理）：
 | `javdb/client.go:41` 字段 `selectRoute` 与包级函数同名 | 字段改名 `selector` | ⏳ |
 | `pan/play.go` 基础设施层中文文案 | 改为 `domain.E` 由上层赋文案 | ⏳ |
 | `pan/file.go` `Count/Size` 未用 `json.Number` | 与同结构其它字段一致 | ⏳ |
-| `worker/offline.go`、`worker/monitor.go` 两个相同的 ticker 循环 | 合并为 `tasks.RunPeriodic(name, interval, wake, fn)` | ⏳ B5/B6 |
-| `library.Service` 四个依赖 getter | 随 B6 删除 | ⏳ B6 |
+| `worker/offline.go`、`worker/monitor.go` 两个相同的 ticker 循环 | 合并为 `tasks.RunPeriodic(name, interval, wake, fn)` | ✅ B5/B6 |
+| `library.Service` 四个依赖 getter | 随 B6 删除 | ✅ B6 |
 | `internal/ent/enttest` 生成但未使用 | 保留（生成物） | — |
 | 前端 `api/library.ts`、`api/offline.ts`、`api/watch-history.ts` 反向 import features | toast 移到调用方；`watchSessions` 移入 `features/player` | ⏳ 3.9 |
 
@@ -459,7 +459,7 @@ func (a *Aggregator) Find(ctx, ref domain.MovieRef) ([]domain.Magnet, error)
 | M1 | 全局代理 | 工作线 A | ✅ 2026-09-20 | 无 |
 | M2 | 模型与错误 | B1 | ✅ 2026-09-21 | M0 |
 | M3 | 任务与会话 | B2、B3 | ✅ 2026-09-21 | M2 |
-| M4 | 业务包迁移 | B4 ✅ 2026-09-21；B5 → B8 待做 | 进行中 | M3 |
+| M4 | 业务包迁移 | B4 ✅ 2026-09-21；B5、B6 ✅ 2026-09-22；B7、B8 待做 | 进行中 | M3 |
 | M5 | API 与配置收口 | B9、3.8 后端清单 | 待做，约 4 天 | M4 |
 | M6 | 磁力聚合 | 工作线 C | 待做，1 到 1.5 周 | M1、M2 |
 | M7 | JavDB 接口补齐 | 工作线 D | 待做，3 到 5 天 | M2 |

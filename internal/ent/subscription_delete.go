@@ -8,30 +8,30 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/ppxb/miyabi/internal/ent/monitor"
 	"github.com/ppxb/miyabi/internal/ent/predicate"
+	"github.com/ppxb/miyabi/internal/ent/subscription"
 )
 
-// MonitorDelete is the builder for deleting a Monitor entity.
-type MonitorDelete struct {
+// SubscriptionDelete is the builder for deleting a Subscription entity.
+type SubscriptionDelete struct {
 	config
 	hooks    []Hook
-	mutation *MonitorMutation
+	mutation *SubscriptionMutation
 }
 
-// Where appends a list predicates to the MonitorDelete builder.
-func (_d *MonitorDelete) Where(ps ...predicate.Monitor) *MonitorDelete {
+// Where appends a list predicates to the SubscriptionDelete builder.
+func (_d *SubscriptionDelete) Where(ps ...predicate.Subscription) *SubscriptionDelete {
 	_d.mutation.Where(ps...)
 	return _d
 }
 
 // Exec executes the deletion query and returns how many vertices were deleted.
-func (_d *MonitorDelete) Exec(ctx context.Context) (int, error) {
+func (_d *SubscriptionDelete) Exec(ctx context.Context) (int, error) {
 	return withHooks(ctx, _d.sqlExec, _d.mutation, _d.hooks)
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *MonitorDelete) ExecX(ctx context.Context) int {
+func (_d *SubscriptionDelete) ExecX(ctx context.Context) int {
 	n, err := _d.Exec(ctx)
 	if err != nil {
 		panic(err)
@@ -39,8 +39,8 @@ func (_d *MonitorDelete) ExecX(ctx context.Context) int {
 	return n
 }
 
-func (_d *MonitorDelete) sqlExec(ctx context.Context) (int, error) {
-	_spec := sqlgraph.NewDeleteSpec(monitor.Table, sqlgraph.NewFieldSpec(monitor.FieldID, field.TypeInt))
+func (_d *SubscriptionDelete) sqlExec(ctx context.Context) (int, error) {
+	_spec := sqlgraph.NewDeleteSpec(subscription.Table, sqlgraph.NewFieldSpec(subscription.FieldID, field.TypeInt))
 	if ps := _d.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
@@ -56,32 +56,32 @@ func (_d *MonitorDelete) sqlExec(ctx context.Context) (int, error) {
 	return affected, err
 }
 
-// MonitorDeleteOne is the builder for deleting a single Monitor entity.
-type MonitorDeleteOne struct {
-	_d *MonitorDelete
+// SubscriptionDeleteOne is the builder for deleting a single Subscription entity.
+type SubscriptionDeleteOne struct {
+	_d *SubscriptionDelete
 }
 
-// Where appends a list predicates to the MonitorDelete builder.
-func (_d *MonitorDeleteOne) Where(ps ...predicate.Monitor) *MonitorDeleteOne {
+// Where appends a list predicates to the SubscriptionDelete builder.
+func (_d *SubscriptionDeleteOne) Where(ps ...predicate.Subscription) *SubscriptionDeleteOne {
 	_d._d.mutation.Where(ps...)
 	return _d
 }
 
 // Exec executes the deletion query.
-func (_d *MonitorDeleteOne) Exec(ctx context.Context) error {
+func (_d *SubscriptionDeleteOne) Exec(ctx context.Context) error {
 	n, err := _d._d.Exec(ctx)
 	switch {
 	case err != nil:
 		return err
 	case n == 0:
-		return &NotFoundError{monitor.Label}
+		return &NotFoundError{subscription.Label}
 	default:
 		return nil
 	}
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *MonitorDeleteOne) ExecX(ctx context.Context) {
+func (_d *SubscriptionDeleteOne) ExecX(ctx context.Context) {
 	if err := _d.Exec(ctx); err != nil {
 		panic(err)
 	}

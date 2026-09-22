@@ -1,4 +1,4 @@
-package service
+package playback
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 
 func TestPanDatabaseCommitDoesNotBlockPlaybackOrCanceledWaiters(t *testing.T) {
 	play, source := playFixture(t)
-	drive := play.drive
-	playback, err := play.createSession(source, authorizationVersion(t, drive), []pan.PlaySource{{URL: "https://cdn.example/video", Height: 1080}})
+	d := play.drive
+	playback, err := play.createSession(source, authorizationVersion(t, d), []pan.PlaySource{{URL: "https://cdn.example/video", Height: 1080}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,7 +20,7 @@ func TestPanDatabaseCommitDoesNotBlockPlaybackOrCanceledWaiters(t *testing.T) {
 	hold, release := panTestGate(t)
 	committed := make(chan error, 1)
 	go func() {
-		sess, err := drive.OpenSource(t.Context(), source)
+		sess, err := d.OpenSource(t.Context(), source)
 		if err != nil {
 			committed <- err
 			return
@@ -43,7 +43,7 @@ func TestPanDatabaseCommitDoesNotBlockPlaybackOrCanceledWaiters(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	changed := make(chan error, 1)
-	go func() { changed <- drive.ClearDirectory(ctx) }()
+	go func() { changed <- d.ClearDirectory(ctx) }()
 	cancel()
 	if err := awaitPan(t, changed); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled commit waiter = %v", err)

@@ -1,10 +1,12 @@
-package service
+package maintenance
 
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
-	"github.com/ppxb/miyabi/internal/tasks"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -13,12 +15,15 @@ import (
 	"testing"
 
 	"github.com/ppxb/miyabi/internal/database"
+	"github.com/ppxb/miyabi/internal/ent"
+	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/library/scrape"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
 
-func dataFixture(t *testing.T) *DataService {
+func dataFixture(t *testing.T) *Service {
 	t.Helper()
 	directory := t.TempDir()
 	store, err := database.Open(t.Context(), directory)
@@ -31,14 +36,14 @@ func dataFixture(t *testing.T) *DataService {
 		t.Fatal(err)
 	}
 	scrapeSvc := scrape.New(store.Client, nil, nil, images, nil)
-	service, err := NewDataService(directory, store.Client, images, scrapeSvc)
+	service, err := New(directory, store.Client, images, scrapeSvc)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return service
 }
 
-func dataArtwork(t *testing.T, service *DataService, seed uint8) mediaimage.Artwork {
+func dataArtwork(t *testing.T, service *Service, seed uint8) mediaimage.Artwork {
 	t.Helper()
 	cover := image.NewRGBA(image.Rect(0, 0, 48, 32))
 	for y := range 32 {
@@ -61,6 +66,30 @@ func artworkURLs(artwork mediaimage.Artwork) []string {
 	return []string{artwork.Poster, artwork.Fanart, artwork.Thumbnail}
 }
 
+func saveTestSetting(ctx context.Context, db *ent.Client, key string, value any) error {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("encode setting %s: %w", key, err)
+	}
+	return db.Setting.Create().SetKey(key).SetValue(jsontext.Value(encoded)).
+		OnConflictColumns(setting.FieldKey).UpdateNewValues().Exec(ctx)
+}
+
+func loadTestSetting[T any](ctx context.Context, db *ent.Client, key string) (T, bool, error) {
+	var value T
+	record, err := db.Setting.Query().Where(setting.Key(key)).Only(ctx)
+	if ent.IsNotFound(err) {
+		return value, false, nil
+	}
+	if err != nil {
+		return value, false, err
+	}
+	if err := json.Unmarshal(record.Value, &value); err != nil {
+		return value, false, err
+	}
+	return value, true, nil
+}
+
 func TestDataCleanupPreservesAllLibraryAndUnfinishedTaskReferences(t *testing.T) {
 	service := dataFixture(t)
 	ctx := t.Context()
@@ -77,7 +106,7 @@ func TestDataCleanupPreservesAllLibraryAndUnfinishedTaskReferences(t *testing.T)
 		SetAccountID("other-account").SetRootID("other-directory").SetMovie(other).SaveX(ctx)
 	history := db.WatchHistory.Create().SetAccountID("account").SetRootID("directory").SetMovie(film).
 		SetSessionID("session").SetPosition(120).SetDuration(600).SaveX(ctx)
-	if err := saveSetting(ctx, db, "preserved.setting", "unchanged"); err != nil {
+	if err := saveTestSetting(ctx, db, "preserved.setting", "unchanged"); err != nil {
 		t.Fatal(err)
 	}
 	retained := append(artworkURLs(filmImages), artworkURLs(additional)...)
@@ -136,7 +165,7 @@ func TestDataCleanupPreservesAllLibraryAndUnfinishedTaskReferences(t *testing.T)
 	if got := db.WatchHistory.GetX(ctx, history.ID); got.Position != 120 || got.SessionID != "session" {
 		t.Fatal("cache cleanup changed watch progress")
 	}
-	if value, found, err := loadSetting[string](ctx, db, "preserved.setting"); err != nil || !found || value != "unchanged" {
+	if value, found, err := loadTestSetting[string](ctx, db, "preserved.setting"); err != nil || !found || value != "unchanged" {
 		t.Fatalf("cache cleanup changed settings: %s %t %v", value, found, err)
 	}
 	if db.Task.Query().CountX(ctx) != 5 {

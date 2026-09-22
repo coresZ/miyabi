@@ -1,12 +1,12 @@
-package service
+package monitor
 
 import (
-	"github.com/ppxb/miyabi/internal/tasks"
 	"testing"
 	"time"
 
 	"github.com/ppxb/miyabi/internal/database"
-	"github.com/ppxb/miyabi/internal/ent/monitor"
+	"github.com/ppxb/miyabi/internal/ent/subscription"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
 
 func TestNextMonitorCheckPolicy(t *testing.T) {
@@ -39,24 +39,29 @@ func TestMonitorSchedulesRetryAndStaleTransitions(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	tasks := tasks.NewService(store.Client, tasks.NewRegistry())
-	service := NewMonitorService(store.Client, nil, nil, tasks)
+	taskSvc := tasks.NewService(store.Client, tasks.NewRegistry())
+	service := New(store.Client, nil, nil, taskSvc)
 	ctx := t.Context()
-	record := store.Client.Monitor.Create().SetMovieID("m1").SetCode("ABC-001").
-		SetReleaseDate("2000-01-01").SetNextCheckAt(time.Now()).SaveX(ctx)
-	revision := tasks.Revisions().Monitor
+	record := store.Client.Subscription.Create().
+		SetKind(subscription.KindMovie).
+		SetTargetID("m1").
+		SetCode("ABC-001").
+		SetReleaseDate("2000-01-01").
+		SetNextCheckAt(time.Now()).
+		SaveX(ctx)
+	revision := taskSvc.Revisions().Monitor
 	if err := service.deferCheck(ctx, record, time.Now(), errTest); err == nil {
 		t.Fatal("deferCheck should surface the cause")
 	}
-	deferred := store.Client.Monitor.GetX(ctx, record.ID)
-	if deferred.Error == nil || deferred.NextCheckAt == nil || deferred.Status != monitor.StatusWaiting {
+	deferred := store.Client.Subscription.GetX(ctx, record.ID)
+	if deferred.Error == nil || deferred.NextCheckAt == nil || deferred.Status != subscription.StatusWaiting {
 		t.Fatalf("deferred monitor: %#v", deferred)
 	}
-	if tasks.Revisions().Monitor == revision {
+	if taskSvc.Revisions().Monitor == revision {
 		t.Fatal("monitor changes must notify subscribers")
 	}
 	retried, err := service.Retry(ctx, "m1")
-	if err != nil || retried.Error != nil || retried.Status != monitor.StatusWaiting {
+	if err != nil || retried.Error != nil || retried.Status != StatusWaiting {
 		t.Fatalf("retry: %#v %v", retried, err)
 	}
 	if err := service.Remove(ctx, "m1"); err != nil {

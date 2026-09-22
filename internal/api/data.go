@@ -5,12 +5,12 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ppxb/miyabi/internal/service"
+	"github.com/ppxb/miyabi/internal/maintenance"
 )
 
 type DataManager interface {
-	Info(context.Context) (service.DataInfo, error)
-	ClearCache(context.Context) (service.DataInfo, error)
+	Info(context.Context) (maintenance.Info, error)
+	ClearCache(context.Context) (maintenance.Info, error)
 }
 
 func dataInfoHandler(data DataManager) gin.HandlerFunc {

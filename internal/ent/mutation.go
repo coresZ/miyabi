@@ -14,10 +14,10 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/ppxb/miyabi/internal/ent/actor"
 	"github.com/ppxb/miyabi/internal/ent/file"
-	"github.com/ppxb/miyabi/internal/ent/monitor"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/predicate"
 	"github.com/ppxb/miyabi/internal/ent/setting"
+	"github.com/ppxb/miyabi/internal/ent/subscription"
 	"github.com/ppxb/miyabi/internal/ent/tag"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/ent/viewedmovie"
@@ -35,9 +35,9 @@ const (
 	// Node types.
 	TypeActor        = "Actor"
 	TypeFile         = "File"
-	TypeMonitor      = "Monitor"
 	TypeMovie        = "Movie"
 	TypeSetting      = "Setting"
+	TypeSubscription = "Subscription"
 	TypeTag          = "Tag"
 	TypeTask         = "Task"
 	TypeViewedMovie  = "ViewedMovie"
@@ -1912,1183 +1912,6 @@ func (m *FileMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown File edge %s", name)
-}
-
-// MonitorMutation represents an operation that mutates the Monitor nodes in the graph.
-type MonitorMutation struct {
-	config
-	op              Op
-	typ             string
-	id              *int
-	created_at      *time.Time
-	updated_at      *time.Time
-	movie_id        *string
-	code            *string
-	title           *string
-	cover           *string
-	release_date    *string
-	status          *monitor.Status
-	hash            *string
-	task_id         *int
-	addtask_id      *int
-	next_check_at   *time.Time
-	last_checked_at *time.Time
-	checks          *int
-	addchecks       *int
-	error           *string
-	clearedFields   map[string]struct{}
-	done            bool
-	oldValue        func(context.Context) (*Monitor, error)
-	predicates      []predicate.Monitor
-}
-
-var _ ent.Mutation = (*MonitorMutation)(nil)
-
-// monitorOption allows management of the mutation configuration using functional options.
-type monitorOption func(*MonitorMutation)
-
-// newMonitorMutation creates new mutation for the Monitor entity.
-func newMonitorMutation(c config, op Op, opts ...monitorOption) *MonitorMutation {
-	m := &MonitorMutation{
-		config:        c,
-		op:            op,
-		typ:           TypeMonitor,
-		clearedFields: make(map[string]struct{}),
-	}
-	for _, opt := range opts {
-		opt(m)
-	}
-	return m
-}
-
-// withMonitorID sets the ID field of the mutation.
-func withMonitorID(id int) monitorOption {
-	return func(m *MonitorMutation) {
-		var (
-			err   error
-			once  sync.Once
-			value *Monitor
-		)
-		m.oldValue = func(ctx context.Context) (*Monitor, error) {
-			once.Do(func() {
-				if m.done {
-					err = errors.New("querying old values post mutation is not allowed")
-				} else {
-					value, err = m.Client().Monitor.Get(ctx, id)
-				}
-			})
-			return value, err
-		}
-		m.id = &id
-	}
-}
-
-// withMonitor sets the old Monitor of the mutation.
-func withMonitor(node *Monitor) monitorOption {
-	return func(m *MonitorMutation) {
-		m.oldValue = func(context.Context) (*Monitor, error) {
-			return node, nil
-		}
-		m.id = &node.ID
-	}
-}
-
-// Client returns a new `ent.Client` from the mutation. If the mutation was
-// executed in a transaction (ent.Tx), a transactional client is returned.
-func (m MonitorMutation) Client() *Client {
-	client := &Client{config: m.config}
-	client.init()
-	return client
-}
-
-// Tx returns an `ent.Tx` for mutations that were executed in transactions;
-// it returns an error otherwise.
-func (m MonitorMutation) Tx() (*Tx, error) {
-	if _, ok := m.driver.(*txDriver); !ok {
-		return nil, errors.New("ent: mutation is not running in a transaction")
-	}
-	tx := &Tx{config: m.config}
-	tx.init()
-	return tx, nil
-}
-
-// ID returns the ID value in the mutation. Note that the ID is only available
-// if it was provided to the builder or after it was returned from the database.
-func (m *MonitorMutation) ID() (id int, exists bool) {
-	if m.id == nil {
-		return
-	}
-	return *m.id, true
-}
-
-// IDs queries the database and returns the entity ids that match the mutation's predicate.
-// That means, if the mutation is applied within a transaction with an isolation level such
-// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
-// or updated by the mutation.
-func (m *MonitorMutation) IDs(ctx context.Context) ([]int, error) {
-	switch {
-	case m.op.Is(OpUpdateOne | OpDeleteOne):
-		id, exists := m.ID()
-		if exists {
-			return []int{id}, nil
-		}
-		fallthrough
-	case m.op.Is(OpUpdate | OpDelete):
-		return m.Client().Monitor.Query().Where(m.predicates...).IDs(ctx)
-	default:
-		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
-	}
-}
-
-// SetCreatedAt sets the "created_at" field.
-func (m *MonitorMutation) SetCreatedAt(t time.Time) {
-	m.created_at = &t
-}
-
-// CreatedAt returns the value of the "created_at" field in the mutation.
-func (m *MonitorMutation) CreatedAt() (r time.Time, exists bool) {
-	v := m.created_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCreatedAt returns the old "created_at" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
-	}
-	return oldValue.CreatedAt, nil
-}
-
-// ResetCreatedAt resets all changes to the "created_at" field.
-func (m *MonitorMutation) ResetCreatedAt() {
-	m.created_at = nil
-}
-
-// SetUpdatedAt sets the "updated_at" field.
-func (m *MonitorMutation) SetUpdatedAt(t time.Time) {
-	m.updated_at = &t
-}
-
-// UpdatedAt returns the value of the "updated_at" field in the mutation.
-func (m *MonitorMutation) UpdatedAt() (r time.Time, exists bool) {
-	v := m.updated_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldUpdatedAt returns the old "updated_at" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
-	}
-	return oldValue.UpdatedAt, nil
-}
-
-// ResetUpdatedAt resets all changes to the "updated_at" field.
-func (m *MonitorMutation) ResetUpdatedAt() {
-	m.updated_at = nil
-}
-
-// SetMovieID sets the "movie_id" field.
-func (m *MonitorMutation) SetMovieID(s string) {
-	m.movie_id = &s
-}
-
-// MovieID returns the value of the "movie_id" field in the mutation.
-func (m *MonitorMutation) MovieID() (r string, exists bool) {
-	v := m.movie_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldMovieID returns the old "movie_id" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldMovieID(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldMovieID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldMovieID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldMovieID: %w", err)
-	}
-	return oldValue.MovieID, nil
-}
-
-// ResetMovieID resets all changes to the "movie_id" field.
-func (m *MonitorMutation) ResetMovieID() {
-	m.movie_id = nil
-}
-
-// SetCode sets the "code" field.
-func (m *MonitorMutation) SetCode(s string) {
-	m.code = &s
-}
-
-// Code returns the value of the "code" field in the mutation.
-func (m *MonitorMutation) Code() (r string, exists bool) {
-	v := m.code
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCode returns the old "code" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldCode(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCode is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCode requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCode: %w", err)
-	}
-	return oldValue.Code, nil
-}
-
-// ResetCode resets all changes to the "code" field.
-func (m *MonitorMutation) ResetCode() {
-	m.code = nil
-}
-
-// SetTitle sets the "title" field.
-func (m *MonitorMutation) SetTitle(s string) {
-	m.title = &s
-}
-
-// Title returns the value of the "title" field in the mutation.
-func (m *MonitorMutation) Title() (r string, exists bool) {
-	v := m.title
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldTitle returns the old "title" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldTitle(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldTitle is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldTitle requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldTitle: %w", err)
-	}
-	return oldValue.Title, nil
-}
-
-// ResetTitle resets all changes to the "title" field.
-func (m *MonitorMutation) ResetTitle() {
-	m.title = nil
-}
-
-// SetCover sets the "cover" field.
-func (m *MonitorMutation) SetCover(s string) {
-	m.cover = &s
-}
-
-// Cover returns the value of the "cover" field in the mutation.
-func (m *MonitorMutation) Cover() (r string, exists bool) {
-	v := m.cover
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCover returns the old "cover" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldCover(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCover is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCover requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCover: %w", err)
-	}
-	return oldValue.Cover, nil
-}
-
-// ResetCover resets all changes to the "cover" field.
-func (m *MonitorMutation) ResetCover() {
-	m.cover = nil
-}
-
-// SetReleaseDate sets the "release_date" field.
-func (m *MonitorMutation) SetReleaseDate(s string) {
-	m.release_date = &s
-}
-
-// ReleaseDate returns the value of the "release_date" field in the mutation.
-func (m *MonitorMutation) ReleaseDate() (r string, exists bool) {
-	v := m.release_date
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldReleaseDate returns the old "release_date" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldReleaseDate(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldReleaseDate is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldReleaseDate requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldReleaseDate: %w", err)
-	}
-	return oldValue.ReleaseDate, nil
-}
-
-// ResetReleaseDate resets all changes to the "release_date" field.
-func (m *MonitorMutation) ResetReleaseDate() {
-	m.release_date = nil
-}
-
-// SetStatus sets the "status" field.
-func (m *MonitorMutation) SetStatus(value monitor.Status) {
-	m.status = &value
-}
-
-// Status returns the value of the "status" field in the mutation.
-func (m *MonitorMutation) Status() (r monitor.Status, exists bool) {
-	v := m.status
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldStatus returns the old "status" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldStatus(ctx context.Context) (v monitor.Status, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldStatus requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
-	}
-	return oldValue.Status, nil
-}
-
-// ResetStatus resets all changes to the "status" field.
-func (m *MonitorMutation) ResetStatus() {
-	m.status = nil
-}
-
-// SetHash sets the "hash" field.
-func (m *MonitorMutation) SetHash(s string) {
-	m.hash = &s
-}
-
-// Hash returns the value of the "hash" field in the mutation.
-func (m *MonitorMutation) Hash() (r string, exists bool) {
-	v := m.hash
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldHash returns the old "hash" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldHash(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldHash is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldHash requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldHash: %w", err)
-	}
-	return oldValue.Hash, nil
-}
-
-// ResetHash resets all changes to the "hash" field.
-func (m *MonitorMutation) ResetHash() {
-	m.hash = nil
-}
-
-// SetTaskID sets the "task_id" field.
-func (m *MonitorMutation) SetTaskID(i int) {
-	m.task_id = &i
-	m.addtask_id = nil
-}
-
-// TaskID returns the value of the "task_id" field in the mutation.
-func (m *MonitorMutation) TaskID() (r int, exists bool) {
-	v := m.task_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldTaskID returns the old "task_id" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldTaskID(ctx context.Context) (v *int, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldTaskID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldTaskID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldTaskID: %w", err)
-	}
-	return oldValue.TaskID, nil
-}
-
-// AddTaskID adds i to the "task_id" field.
-func (m *MonitorMutation) AddTaskID(i int) {
-	if m.addtask_id != nil {
-		*m.addtask_id += i
-	} else {
-		m.addtask_id = &i
-	}
-}
-
-// AddedTaskID returns the value that was added to the "task_id" field in this mutation.
-func (m *MonitorMutation) AddedTaskID() (r int, exists bool) {
-	v := m.addtask_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearTaskID clears the value of the "task_id" field.
-func (m *MonitorMutation) ClearTaskID() {
-	m.task_id = nil
-	m.addtask_id = nil
-	m.clearedFields[monitor.FieldTaskID] = struct{}{}
-}
-
-// TaskIDCleared returns if the "task_id" field was cleared in this mutation.
-func (m *MonitorMutation) TaskIDCleared() bool {
-	_, ok := m.clearedFields[monitor.FieldTaskID]
-	return ok
-}
-
-// ResetTaskID resets all changes to the "task_id" field.
-func (m *MonitorMutation) ResetTaskID() {
-	m.task_id = nil
-	m.addtask_id = nil
-	delete(m.clearedFields, monitor.FieldTaskID)
-}
-
-// SetNextCheckAt sets the "next_check_at" field.
-func (m *MonitorMutation) SetNextCheckAt(t time.Time) {
-	m.next_check_at = &t
-}
-
-// NextCheckAt returns the value of the "next_check_at" field in the mutation.
-func (m *MonitorMutation) NextCheckAt() (r time.Time, exists bool) {
-	v := m.next_check_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldNextCheckAt returns the old "next_check_at" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldNextCheckAt(ctx context.Context) (v *time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldNextCheckAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldNextCheckAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldNextCheckAt: %w", err)
-	}
-	return oldValue.NextCheckAt, nil
-}
-
-// ClearNextCheckAt clears the value of the "next_check_at" field.
-func (m *MonitorMutation) ClearNextCheckAt() {
-	m.next_check_at = nil
-	m.clearedFields[monitor.FieldNextCheckAt] = struct{}{}
-}
-
-// NextCheckAtCleared returns if the "next_check_at" field was cleared in this mutation.
-func (m *MonitorMutation) NextCheckAtCleared() bool {
-	_, ok := m.clearedFields[monitor.FieldNextCheckAt]
-	return ok
-}
-
-// ResetNextCheckAt resets all changes to the "next_check_at" field.
-func (m *MonitorMutation) ResetNextCheckAt() {
-	m.next_check_at = nil
-	delete(m.clearedFields, monitor.FieldNextCheckAt)
-}
-
-// SetLastCheckedAt sets the "last_checked_at" field.
-func (m *MonitorMutation) SetLastCheckedAt(t time.Time) {
-	m.last_checked_at = &t
-}
-
-// LastCheckedAt returns the value of the "last_checked_at" field in the mutation.
-func (m *MonitorMutation) LastCheckedAt() (r time.Time, exists bool) {
-	v := m.last_checked_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLastCheckedAt returns the old "last_checked_at" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldLastCheckedAt(ctx context.Context) (v *time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLastCheckedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLastCheckedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLastCheckedAt: %w", err)
-	}
-	return oldValue.LastCheckedAt, nil
-}
-
-// ClearLastCheckedAt clears the value of the "last_checked_at" field.
-func (m *MonitorMutation) ClearLastCheckedAt() {
-	m.last_checked_at = nil
-	m.clearedFields[monitor.FieldLastCheckedAt] = struct{}{}
-}
-
-// LastCheckedAtCleared returns if the "last_checked_at" field was cleared in this mutation.
-func (m *MonitorMutation) LastCheckedAtCleared() bool {
-	_, ok := m.clearedFields[monitor.FieldLastCheckedAt]
-	return ok
-}
-
-// ResetLastCheckedAt resets all changes to the "last_checked_at" field.
-func (m *MonitorMutation) ResetLastCheckedAt() {
-	m.last_checked_at = nil
-	delete(m.clearedFields, monitor.FieldLastCheckedAt)
-}
-
-// SetChecks sets the "checks" field.
-func (m *MonitorMutation) SetChecks(i int) {
-	m.checks = &i
-	m.addchecks = nil
-}
-
-// Checks returns the value of the "checks" field in the mutation.
-func (m *MonitorMutation) Checks() (r int, exists bool) {
-	v := m.checks
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldChecks returns the old "checks" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldChecks(ctx context.Context) (v int, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldChecks is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldChecks requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldChecks: %w", err)
-	}
-	return oldValue.Checks, nil
-}
-
-// AddChecks adds i to the "checks" field.
-func (m *MonitorMutation) AddChecks(i int) {
-	if m.addchecks != nil {
-		*m.addchecks += i
-	} else {
-		m.addchecks = &i
-	}
-}
-
-// AddedChecks returns the value that was added to the "checks" field in this mutation.
-func (m *MonitorMutation) AddedChecks() (r int, exists bool) {
-	v := m.addchecks
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetChecks resets all changes to the "checks" field.
-func (m *MonitorMutation) ResetChecks() {
-	m.checks = nil
-	m.addchecks = nil
-}
-
-// SetError sets the "error" field.
-func (m *MonitorMutation) SetError(s string) {
-	m.error = &s
-}
-
-// Error returns the value of the "error" field in the mutation.
-func (m *MonitorMutation) Error() (r string, exists bool) {
-	v := m.error
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldError returns the old "error" field's value of the Monitor entity.
-// If the Monitor object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MonitorMutation) OldError(ctx context.Context) (v *string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldError is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldError requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldError: %w", err)
-	}
-	return oldValue.Error, nil
-}
-
-// ClearError clears the value of the "error" field.
-func (m *MonitorMutation) ClearError() {
-	m.error = nil
-	m.clearedFields[monitor.FieldError] = struct{}{}
-}
-
-// ErrorCleared returns if the "error" field was cleared in this mutation.
-func (m *MonitorMutation) ErrorCleared() bool {
-	_, ok := m.clearedFields[monitor.FieldError]
-	return ok
-}
-
-// ResetError resets all changes to the "error" field.
-func (m *MonitorMutation) ResetError() {
-	m.error = nil
-	delete(m.clearedFields, monitor.FieldError)
-}
-
-// Where appends a list predicates to the MonitorMutation builder.
-func (m *MonitorMutation) Where(ps ...predicate.Monitor) {
-	m.predicates = append(m.predicates, ps...)
-}
-
-// WhereP appends storage-level predicates to the MonitorMutation builder. Using this method,
-// users can use type-assertion to append predicates that do not depend on any generated package.
-func (m *MonitorMutation) WhereP(ps ...func(*sql.Selector)) {
-	p := make([]predicate.Monitor, len(ps))
-	for i := range ps {
-		p[i] = ps[i]
-	}
-	m.Where(p...)
-}
-
-// Op returns the operation name.
-func (m *MonitorMutation) Op() Op {
-	return m.op
-}
-
-// SetOp allows setting the mutation operation.
-func (m *MonitorMutation) SetOp(op Op) {
-	m.op = op
-}
-
-// Type returns the node type of this mutation (Monitor).
-func (m *MonitorMutation) Type() string {
-	return m.typ
-}
-
-// Fields returns all fields that were changed during this mutation. Note that in
-// order to get all numeric fields that were incremented/decremented, call
-// AddedFields().
-func (m *MonitorMutation) Fields() []string {
-	fields := make([]string, 0, 14)
-	if m.created_at != nil {
-		fields = append(fields, monitor.FieldCreatedAt)
-	}
-	if m.updated_at != nil {
-		fields = append(fields, monitor.FieldUpdatedAt)
-	}
-	if m.movie_id != nil {
-		fields = append(fields, monitor.FieldMovieID)
-	}
-	if m.code != nil {
-		fields = append(fields, monitor.FieldCode)
-	}
-	if m.title != nil {
-		fields = append(fields, monitor.FieldTitle)
-	}
-	if m.cover != nil {
-		fields = append(fields, monitor.FieldCover)
-	}
-	if m.release_date != nil {
-		fields = append(fields, monitor.FieldReleaseDate)
-	}
-	if m.status != nil {
-		fields = append(fields, monitor.FieldStatus)
-	}
-	if m.hash != nil {
-		fields = append(fields, monitor.FieldHash)
-	}
-	if m.task_id != nil {
-		fields = append(fields, monitor.FieldTaskID)
-	}
-	if m.next_check_at != nil {
-		fields = append(fields, monitor.FieldNextCheckAt)
-	}
-	if m.last_checked_at != nil {
-		fields = append(fields, monitor.FieldLastCheckedAt)
-	}
-	if m.checks != nil {
-		fields = append(fields, monitor.FieldChecks)
-	}
-	if m.error != nil {
-		fields = append(fields, monitor.FieldError)
-	}
-	return fields
-}
-
-// Field returns the value of a field with the given name. The second boolean
-// return value indicates that this field was not set, or was not defined in the
-// schema.
-func (m *MonitorMutation) Field(name string) (ent.Value, bool) {
-	switch name {
-	case monitor.FieldCreatedAt:
-		return m.CreatedAt()
-	case monitor.FieldUpdatedAt:
-		return m.UpdatedAt()
-	case monitor.FieldMovieID:
-		return m.MovieID()
-	case monitor.FieldCode:
-		return m.Code()
-	case monitor.FieldTitle:
-		return m.Title()
-	case monitor.FieldCover:
-		return m.Cover()
-	case monitor.FieldReleaseDate:
-		return m.ReleaseDate()
-	case monitor.FieldStatus:
-		return m.Status()
-	case monitor.FieldHash:
-		return m.Hash()
-	case monitor.FieldTaskID:
-		return m.TaskID()
-	case monitor.FieldNextCheckAt:
-		return m.NextCheckAt()
-	case monitor.FieldLastCheckedAt:
-		return m.LastCheckedAt()
-	case monitor.FieldChecks:
-		return m.Checks()
-	case monitor.FieldError:
-		return m.Error()
-	}
-	return nil, false
-}
-
-// OldField returns the old value of the field from the database. An error is
-// returned if the mutation operation is not UpdateOne, or the query to the
-// database failed.
-func (m *MonitorMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
-	switch name {
-	case monitor.FieldCreatedAt:
-		return m.OldCreatedAt(ctx)
-	case monitor.FieldUpdatedAt:
-		return m.OldUpdatedAt(ctx)
-	case monitor.FieldMovieID:
-		return m.OldMovieID(ctx)
-	case monitor.FieldCode:
-		return m.OldCode(ctx)
-	case monitor.FieldTitle:
-		return m.OldTitle(ctx)
-	case monitor.FieldCover:
-		return m.OldCover(ctx)
-	case monitor.FieldReleaseDate:
-		return m.OldReleaseDate(ctx)
-	case monitor.FieldStatus:
-		return m.OldStatus(ctx)
-	case monitor.FieldHash:
-		return m.OldHash(ctx)
-	case monitor.FieldTaskID:
-		return m.OldTaskID(ctx)
-	case monitor.FieldNextCheckAt:
-		return m.OldNextCheckAt(ctx)
-	case monitor.FieldLastCheckedAt:
-		return m.OldLastCheckedAt(ctx)
-	case monitor.FieldChecks:
-		return m.OldChecks(ctx)
-	case monitor.FieldError:
-		return m.OldError(ctx)
-	}
-	return nil, fmt.Errorf("unknown Monitor field %s", name)
-}
-
-// SetField sets the value of a field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *MonitorMutation) SetField(name string, value ent.Value) error {
-	switch name {
-	case monitor.FieldCreatedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCreatedAt(v)
-		return nil
-	case monitor.FieldUpdatedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetUpdatedAt(v)
-		return nil
-	case monitor.FieldMovieID:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetMovieID(v)
-		return nil
-	case monitor.FieldCode:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCode(v)
-		return nil
-	case monitor.FieldTitle:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetTitle(v)
-		return nil
-	case monitor.FieldCover:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCover(v)
-		return nil
-	case monitor.FieldReleaseDate:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetReleaseDate(v)
-		return nil
-	case monitor.FieldStatus:
-		v, ok := value.(monitor.Status)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetStatus(v)
-		return nil
-	case monitor.FieldHash:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetHash(v)
-		return nil
-	case monitor.FieldTaskID:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetTaskID(v)
-		return nil
-	case monitor.FieldNextCheckAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetNextCheckAt(v)
-		return nil
-	case monitor.FieldLastCheckedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLastCheckedAt(v)
-		return nil
-	case monitor.FieldChecks:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetChecks(v)
-		return nil
-	case monitor.FieldError:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetError(v)
-		return nil
-	}
-	return fmt.Errorf("unknown Monitor field %s", name)
-}
-
-// AddedFields returns all numeric fields that were incremented/decremented during
-// this mutation.
-func (m *MonitorMutation) AddedFields() []string {
-	var fields []string
-	if m.addtask_id != nil {
-		fields = append(fields, monitor.FieldTaskID)
-	}
-	if m.addchecks != nil {
-		fields = append(fields, monitor.FieldChecks)
-	}
-	return fields
-}
-
-// AddedField returns the numeric value that was incremented/decremented on a field
-// with the given name. The second boolean return value indicates that this field
-// was not set, or was not defined in the schema.
-func (m *MonitorMutation) AddedField(name string) (ent.Value, bool) {
-	switch name {
-	case monitor.FieldTaskID:
-		return m.AddedTaskID()
-	case monitor.FieldChecks:
-		return m.AddedChecks()
-	}
-	return nil, false
-}
-
-// AddField adds the value to the field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *MonitorMutation) AddField(name string, value ent.Value) error {
-	switch name {
-	case monitor.FieldTaskID:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddTaskID(v)
-		return nil
-	case monitor.FieldChecks:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddChecks(v)
-		return nil
-	}
-	return fmt.Errorf("unknown Monitor numeric field %s", name)
-}
-
-// ClearedFields returns all nullable fields that were cleared during this
-// mutation.
-func (m *MonitorMutation) ClearedFields() []string {
-	var fields []string
-	if m.FieldCleared(monitor.FieldTaskID) {
-		fields = append(fields, monitor.FieldTaskID)
-	}
-	if m.FieldCleared(monitor.FieldNextCheckAt) {
-		fields = append(fields, monitor.FieldNextCheckAt)
-	}
-	if m.FieldCleared(monitor.FieldLastCheckedAt) {
-		fields = append(fields, monitor.FieldLastCheckedAt)
-	}
-	if m.FieldCleared(monitor.FieldError) {
-		fields = append(fields, monitor.FieldError)
-	}
-	return fields
-}
-
-// FieldCleared returns a boolean indicating if a field with the given name was
-// cleared in this mutation.
-func (m *MonitorMutation) FieldCleared(name string) bool {
-	_, ok := m.clearedFields[name]
-	return ok
-}
-
-// ClearField clears the value of the field with the given name. It returns an
-// error if the field is not defined in the schema.
-func (m *MonitorMutation) ClearField(name string) error {
-	switch name {
-	case monitor.FieldTaskID:
-		m.ClearTaskID()
-		return nil
-	case monitor.FieldNextCheckAt:
-		m.ClearNextCheckAt()
-		return nil
-	case monitor.FieldLastCheckedAt:
-		m.ClearLastCheckedAt()
-		return nil
-	case monitor.FieldError:
-		m.ClearError()
-		return nil
-	}
-	return fmt.Errorf("unknown Monitor nullable field %s", name)
-}
-
-// ResetField resets all changes in the mutation for the field with the given name.
-// It returns an error if the field is not defined in the schema.
-func (m *MonitorMutation) ResetField(name string) error {
-	switch name {
-	case monitor.FieldCreatedAt:
-		m.ResetCreatedAt()
-		return nil
-	case monitor.FieldUpdatedAt:
-		m.ResetUpdatedAt()
-		return nil
-	case monitor.FieldMovieID:
-		m.ResetMovieID()
-		return nil
-	case monitor.FieldCode:
-		m.ResetCode()
-		return nil
-	case monitor.FieldTitle:
-		m.ResetTitle()
-		return nil
-	case monitor.FieldCover:
-		m.ResetCover()
-		return nil
-	case monitor.FieldReleaseDate:
-		m.ResetReleaseDate()
-		return nil
-	case monitor.FieldStatus:
-		m.ResetStatus()
-		return nil
-	case monitor.FieldHash:
-		m.ResetHash()
-		return nil
-	case monitor.FieldTaskID:
-		m.ResetTaskID()
-		return nil
-	case monitor.FieldNextCheckAt:
-		m.ResetNextCheckAt()
-		return nil
-	case monitor.FieldLastCheckedAt:
-		m.ResetLastCheckedAt()
-		return nil
-	case monitor.FieldChecks:
-		m.ResetChecks()
-		return nil
-	case monitor.FieldError:
-		m.ResetError()
-		return nil
-	}
-	return fmt.Errorf("unknown Monitor field %s", name)
-}
-
-// AddedEdges returns all edge names that were set/added in this mutation.
-func (m *MonitorMutation) AddedEdges() []string {
-	edges := make([]string, 0, 0)
-	return edges
-}
-
-// AddedIDs returns all IDs (to other nodes) that were added for the given edge
-// name in this mutation.
-func (m *MonitorMutation) AddedIDs(name string) []ent.Value {
-	return nil
-}
-
-// RemovedEdges returns all edge names that were removed in this mutation.
-func (m *MonitorMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 0)
-	return edges
-}
-
-// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
-// the given name in this mutation.
-func (m *MonitorMutation) RemovedIDs(name string) []ent.Value {
-	return nil
-}
-
-// ClearedEdges returns all edge names that were cleared in this mutation.
-func (m *MonitorMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 0)
-	return edges
-}
-
-// EdgeCleared returns a boolean which indicates if the edge with the given name
-// was cleared in this mutation.
-func (m *MonitorMutation) EdgeCleared(name string) bool {
-	return false
-}
-
-// ClearEdge clears the value of the edge with the given name. It returns an error
-// if that edge is not defined in the schema.
-func (m *MonitorMutation) ClearEdge(name string) error {
-	return fmt.Errorf("unknown Monitor unique edge %s", name)
-}
-
-// ResetEdge resets all changes to the edge with the given name in this mutation.
-// It returns an error if the edge is not defined in the schema.
-func (m *MonitorMutation) ResetEdge(name string) error {
-	return fmt.Errorf("unknown Monitor edge %s", name)
 }
 
 // MovieMutation represents an operation that mutates the Movie nodes in the graph.
@@ -5551,6 +4374,1506 @@ func (m *SettingMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *SettingMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Setting edge %s", name)
+}
+
+// SubscriptionMutation represents an operation that mutates the Subscription nodes in the graph.
+type SubscriptionMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *int
+	created_at      *time.Time
+	updated_at      *time.Time
+	kind            *subscription.Kind
+	target_id       *string
+	code            *string
+	title           *string
+	cover           *string
+	release_date    *string
+	origin_id       *int
+	addorigin_id    *int
+	auto_download   *bool
+	zone            *string
+	status          *subscription.Status
+	cursor          *string
+	hash            *string
+	task_id         *int
+	addtask_id      *int
+	next_check_at   *time.Time
+	last_checked_at *time.Time
+	checks          *int
+	addchecks       *int
+	error           *string
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*Subscription, error)
+	predicates      []predicate.Subscription
+}
+
+var _ ent.Mutation = (*SubscriptionMutation)(nil)
+
+// subscriptionOption allows management of the mutation configuration using functional options.
+type subscriptionOption func(*SubscriptionMutation)
+
+// newSubscriptionMutation creates new mutation for the Subscription entity.
+func newSubscriptionMutation(c config, op Op, opts ...subscriptionOption) *SubscriptionMutation {
+	m := &SubscriptionMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSubscription,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSubscriptionID sets the ID field of the mutation.
+func withSubscriptionID(id int) subscriptionOption {
+	return func(m *SubscriptionMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Subscription
+		)
+		m.oldValue = func(ctx context.Context) (*Subscription, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Subscription.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSubscription sets the old Subscription of the mutation.
+func withSubscription(node *Subscription) subscriptionOption {
+	return func(m *SubscriptionMutation) {
+		m.oldValue = func(context.Context) (*Subscription, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SubscriptionMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SubscriptionMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SubscriptionMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SubscriptionMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Subscription.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SubscriptionMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SubscriptionMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SubscriptionMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SubscriptionMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SubscriptionMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SubscriptionMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetKind sets the "kind" field.
+func (m *SubscriptionMutation) SetKind(s subscription.Kind) {
+	m.kind = &s
+}
+
+// Kind returns the value of the "kind" field in the mutation.
+func (m *SubscriptionMutation) Kind() (r subscription.Kind, exists bool) {
+	v := m.kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKind returns the old "kind" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldKind(ctx context.Context) (v subscription.Kind, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKind: %w", err)
+	}
+	return oldValue.Kind, nil
+}
+
+// ResetKind resets all changes to the "kind" field.
+func (m *SubscriptionMutation) ResetKind() {
+	m.kind = nil
+}
+
+// SetTargetID sets the "target_id" field.
+func (m *SubscriptionMutation) SetTargetID(s string) {
+	m.target_id = &s
+}
+
+// TargetID returns the value of the "target_id" field in the mutation.
+func (m *SubscriptionMutation) TargetID() (r string, exists bool) {
+	v := m.target_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTargetID returns the old "target_id" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldTargetID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTargetID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTargetID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTargetID: %w", err)
+	}
+	return oldValue.TargetID, nil
+}
+
+// ResetTargetID resets all changes to the "target_id" field.
+func (m *SubscriptionMutation) ResetTargetID() {
+	m.target_id = nil
+}
+
+// SetCode sets the "code" field.
+func (m *SubscriptionMutation) SetCode(s string) {
+	m.code = &s
+}
+
+// Code returns the value of the "code" field in the mutation.
+func (m *SubscriptionMutation) Code() (r string, exists bool) {
+	v := m.code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCode returns the old "code" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldCode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCode: %w", err)
+	}
+	return oldValue.Code, nil
+}
+
+// ResetCode resets all changes to the "code" field.
+func (m *SubscriptionMutation) ResetCode() {
+	m.code = nil
+}
+
+// SetTitle sets the "title" field.
+func (m *SubscriptionMutation) SetTitle(s string) {
+	m.title = &s
+}
+
+// Title returns the value of the "title" field in the mutation.
+func (m *SubscriptionMutation) Title() (r string, exists bool) {
+	v := m.title
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTitle returns the old "title" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldTitle(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTitle is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTitle requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTitle: %w", err)
+	}
+	return oldValue.Title, nil
+}
+
+// ResetTitle resets all changes to the "title" field.
+func (m *SubscriptionMutation) ResetTitle() {
+	m.title = nil
+}
+
+// SetCover sets the "cover" field.
+func (m *SubscriptionMutation) SetCover(s string) {
+	m.cover = &s
+}
+
+// Cover returns the value of the "cover" field in the mutation.
+func (m *SubscriptionMutation) Cover() (r string, exists bool) {
+	v := m.cover
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCover returns the old "cover" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldCover(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCover is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCover requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCover: %w", err)
+	}
+	return oldValue.Cover, nil
+}
+
+// ResetCover resets all changes to the "cover" field.
+func (m *SubscriptionMutation) ResetCover() {
+	m.cover = nil
+}
+
+// SetReleaseDate sets the "release_date" field.
+func (m *SubscriptionMutation) SetReleaseDate(s string) {
+	m.release_date = &s
+}
+
+// ReleaseDate returns the value of the "release_date" field in the mutation.
+func (m *SubscriptionMutation) ReleaseDate() (r string, exists bool) {
+	v := m.release_date
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReleaseDate returns the old "release_date" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldReleaseDate(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReleaseDate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReleaseDate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReleaseDate: %w", err)
+	}
+	return oldValue.ReleaseDate, nil
+}
+
+// ResetReleaseDate resets all changes to the "release_date" field.
+func (m *SubscriptionMutation) ResetReleaseDate() {
+	m.release_date = nil
+}
+
+// SetOriginID sets the "origin_id" field.
+func (m *SubscriptionMutation) SetOriginID(i int) {
+	m.origin_id = &i
+	m.addorigin_id = nil
+}
+
+// OriginID returns the value of the "origin_id" field in the mutation.
+func (m *SubscriptionMutation) OriginID() (r int, exists bool) {
+	v := m.origin_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOriginID returns the old "origin_id" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldOriginID(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOriginID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOriginID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOriginID: %w", err)
+	}
+	return oldValue.OriginID, nil
+}
+
+// AddOriginID adds i to the "origin_id" field.
+func (m *SubscriptionMutation) AddOriginID(i int) {
+	if m.addorigin_id != nil {
+		*m.addorigin_id += i
+	} else {
+		m.addorigin_id = &i
+	}
+}
+
+// AddedOriginID returns the value that was added to the "origin_id" field in this mutation.
+func (m *SubscriptionMutation) AddedOriginID() (r int, exists bool) {
+	v := m.addorigin_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearOriginID clears the value of the "origin_id" field.
+func (m *SubscriptionMutation) ClearOriginID() {
+	m.origin_id = nil
+	m.addorigin_id = nil
+	m.clearedFields[subscription.FieldOriginID] = struct{}{}
+}
+
+// OriginIDCleared returns if the "origin_id" field was cleared in this mutation.
+func (m *SubscriptionMutation) OriginIDCleared() bool {
+	_, ok := m.clearedFields[subscription.FieldOriginID]
+	return ok
+}
+
+// ResetOriginID resets all changes to the "origin_id" field.
+func (m *SubscriptionMutation) ResetOriginID() {
+	m.origin_id = nil
+	m.addorigin_id = nil
+	delete(m.clearedFields, subscription.FieldOriginID)
+}
+
+// SetAutoDownload sets the "auto_download" field.
+func (m *SubscriptionMutation) SetAutoDownload(b bool) {
+	m.auto_download = &b
+}
+
+// AutoDownload returns the value of the "auto_download" field in the mutation.
+func (m *SubscriptionMutation) AutoDownload() (r bool, exists bool) {
+	v := m.auto_download
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAutoDownload returns the old "auto_download" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldAutoDownload(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAutoDownload is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAutoDownload requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAutoDownload: %w", err)
+	}
+	return oldValue.AutoDownload, nil
+}
+
+// ResetAutoDownload resets all changes to the "auto_download" field.
+func (m *SubscriptionMutation) ResetAutoDownload() {
+	m.auto_download = nil
+}
+
+// SetZone sets the "zone" field.
+func (m *SubscriptionMutation) SetZone(s string) {
+	m.zone = &s
+}
+
+// Zone returns the value of the "zone" field in the mutation.
+func (m *SubscriptionMutation) Zone() (r string, exists bool) {
+	v := m.zone
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldZone returns the old "zone" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldZone(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldZone is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldZone requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldZone: %w", err)
+	}
+	return oldValue.Zone, nil
+}
+
+// ResetZone resets all changes to the "zone" field.
+func (m *SubscriptionMutation) ResetZone() {
+	m.zone = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *SubscriptionMutation) SetStatus(s subscription.Status) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *SubscriptionMutation) Status() (r subscription.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldStatus(ctx context.Context) (v subscription.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *SubscriptionMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetCursor sets the "cursor" field.
+func (m *SubscriptionMutation) SetCursor(s string) {
+	m.cursor = &s
+}
+
+// Cursor returns the value of the "cursor" field in the mutation.
+func (m *SubscriptionMutation) Cursor() (r string, exists bool) {
+	v := m.cursor
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCursor returns the old "cursor" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldCursor(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCursor is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCursor requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCursor: %w", err)
+	}
+	return oldValue.Cursor, nil
+}
+
+// ResetCursor resets all changes to the "cursor" field.
+func (m *SubscriptionMutation) ResetCursor() {
+	m.cursor = nil
+}
+
+// SetHash sets the "hash" field.
+func (m *SubscriptionMutation) SetHash(s string) {
+	m.hash = &s
+}
+
+// Hash returns the value of the "hash" field in the mutation.
+func (m *SubscriptionMutation) Hash() (r string, exists bool) {
+	v := m.hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHash returns the old "hash" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHash: %w", err)
+	}
+	return oldValue.Hash, nil
+}
+
+// ResetHash resets all changes to the "hash" field.
+func (m *SubscriptionMutation) ResetHash() {
+	m.hash = nil
+}
+
+// SetTaskID sets the "task_id" field.
+func (m *SubscriptionMutation) SetTaskID(i int) {
+	m.task_id = &i
+	m.addtask_id = nil
+}
+
+// TaskID returns the value of the "task_id" field in the mutation.
+func (m *SubscriptionMutation) TaskID() (r int, exists bool) {
+	v := m.task_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskID returns the old "task_id" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldTaskID(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskID: %w", err)
+	}
+	return oldValue.TaskID, nil
+}
+
+// AddTaskID adds i to the "task_id" field.
+func (m *SubscriptionMutation) AddTaskID(i int) {
+	if m.addtask_id != nil {
+		*m.addtask_id += i
+	} else {
+		m.addtask_id = &i
+	}
+}
+
+// AddedTaskID returns the value that was added to the "task_id" field in this mutation.
+func (m *SubscriptionMutation) AddedTaskID() (r int, exists bool) {
+	v := m.addtask_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTaskID clears the value of the "task_id" field.
+func (m *SubscriptionMutation) ClearTaskID() {
+	m.task_id = nil
+	m.addtask_id = nil
+	m.clearedFields[subscription.FieldTaskID] = struct{}{}
+}
+
+// TaskIDCleared returns if the "task_id" field was cleared in this mutation.
+func (m *SubscriptionMutation) TaskIDCleared() bool {
+	_, ok := m.clearedFields[subscription.FieldTaskID]
+	return ok
+}
+
+// ResetTaskID resets all changes to the "task_id" field.
+func (m *SubscriptionMutation) ResetTaskID() {
+	m.task_id = nil
+	m.addtask_id = nil
+	delete(m.clearedFields, subscription.FieldTaskID)
+}
+
+// SetNextCheckAt sets the "next_check_at" field.
+func (m *SubscriptionMutation) SetNextCheckAt(t time.Time) {
+	m.next_check_at = &t
+}
+
+// NextCheckAt returns the value of the "next_check_at" field in the mutation.
+func (m *SubscriptionMutation) NextCheckAt() (r time.Time, exists bool) {
+	v := m.next_check_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNextCheckAt returns the old "next_check_at" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldNextCheckAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNextCheckAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNextCheckAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNextCheckAt: %w", err)
+	}
+	return oldValue.NextCheckAt, nil
+}
+
+// ClearNextCheckAt clears the value of the "next_check_at" field.
+func (m *SubscriptionMutation) ClearNextCheckAt() {
+	m.next_check_at = nil
+	m.clearedFields[subscription.FieldNextCheckAt] = struct{}{}
+}
+
+// NextCheckAtCleared returns if the "next_check_at" field was cleared in this mutation.
+func (m *SubscriptionMutation) NextCheckAtCleared() bool {
+	_, ok := m.clearedFields[subscription.FieldNextCheckAt]
+	return ok
+}
+
+// ResetNextCheckAt resets all changes to the "next_check_at" field.
+func (m *SubscriptionMutation) ResetNextCheckAt() {
+	m.next_check_at = nil
+	delete(m.clearedFields, subscription.FieldNextCheckAt)
+}
+
+// SetLastCheckedAt sets the "last_checked_at" field.
+func (m *SubscriptionMutation) SetLastCheckedAt(t time.Time) {
+	m.last_checked_at = &t
+}
+
+// LastCheckedAt returns the value of the "last_checked_at" field in the mutation.
+func (m *SubscriptionMutation) LastCheckedAt() (r time.Time, exists bool) {
+	v := m.last_checked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastCheckedAt returns the old "last_checked_at" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldLastCheckedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastCheckedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastCheckedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastCheckedAt: %w", err)
+	}
+	return oldValue.LastCheckedAt, nil
+}
+
+// ClearLastCheckedAt clears the value of the "last_checked_at" field.
+func (m *SubscriptionMutation) ClearLastCheckedAt() {
+	m.last_checked_at = nil
+	m.clearedFields[subscription.FieldLastCheckedAt] = struct{}{}
+}
+
+// LastCheckedAtCleared returns if the "last_checked_at" field was cleared in this mutation.
+func (m *SubscriptionMutation) LastCheckedAtCleared() bool {
+	_, ok := m.clearedFields[subscription.FieldLastCheckedAt]
+	return ok
+}
+
+// ResetLastCheckedAt resets all changes to the "last_checked_at" field.
+func (m *SubscriptionMutation) ResetLastCheckedAt() {
+	m.last_checked_at = nil
+	delete(m.clearedFields, subscription.FieldLastCheckedAt)
+}
+
+// SetChecks sets the "checks" field.
+func (m *SubscriptionMutation) SetChecks(i int) {
+	m.checks = &i
+	m.addchecks = nil
+}
+
+// Checks returns the value of the "checks" field in the mutation.
+func (m *SubscriptionMutation) Checks() (r int, exists bool) {
+	v := m.checks
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChecks returns the old "checks" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldChecks(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChecks is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChecks requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChecks: %w", err)
+	}
+	return oldValue.Checks, nil
+}
+
+// AddChecks adds i to the "checks" field.
+func (m *SubscriptionMutation) AddChecks(i int) {
+	if m.addchecks != nil {
+		*m.addchecks += i
+	} else {
+		m.addchecks = &i
+	}
+}
+
+// AddedChecks returns the value that was added to the "checks" field in this mutation.
+func (m *SubscriptionMutation) AddedChecks() (r int, exists bool) {
+	v := m.addchecks
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetChecks resets all changes to the "checks" field.
+func (m *SubscriptionMutation) ResetChecks() {
+	m.checks = nil
+	m.addchecks = nil
+}
+
+// SetError sets the "error" field.
+func (m *SubscriptionMutation) SetError(s string) {
+	m.error = &s
+}
+
+// Error returns the value of the "error" field in the mutation.
+func (m *SubscriptionMutation) Error() (r string, exists bool) {
+	v := m.error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldError returns the old "error" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldError(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldError: %w", err)
+	}
+	return oldValue.Error, nil
+}
+
+// ClearError clears the value of the "error" field.
+func (m *SubscriptionMutation) ClearError() {
+	m.error = nil
+	m.clearedFields[subscription.FieldError] = struct{}{}
+}
+
+// ErrorCleared returns if the "error" field was cleared in this mutation.
+func (m *SubscriptionMutation) ErrorCleared() bool {
+	_, ok := m.clearedFields[subscription.FieldError]
+	return ok
+}
+
+// ResetError resets all changes to the "error" field.
+func (m *SubscriptionMutation) ResetError() {
+	m.error = nil
+	delete(m.clearedFields, subscription.FieldError)
+}
+
+// Where appends a list predicates to the SubscriptionMutation builder.
+func (m *SubscriptionMutation) Where(ps ...predicate.Subscription) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SubscriptionMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SubscriptionMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Subscription, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SubscriptionMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SubscriptionMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Subscription).
+func (m *SubscriptionMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SubscriptionMutation) Fields() []string {
+	fields := make([]string, 0, 19)
+	if m.created_at != nil {
+		fields = append(fields, subscription.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, subscription.FieldUpdatedAt)
+	}
+	if m.kind != nil {
+		fields = append(fields, subscription.FieldKind)
+	}
+	if m.target_id != nil {
+		fields = append(fields, subscription.FieldTargetID)
+	}
+	if m.code != nil {
+		fields = append(fields, subscription.FieldCode)
+	}
+	if m.title != nil {
+		fields = append(fields, subscription.FieldTitle)
+	}
+	if m.cover != nil {
+		fields = append(fields, subscription.FieldCover)
+	}
+	if m.release_date != nil {
+		fields = append(fields, subscription.FieldReleaseDate)
+	}
+	if m.origin_id != nil {
+		fields = append(fields, subscription.FieldOriginID)
+	}
+	if m.auto_download != nil {
+		fields = append(fields, subscription.FieldAutoDownload)
+	}
+	if m.zone != nil {
+		fields = append(fields, subscription.FieldZone)
+	}
+	if m.status != nil {
+		fields = append(fields, subscription.FieldStatus)
+	}
+	if m.cursor != nil {
+		fields = append(fields, subscription.FieldCursor)
+	}
+	if m.hash != nil {
+		fields = append(fields, subscription.FieldHash)
+	}
+	if m.task_id != nil {
+		fields = append(fields, subscription.FieldTaskID)
+	}
+	if m.next_check_at != nil {
+		fields = append(fields, subscription.FieldNextCheckAt)
+	}
+	if m.last_checked_at != nil {
+		fields = append(fields, subscription.FieldLastCheckedAt)
+	}
+	if m.checks != nil {
+		fields = append(fields, subscription.FieldChecks)
+	}
+	if m.error != nil {
+		fields = append(fields, subscription.FieldError)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SubscriptionMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case subscription.FieldCreatedAt:
+		return m.CreatedAt()
+	case subscription.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case subscription.FieldKind:
+		return m.Kind()
+	case subscription.FieldTargetID:
+		return m.TargetID()
+	case subscription.FieldCode:
+		return m.Code()
+	case subscription.FieldTitle:
+		return m.Title()
+	case subscription.FieldCover:
+		return m.Cover()
+	case subscription.FieldReleaseDate:
+		return m.ReleaseDate()
+	case subscription.FieldOriginID:
+		return m.OriginID()
+	case subscription.FieldAutoDownload:
+		return m.AutoDownload()
+	case subscription.FieldZone:
+		return m.Zone()
+	case subscription.FieldStatus:
+		return m.Status()
+	case subscription.FieldCursor:
+		return m.Cursor()
+	case subscription.FieldHash:
+		return m.Hash()
+	case subscription.FieldTaskID:
+		return m.TaskID()
+	case subscription.FieldNextCheckAt:
+		return m.NextCheckAt()
+	case subscription.FieldLastCheckedAt:
+		return m.LastCheckedAt()
+	case subscription.FieldChecks:
+		return m.Checks()
+	case subscription.FieldError:
+		return m.Error()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SubscriptionMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case subscription.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case subscription.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case subscription.FieldKind:
+		return m.OldKind(ctx)
+	case subscription.FieldTargetID:
+		return m.OldTargetID(ctx)
+	case subscription.FieldCode:
+		return m.OldCode(ctx)
+	case subscription.FieldTitle:
+		return m.OldTitle(ctx)
+	case subscription.FieldCover:
+		return m.OldCover(ctx)
+	case subscription.FieldReleaseDate:
+		return m.OldReleaseDate(ctx)
+	case subscription.FieldOriginID:
+		return m.OldOriginID(ctx)
+	case subscription.FieldAutoDownload:
+		return m.OldAutoDownload(ctx)
+	case subscription.FieldZone:
+		return m.OldZone(ctx)
+	case subscription.FieldStatus:
+		return m.OldStatus(ctx)
+	case subscription.FieldCursor:
+		return m.OldCursor(ctx)
+	case subscription.FieldHash:
+		return m.OldHash(ctx)
+	case subscription.FieldTaskID:
+		return m.OldTaskID(ctx)
+	case subscription.FieldNextCheckAt:
+		return m.OldNextCheckAt(ctx)
+	case subscription.FieldLastCheckedAt:
+		return m.OldLastCheckedAt(ctx)
+	case subscription.FieldChecks:
+		return m.OldChecks(ctx)
+	case subscription.FieldError:
+		return m.OldError(ctx)
+	}
+	return nil, fmt.Errorf("unknown Subscription field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SubscriptionMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case subscription.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case subscription.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case subscription.FieldKind:
+		v, ok := value.(subscription.Kind)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKind(v)
+		return nil
+	case subscription.FieldTargetID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTargetID(v)
+		return nil
+	case subscription.FieldCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCode(v)
+		return nil
+	case subscription.FieldTitle:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTitle(v)
+		return nil
+	case subscription.FieldCover:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCover(v)
+		return nil
+	case subscription.FieldReleaseDate:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReleaseDate(v)
+		return nil
+	case subscription.FieldOriginID:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOriginID(v)
+		return nil
+	case subscription.FieldAutoDownload:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAutoDownload(v)
+		return nil
+	case subscription.FieldZone:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetZone(v)
+		return nil
+	case subscription.FieldStatus:
+		v, ok := value.(subscription.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case subscription.FieldCursor:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCursor(v)
+		return nil
+	case subscription.FieldHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHash(v)
+		return nil
+	case subscription.FieldTaskID:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskID(v)
+		return nil
+	case subscription.FieldNextCheckAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNextCheckAt(v)
+		return nil
+	case subscription.FieldLastCheckedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastCheckedAt(v)
+		return nil
+	case subscription.FieldChecks:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChecks(v)
+		return nil
+	case subscription.FieldError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetError(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Subscription field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SubscriptionMutation) AddedFields() []string {
+	var fields []string
+	if m.addorigin_id != nil {
+		fields = append(fields, subscription.FieldOriginID)
+	}
+	if m.addtask_id != nil {
+		fields = append(fields, subscription.FieldTaskID)
+	}
+	if m.addchecks != nil {
+		fields = append(fields, subscription.FieldChecks)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SubscriptionMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case subscription.FieldOriginID:
+		return m.AddedOriginID()
+	case subscription.FieldTaskID:
+		return m.AddedTaskID()
+	case subscription.FieldChecks:
+		return m.AddedChecks()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SubscriptionMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case subscription.FieldOriginID:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOriginID(v)
+		return nil
+	case subscription.FieldTaskID:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTaskID(v)
+		return nil
+	case subscription.FieldChecks:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddChecks(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Subscription numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SubscriptionMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(subscription.FieldOriginID) {
+		fields = append(fields, subscription.FieldOriginID)
+	}
+	if m.FieldCleared(subscription.FieldTaskID) {
+		fields = append(fields, subscription.FieldTaskID)
+	}
+	if m.FieldCleared(subscription.FieldNextCheckAt) {
+		fields = append(fields, subscription.FieldNextCheckAt)
+	}
+	if m.FieldCleared(subscription.FieldLastCheckedAt) {
+		fields = append(fields, subscription.FieldLastCheckedAt)
+	}
+	if m.FieldCleared(subscription.FieldError) {
+		fields = append(fields, subscription.FieldError)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SubscriptionMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SubscriptionMutation) ClearField(name string) error {
+	switch name {
+	case subscription.FieldOriginID:
+		m.ClearOriginID()
+		return nil
+	case subscription.FieldTaskID:
+		m.ClearTaskID()
+		return nil
+	case subscription.FieldNextCheckAt:
+		m.ClearNextCheckAt()
+		return nil
+	case subscription.FieldLastCheckedAt:
+		m.ClearLastCheckedAt()
+		return nil
+	case subscription.FieldError:
+		m.ClearError()
+		return nil
+	}
+	return fmt.Errorf("unknown Subscription nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SubscriptionMutation) ResetField(name string) error {
+	switch name {
+	case subscription.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case subscription.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case subscription.FieldKind:
+		m.ResetKind()
+		return nil
+	case subscription.FieldTargetID:
+		m.ResetTargetID()
+		return nil
+	case subscription.FieldCode:
+		m.ResetCode()
+		return nil
+	case subscription.FieldTitle:
+		m.ResetTitle()
+		return nil
+	case subscription.FieldCover:
+		m.ResetCover()
+		return nil
+	case subscription.FieldReleaseDate:
+		m.ResetReleaseDate()
+		return nil
+	case subscription.FieldOriginID:
+		m.ResetOriginID()
+		return nil
+	case subscription.FieldAutoDownload:
+		m.ResetAutoDownload()
+		return nil
+	case subscription.FieldZone:
+		m.ResetZone()
+		return nil
+	case subscription.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case subscription.FieldCursor:
+		m.ResetCursor()
+		return nil
+	case subscription.FieldHash:
+		m.ResetHash()
+		return nil
+	case subscription.FieldTaskID:
+		m.ResetTaskID()
+		return nil
+	case subscription.FieldNextCheckAt:
+		m.ResetNextCheckAt()
+		return nil
+	case subscription.FieldLastCheckedAt:
+		m.ResetLastCheckedAt()
+		return nil
+	case subscription.FieldChecks:
+		m.ResetChecks()
+		return nil
+	case subscription.FieldError:
+		m.ResetError()
+		return nil
+	}
+	return fmt.Errorf("unknown Subscription field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SubscriptionMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SubscriptionMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SubscriptionMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SubscriptionMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SubscriptionMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SubscriptionMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SubscriptionMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown Subscription unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SubscriptionMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown Subscription edge %s", name)
 }
 
 // TagMutation represents an operation that mutates the Tag nodes in the graph.

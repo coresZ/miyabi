@@ -12,14 +12,14 @@ type Actor func(*sql.Selector)
 // File is the predicate function for file builders.
 type File func(*sql.Selector)
 
-// Monitor is the predicate function for monitor builders.
-type Monitor func(*sql.Selector)
-
 // Movie is the predicate function for movie builders.
 type Movie func(*sql.Selector)
 
 // Setting is the predicate function for setting builders.
 type Setting func(*sql.Selector)
+
+// Subscription is the predicate function for subscription builders.
+type Subscription func(*sql.Selector)
 
 // Tag is the predicate function for tag builders.
 type Tag func(*sql.Selector)

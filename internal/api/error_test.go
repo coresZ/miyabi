@@ -19,6 +19,7 @@ import (
 	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/javdb"
 	"github.com/ppxb/miyabi/internal/library"
+	"github.com/ppxb/miyabi/internal/maintenance"
 	"github.com/ppxb/miyabi/internal/netx"
 	"github.com/ppxb/miyabi/internal/offline"
 	"github.com/ppxb/miyabi/internal/pan"
@@ -58,7 +59,7 @@ func TestErrorMiddlewareMapsDomainErrorsToStatusAndMessage(t *testing.T) {
 		{name: "invalid progress", err: library.ErrInvalidWatchProgress, status: http.StatusBadRequest, message: library.ErrInvalidWatchProgress.PublicMessage()},
 		{name: "invalid proxy", err: proxyValidationError(), status: http.StatusBadRequest, message: "代理配置无效: 代理地址必须包含协议（如 http://）与主机地址"},
 		{name: "history source changed", err: library.ErrWatchHistorySourceChanged, status: http.StatusConflict, message: library.ErrWatchHistorySourceChanged.PublicMessage()},
-		{name: "cache busy", err: service.ErrCacheBusy, status: http.StatusConflict, message: service.ErrCacheBusy.PublicMessage()},
+		{name: "cache busy", err: maintenance.ErrCacheBusy, status: http.StatusConflict, message: maintenance.ErrCacheBusy.PublicMessage()},
 		{name: "file missing", err: fmt.Errorf("影片文件不存在，请重新扫描: %w", fs.ErrNotExist), status: http.StatusNotFound, message: "影片文件不存在，请重新扫描: file does not exist"},
 		{name: "pan unauthorized", err: fmt.Errorf("list: %w", pan.ErrUnauthorized), status: http.StatusUnauthorized, message: pan.ErrUnauthorized.PublicMessage()},
 		{name: "access password", err: service.ErrAccessPassword, status: http.StatusUnauthorized, message: service.ErrAccessPassword.PublicMessage()},

@@ -271,6 +271,7 @@ type pipelineFixture struct {
 	library   *library.Service
 	scrape    *scrapePkg.Service
 	discover  *DiscoverService
+	images    *mediaimage.Cache
 	source    domain.LibrarySource
 }
 
@@ -311,7 +312,7 @@ func newPipelineFixture(t *testing.T) *pipelineFixture {
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindCover, scrape.Cover, scrape.Finished))
 	return &pipelineFixture{
 		store: store, drive: drive, catalogue: catalogue, tasks: taskSvc,
-		library: library, discover: discover, scrape: scrape, source: source,
+		library: library, discover: discover, scrape: scrape, images: images, source: source,
 	}
 }
 
@@ -423,7 +424,7 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 		t.Fatalf("movie edges = actors %d tags %d files %+v", len(record.Edges.Actors), len(record.Edges.Tags), record.Edges.Files)
 	}
 	artwork := scrapePkg.MovieArtwork(record)
-	if exists, err := fixture.library.Images().Exists(artwork); err != nil || !exists {
+	if exists, err := fixture.images.Exists(artwork); err != nil || !exists {
 		t.Fatalf("artwork %+v cached = %t, %v", artwork, exists, err)
 	}
 
@@ -441,7 +442,7 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 	if doc.Poster() != "poster.jpg" || doc.Fanart != "fanart.jpg" || len(doc.Actors) != 2 || len(doc.Tags) != 1 || doc.Studio.Name != "Maker" {
 		t.Fatalf("nfo references = poster %q fanart %q actors %d tags %d studio %+v", doc.Poster(), doc.Fanart, len(doc.Actors), len(doc.Tags), doc.Studio)
 	}
-	poster, err := fixture.library.Images().ReadURL(artwork.Poster)
+	poster, err := fixture.images.ReadURL(artwork.Poster)
 	if err != nil || !bytes.Equal(poster, fixture.drive.uploads[0].body) {
 		t.Fatalf("uploaded poster differs from cached poster: %v", err)
 	}

@@ -1,19 +1,19 @@
-package service
+package monitor
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ppxb/miyabi/internal/tasks"
 	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
-	"github.com/ppxb/miyabi/internal/ent/monitor"
+	"github.com/ppxb/miyabi/internal/ent/subscription"
 	"github.com/ppxb/miyabi/internal/offline"
 	"github.com/ppxb/miyabi/internal/syncx"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
 
 const (
@@ -27,104 +27,134 @@ const (
 	monitorRequestGap         = 2 * time.Second
 )
 
-type MonitorItem struct {
-	ID            int            `json:"id"`
-	MovieID       string         `json:"movie_id"`
-	Code          string         `json:"code"`
-	Title         string         `json:"title"`
-	Cover         string         `json:"cover"`
-	ReleaseDate   string         `json:"release_date"`
-	Status        monitor.Status `json:"status"`
-	Hash          string         `json:"hash,omitempty"`
-	TaskID        *int           `json:"task_id,omitempty"`
-	NextCheckAt   *time.Time     `json:"next_check_at,omitempty"`
-	LastCheckedAt *time.Time     `json:"last_checked_at,omitempty"`
-	Checks        int            `json:"checks"`
-	Error         *string        `json:"error,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
+type Status string
+
+const (
+	StatusWaiting Status = "waiting"
+	StatusAdded   Status = "added"
+	StatusStale   Status = "stale"
+)
+
+type Item struct {
+	ID            int        `json:"id"`
+	MovieID       string     `json:"movie_id"`
+	Code          string     `json:"code"`
+	Title         string     `json:"title"`
+	Cover         string     `json:"cover"`
+	ReleaseDate   string     `json:"release_date"`
+	Status        Status     `json:"status"`
+	Hash          string     `json:"hash,omitempty"`
+	TaskID        *int       `json:"task_id,omitempty"`
+	NextCheckAt   *time.Time `json:"next_check_at,omitempty"`
+	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
+	Checks        int        `json:"checks"`
+	Error         *string    `json:"error,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
-// MonitorService keeps a watch list of unreleased movies and submits the
+type MovieSummary struct {
+	ID          string
+	Code        string
+	Title       string
+	Cover       string
+	ReleaseDate string
+}
+
+type Discoverer interface {
+	MovieSummary(ctx context.Context, movieID string) (MovieSummary, error)
+	FirstMagnetHash(ctx context.Context, movieID string) (string, error)
+}
+
+type OfflineAdder interface {
+	Add(ctx context.Context, movieID string, hash string) (offline.Submission, error)
+}
+
+// Service keeps a watch list of unreleased movies and submits the
 // first magnet to 115 once JavDB indexes one.
-type MonitorService struct {
+type Service struct {
 	database *ent.Client
-	discover *DiscoverService
-	offline  *offline.Service
+	discover Discoverer
+	offline  OfflineAdder
 	tasks    *tasks.Service
 	checking syncx.ContextLock
 	wake     chan struct{}
 }
 
-func NewMonitorService(database *ent.Client, discover *DiscoverService, offline *offline.Service, tasks *tasks.Service) *MonitorService {
-	return &MonitorService{
+func New(database *ent.Client, discover Discoverer, offline OfflineAdder, tasks *tasks.Service) *Service {
+	return &Service{
 		database: database, discover: discover, offline: offline, tasks: tasks,
 		wake: make(chan struct{}, 1),
 	}
 }
 
 // Pending signals when a monitor wants an immediate check.
-func (service *MonitorService) Pending() <-chan struct{} {
+func (service *Service) Pending() <-chan struct{} {
 	return service.wake
 }
 
-func (service *MonitorService) signal() {
+func (service *Service) signal() {
 	select {
 	case service.wake <- struct{}{}:
 	default:
 	}
 }
 
-func (service *MonitorService) List(ctx context.Context) ([]MonitorItem, error) {
-	records, err := service.database.Monitor.Query().Order(ent.Desc(monitor.FieldID)).All(ctx)
+func (service *Service) List(ctx context.Context) ([]Item, error) {
+	records, err := service.database.Subscription.Query().
+		Where(subscription.KindEQ(subscription.KindMovie)).
+		Order(ent.Desc(subscription.FieldID)).All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list monitors: %w", err)
 	}
-	result := make([]MonitorItem, len(records))
+	result := make([]Item, len(records))
 	for index, record := range records {
-		result[index] = monitorItem(record)
+		result[index] = subscriptionItem(record)
 	}
 	return result, nil
 }
 
 // Add starts watching a movie. Re-adding a stale or added monitor resets it
 // so the next poll checks again.
-func (service *MonitorService) Add(ctx context.Context, movieID string) (MonitorItem, error) {
-	existing, err := service.database.Monitor.Query().Where(monitor.MovieIDEQ(movieID)).Only(ctx)
+func (service *Service) Add(ctx context.Context, movieID string) (Item, error) {
+	existing, err := service.database.Subscription.Query().
+		Where(subscription.KindEQ(subscription.KindMovie), subscription.TargetIDEQ(movieID)).Only(ctx)
 	if err == nil {
-		if existing.Status == monitor.StatusWaiting {
-			return monitorItem(existing), nil
+		if existing.Status == subscription.StatusWaiting {
+			return subscriptionItem(existing), nil
 		}
 		return service.Retry(ctx, movieID)
 	}
 	if !ent.IsNotFound(err) {
-		return MonitorItem{}, fmt.Errorf("find monitor: %w", err)
+		return Item{}, fmt.Errorf("find monitor: %w", err)
 	}
-	detail, err := service.discover.MovieDetail(ctx, movieID)
+	detail, err := service.discover.MovieSummary(ctx, movieID)
 	if err != nil {
-		return MonitorItem{}, err
+		return Item{}, err
 	}
 	now := time.Now()
-	record, err := service.database.Monitor.Create().
-		SetMovieID(detail.ID).SetCode(detail.Code).SetTitle(detail.Title).SetCover(detail.Cover).
-		SetReleaseDate(detail.ReleaseDate).SetNextCheckAt(now).Save(ctx)
+	record, err := service.database.Subscription.Create().
+		SetKind(subscription.KindMovie).SetTargetID(detail.ID).SetCode(detail.Code).
+		SetTitle(detail.Title).SetCover(detail.Cover).SetReleaseDate(detail.ReleaseDate).
+		SetNextCheckAt(now).Save(ctx)
 	if err != nil {
 		if ent.IsConstraintError(err) {
 			return service.Add(ctx, movieID)
 		}
-		return MonitorItem{}, fmt.Errorf("create monitor: %w", err)
+		return Item{}, fmt.Errorf("create monitor: %w", err)
 	}
 	service.tasks.NotifyMonitorChanged()
 	service.signal()
-	return monitorItem(record), nil
+	return subscriptionItem(record), nil
 }
 
-func (service *MonitorService) Remove(ctx context.Context, movieID string) error {
-	record, err := service.database.Monitor.Query().Where(monitor.MovieIDEQ(movieID)).Only(ctx)
+func (service *Service) Remove(ctx context.Context, movieID string) error {
+	record, err := service.database.Subscription.Query().
+		Where(subscription.KindEQ(subscription.KindMovie), subscription.TargetIDEQ(movieID)).Only(ctx)
 	if err != nil {
 		return err
 	}
-	if err := service.database.Monitor.DeleteOne(record).Exec(ctx); err != nil {
+	if err := service.database.Subscription.DeleteOne(record).Exec(ctx); err != nil {
 		return fmt.Errorf("remove monitor: %w", err)
 	}
 	service.tasks.NotifyMonitorChanged()
@@ -132,31 +162,32 @@ func (service *MonitorService) Remove(ctx context.Context, movieID string) error
 }
 
 // Retry re-arms a stale or added monitor for an immediate check.
-func (service *MonitorService) Retry(ctx context.Context, movieID string) (MonitorItem, error) {
-	record, err := service.database.Monitor.Query().Where(monitor.MovieIDEQ(movieID)).Only(ctx)
+func (service *Service) Retry(ctx context.Context, movieID string) (Item, error) {
+	record, err := service.database.Subscription.Query().
+		Where(subscription.KindEQ(subscription.KindMovie), subscription.TargetIDEQ(movieID)).Only(ctx)
 	if err != nil {
-		return MonitorItem{}, err
+		return Item{}, err
 	}
-	record, err = record.Update().SetStatus(monitor.StatusWaiting).SetNextCheckAt(time.Now()).
+	record, err = record.Update().SetStatus(subscription.StatusWaiting).SetNextCheckAt(time.Now()).
 		SetHash("").ClearTaskID().ClearError().Save(ctx)
 	if err != nil {
-		return MonitorItem{}, fmt.Errorf("retry monitor: %w", err)
+		return Item{}, fmt.Errorf("retry monitor: %w", err)
 	}
 	service.tasks.NotifyMonitorChanged()
 	service.signal()
-	return monitorItem(record), nil
+	return subscriptionItem(record), nil
 }
 
 // Check polls due monitors in small batches with a pause between JavDB
 // requests. Overlapping runs are serialized.
-func (service *MonitorService) Check(ctx context.Context) error {
+func (service *Service) Check(ctx context.Context) error {
 	if err := service.checking.Lock(ctx); err != nil {
 		return err
 	}
 	defer service.checking.Unlock()
-	records, err := service.database.Monitor.Query().
-		Where(monitor.StatusEQ(monitor.StatusWaiting), monitor.NextCheckAtLTE(time.Now())).
-		Order(ent.Asc(monitor.FieldNextCheckAt)).Limit(monitorBatchSize).All(ctx)
+	records, err := service.database.Subscription.Query().
+		Where(subscription.KindEQ(subscription.KindMovie), subscription.StatusEQ(subscription.StatusWaiting), subscription.NextCheckAtLTE(time.Now())).
+		Order(ent.Asc(subscription.FieldNextCheckAt)).Limit(monitorBatchSize).All(ctx)
 	if err != nil {
 		return fmt.Errorf("load due monitors: %w", err)
 	}
@@ -179,17 +210,17 @@ func (service *MonitorService) Check(ctx context.Context) error {
 	return errors.Join(checkErrors...)
 }
 
-func (service *MonitorService) checkOne(ctx context.Context, record *ent.Monitor) error {
+func (service *Service) checkOne(ctx context.Context, record *ent.Subscription) error {
 	now := time.Now()
-	magnets, err := service.discover.Magnets(ctx, record.MovieID)
+	hash, err := service.discover.FirstMagnetHash(ctx, record.TargetID)
 	if err != nil {
 		return service.deferCheck(ctx, record, now, domain.E(domain.KindUpstream, "查询磁力失败："+domain.PublicMessage(err), err))
 	}
-	if len(magnets) == 0 {
+	if hash == "" {
 		next, stale := nextMonitorCheck(now, record.ReleaseDate, record.CreatedAt)
 		update := record.Update().SetLastCheckedAt(now).AddChecks(1).ClearError()
 		if stale {
-			update.SetStatus(monitor.StatusStale).ClearNextCheckAt()
+			update.SetStatus(subscription.StatusStale).ClearNextCheckAt()
 		} else {
 			update.SetNextCheckAt(next)
 		}
@@ -201,12 +232,11 @@ func (service *MonitorService) checkOne(ctx context.Context, record *ent.Monitor
 		}
 		return nil
 	}
-	hash := strings.ToLower(magnets[0].Hash)
-	submission, err := service.offline.Add(ctx, record.MovieID, hash)
+	submission, err := service.offline.Add(ctx, record.TargetID, hash)
 	if err != nil {
 		return service.deferCheck(ctx, record, now, domain.E(domain.KindUpstream, "加入 115 失败："+domain.PublicMessage(err), err))
 	}
-	if err := record.Update().SetStatus(monitor.StatusAdded).SetHash(hash).SetTaskID(submission.TaskID).
+	if err := record.Update().SetStatus(subscription.StatusAdded).SetHash(hash).SetTaskID(submission.TaskID).
 		SetLastCheckedAt(now).AddChecks(1).ClearNextCheckAt().ClearError().Exec(ctx); err != nil && !ent.IsNotFound(err) {
 		return fmt.Errorf("complete monitor %d: %w", record.ID, err)
 	}
@@ -218,7 +248,7 @@ func (service *MonitorService) checkOne(ctx context.Context, record *ent.Monitor
 // deferCheck records a transient failure and retries within the hour rather
 // than consuming the daily slot. The record stores the public message only;
 // the returned error keeps the full cause chain for logs.
-func (service *MonitorService) deferCheck(ctx context.Context, record *ent.Monitor, now time.Time, cause error) error {
+func (service *Service) deferCheck(ctx context.Context, record *ent.Subscription, now time.Time, cause error) error {
 	if err := record.Update().SetLastCheckedAt(now).SetNextCheckAt(now.Add(monitorRetryInterval)).
 		SetError(domain.PublicMessage(cause)).Exec(ctx); err != nil && !ent.IsNotFound(err) {
 		return fmt.Errorf("defer monitor %d: %w", record.ID, err)
@@ -257,12 +287,11 @@ func startOfDay(value time.Time) time.Time {
 	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.Local)
 }
 
-func monitorItem(record *ent.Monitor) MonitorItem {
-	item := MonitorItem{
-		ID: record.ID, MovieID: record.MovieID, Code: record.Code, Title: record.Title, Cover: record.Cover,
-		ReleaseDate: record.ReleaseDate, Status: record.Status, Hash: record.Hash, TaskID: record.TaskID,
+func subscriptionItem(record *ent.Subscription) Item {
+	return Item{
+		ID: record.ID, MovieID: record.TargetID, Code: record.Code, Title: record.Title, Cover: record.Cover,
+		ReleaseDate: record.ReleaseDate, Status: Status(record.Status), Hash: record.Hash, TaskID: record.TaskID,
 		NextCheckAt: record.NextCheckAt, LastCheckedAt: record.LastCheckedAt, Checks: record.Checks,
 		Error: record.Error, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
-	return item
 }

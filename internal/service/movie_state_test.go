@@ -36,22 +36,21 @@ type offlineTestHelper struct {
 }
 
 func offlineFixture(t testing.TB) (*offlineTestHelper, *ent.Task, offlineTaskPayload, domain.LibrarySource) {
-	t.Helper()
-	library, _, scan := libraryFixture(t)
-	svc := offline.New(library.Database(), nil, library.Drive(), library.Tasks(), library)
+	fix := libraryFixture(t)
+	svc := offline.New(fix.DB, nil, fix.Drive, fix.Tasks, fix.Service)
 	input := offlineTaskPayload{
-		AccountID: scan.Source.AccountID, DirectoryID: scan.Source.Directory.ID,
+		AccountID: fix.Payload.Source.AccountID, DirectoryID: fix.Payload.Source.Directory.ID,
 		Code: "ABP-001", JavDBID: "fixture-movie", Hash: "fixture-hash", InfoHash: "fixture-hash",
 	}
 	encoded, err := tasks.EncodePayload(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	record, err := library.Database().Task.Create().SetType("offline").SetStatus(task.StatusRunning).SetPayload(encoded).Save(t.Context())
+	record, err := fix.DB.Task.Create().SetType("offline").SetStatus(task.StatusRunning).SetPayload(encoded).Save(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &offlineTestHelper{Service: svc, database: library.Database(), drive: library.Drive(), tasks: library.Tasks()}, record, input, scan.Source
+	return &offlineTestHelper{Service: svc, database: fix.DB, drive: fix.Drive, tasks: fix.Tasks}, record, input, fix.Payload.Source
 }
 
 func TestMovieStatesFollowDownloadThroughIndexingWithoutCatalogueRequests(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/javdb"
+	"github.com/ppxb/miyabi/internal/monitor"
 	"github.com/ppxb/miyabi/internal/netx"
 )
 
@@ -262,6 +263,31 @@ func (service *DiscoverService) MovieCode(ctx context.Context, movieID string) (
 		return "", err
 	}
 	return movie.Code, nil
+}
+
+func (service *DiscoverService) MovieSummary(ctx context.Context, movieID string) (monitor.MovieSummary, error) {
+	detail, err := service.MovieDetail(ctx, movieID)
+	if err != nil {
+		return monitor.MovieSummary{}, err
+	}
+	return monitor.MovieSummary{
+		ID:          detail.ID,
+		Code:        detail.Code,
+		Title:       detail.Title,
+		Cover:       detail.Cover,
+		ReleaseDate: detail.ReleaseDate,
+	}, nil
+}
+
+func (service *DiscoverService) FirstMagnetHash(ctx context.Context, movieID string) (string, error) {
+	magnets, err := service.Magnets(ctx, movieID)
+	if err != nil {
+		return "", err
+	}
+	if len(magnets) == 0 {
+		return "", nil
+	}
+	return strings.ToLower(magnets[0].Hash), nil
 }
 
 func projectMagnets(source []domain.Magnet) []DiscoverMagnet {
