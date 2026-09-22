@@ -322,3 +322,69 @@ func TestFacets(t *testing.T) {
 		}
 	}
 }
+
+type stubProviderWithMagnets struct {
+	magnets []domain.Magnet
+}
+
+func (s *stubProviderWithMagnets) Close()                                                             {}
+func (s *stubProviderWithMagnets) Search(context.Context, string, domain.SearchOptions) ([]domain.Movie, error) { return nil, nil }
+func (s *stubProviderWithMagnets) Browse(context.Context, domain.BrowseOptions) ([]domain.Movie, error) { return nil, nil }
+func (s *stubProviderWithMagnets) MovieDetail(context.Context, string) (domain.MovieDetail, error) {
+	return domain.MovieDetail{Movie: domain.Movie{ID: "movie-1", Code: "SSIS-001"}}, nil
+}
+func (s *stubProviderWithMagnets) Magnets(context.Context, string) ([]domain.Magnet, error) { return s.magnets, nil }
+func (s *stubProviderWithMagnets) FetchMedia(context.Context, string) (domain.Media, error) { return domain.Media{}, nil }
+func (s *stubProviderWithMagnets) Tags(context.Context, domain.Zone) ([]domain.TagCategory, error) { return nil, nil }
+func (s *stubProviderWithMagnets) ResolveMovieID(context.Context, string) (string, error) { return "movie-1", nil }
+func (s *stubProviderWithMagnets) Route() (javdb.RouteStatus, bool) { return javdb.RouteStatus{}, false }
+func (s *stubProviderWithMagnets) SelectRoute(context.Context, string) (javdb.RouteStatus, error) { return javdb.RouteStatus{}, nil }
+func (s *stubProviderWithMagnets) Reselect(context.Context) (javdb.RouteStatus, error) { return javdb.RouteStatus{}, nil }
+func (s *stubProviderWithMagnets) Name() string { return "javdb" }
+func (s *stubProviderWithMagnets) Find(ctx context.Context, ref domain.MovieRef) ([]domain.Magnet, error) { return s.magnets, nil }
+
+func TestServiceMagnetsWithAggregator(t *testing.T) {
+	store, err := database.Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	provider := &stubProviderWithMagnets{
+		magnets: []domain.Magnet{
+			{
+				Hash:        "1111111111111111111111111111111111111111",
+				Name:        "SSIS-001 Subtitle",
+				Size:        2000,
+				HasSubtitle: true,
+				Sources:     []string{"javdb"},
+			},
+		},
+	}
+
+	service, err := NewWithProvider(t.Context(), store.Client, provider, &stubLocalState{})
+	if err != nil {
+		t.Fatalf("unexpected error creating service: %v", err)
+	}
+
+	magnets, err := service.Magnets(t.Context(), "movie-1")
+	if err != nil {
+		t.Fatalf("unexpected error fetching magnets: %v", err)
+	}
+	if len(magnets) != 1 {
+		t.Fatalf("expected 1 magnet, got %d", len(magnets))
+	}
+	if magnets[0].URI != "magnet:?xt=urn:btih:1111111111111111111111111111111111111111" {
+		t.Errorf("unexpected magnet URI: %s", magnets[0].URI)
+	}
+
+	has, err := service.HasMagnet(t.Context(), "movie-1", "1111111111111111111111111111111111111111")
+	if err != nil || !has {
+		t.Errorf("expected HasMagnet to return true, got %v, err=%v", has, err)
+	}
+
+	firstHash, err := service.FirstMagnetHash(t.Context(), "movie-1")
+	if err != nil || firstHash != "1111111111111111111111111111111111111111" {
+		t.Errorf("expected FirstMagnetHash to return hash, got %s, err=%v", firstHash, err)
+	}
+}

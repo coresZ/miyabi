@@ -32,9 +32,23 @@ func (c *Client) Magnets(ctx context.Context, movieID string) ([]domain.Magnet, 
 		if len(hash) != 20 {
 			return nil, fmt.Errorf("JavDB magnet %d has an invalid info hash length", index)
 		}
+		var tags []string
+		if item.CNSub {
+			tags = append(tags, "字幕")
+		}
+		if item.HD {
+			tags = append(tags, "高清")
+		}
 		magnets[index] = domain.Magnet{
-			Hash: hex.EncodeToString(hash), Name: item.Name, Size: item.SizeMiB * 1024 * 1024,
-			HasSubtitle: item.CNSub, HD: item.HD, FilesCount: item.FilesCount, CreatedAt: item.CreatedAt,
+			Hash:        hex.EncodeToString(hash),
+			Name:        item.Name,
+			Size:        item.SizeMiB * 1024 * 1024,
+			HasSubtitle: item.CNSub,
+			HD:          item.HD,
+			FilesCount:  item.FilesCount,
+			CreatedAt:   item.CreatedAt,
+			Sources:     []string{"javdb"},
+			Tags:        tags,
 		}
 	}
 	slices.SortStableFunc(magnets, func(a, b domain.Magnet) int {
@@ -56,4 +70,25 @@ func (c *Client) Magnets(ctx context.Context, movieID string) ([]domain.Magnet, 
 		return cmp.Compare(b.FilesCount, a.FilesCount)
 	})
 	return magnets, nil
+}
+
+// Name identifies JavDB as a magnet source.
+func (c *Client) Name() string {
+	return "javdb"
+}
+
+// Find retrieves magnets for the given movie reference.
+func (c *Client) Find(ctx context.Context, ref domain.MovieRef) ([]domain.Magnet, error) {
+	movieID := strings.TrimSpace(ref.JavDBID)
+	if movieID == "" && strings.TrimSpace(ref.Code) != "" {
+		resolved, err := c.ResolveMovieID(ctx, ref.Code)
+		if err != nil {
+			return nil, err
+		}
+		movieID = resolved
+	}
+	if movieID == "" {
+		return nil, nil
+	}
+	return c.Magnets(ctx, movieID)
 }

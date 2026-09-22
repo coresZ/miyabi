@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	networkProxySetting = "network.proxy"
-	networkProbeTimeout = 8 * time.Second
+	networkProxySetting  = "network.proxy"
+	javbusEnabledSetting = "magnet.javbus.enabled"
+	networkProbeTimeout  = 8 * time.Second
 )
 
 // NetworkService owns the persisted upstream network configuration.
@@ -28,6 +29,10 @@ func NewNetworkService(ctx context.Context, database *ent.Client) (*NetworkServi
 	config, _, err := loadSetting[netx.ProxyConfig](ctx, database, networkProxySetting)
 	if err != nil {
 		return nil, err
+	}
+	javbusEnabled, found, err := loadSetting[bool](ctx, database, javbusEnabledSetting)
+	if err == nil && found {
+		config.JavBusEnabled = javbusEnabled
 	}
 	proxy, err := netx.NewProxyManager(config)
 	if err != nil {
@@ -50,7 +55,11 @@ func (service *NetworkService) UpdateNetwork(ctx context.Context, config netx.Pr
 	if err != nil {
 		return err
 	}
+	normalized.JavBusEnabled = config.JavBusEnabled
 	if err := saveSetting(ctx, service.database, networkProxySetting, normalized); err != nil {
+		return err
+	}
+	if err := saveSetting(ctx, service.database, javbusEnabledSetting, config.JavBusEnabled); err != nil {
 		return err
 	}
 	return service.proxy.Update(normalized)

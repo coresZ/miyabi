@@ -4,6 +4,7 @@ package domain
 type MovieRef struct {
 	Code    string `json:"code"`
 	JavDBID string `json:"javdb_id"`
+	Zone    Zone   `json:"zone,omitempty"`
 }
 
 // LocalMovie represents the identity and library ID of a movie indexed locally.

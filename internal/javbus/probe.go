@@ -11,11 +11,6 @@ import (
 	"github.com/ppxb/miyabi/internal/netx"
 )
 
-const (
-	baseURL   = "https://www.javbus.com"
-	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-)
-
 // Probe measures reachability of the JavBus home page through the given
 // proxy, or directly when proxy is nil.
 func Probe(ctx context.Context, proxy *url.URL, timeout time.Duration) (time.Duration, error) {
@@ -25,7 +20,7 @@ func Probe(ctx context.Context, proxy *url.URL, timeout time.Duration) (time.Dur
 	}
 	defer client.CloseIdleConnections()
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, DefaultBaseURL, nil)
 	if err != nil {
 		return 0, err
 	}

@@ -155,8 +155,23 @@ function MagnetCard({
             </p>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm leading-6 text-muted-foreground">
               <span className="text-xs">{formatSize(magnet.size)}</span>
-              {magnet.has_subtitle ? <Badge variant="outline">字幕</Badge> : null}
-              {magnet.hd ? <Badge variant="outline">高清</Badge> : null}
+              {magnet.sources?.map(source => (
+                <Badge key={source} variant="outline">
+                  {source === 'javdb' ? 'JavDB' : source === 'javbus' ? 'JavBus' : source}
+                </Badge>
+              ))}
+              {magnet.tags && magnet.tags.length > 0 ? (
+                magnet.tags.map(tag => (
+                  <Badge key={tag} variant="outline">
+                    {tag}
+                  </Badge>
+                ))
+              ) : (
+                <>
+                  {magnet.has_subtitle ? <Badge variant="outline">字幕</Badge> : null}
+                  {magnet.hd ? <Badge variant="outline">高清</Badge> : null}
+                </>
+              )}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">

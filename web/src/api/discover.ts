@@ -84,6 +84,9 @@ export type DiscoverMagnet = {
   files_count: number
   created_at: string
   uri: string
+  sources?: string[]
+  tags?: string[]
+  inferred?: boolean
 }
 
 export type TagCategory = {

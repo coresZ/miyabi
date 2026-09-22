@@ -13,13 +13,17 @@ import (
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/setting"
+	"github.com/ppxb/miyabi/internal/javbus"
 	"github.com/ppxb/miyabi/internal/javdb"
+	"github.com/ppxb/miyabi/internal/magnet"
 	"github.com/ppxb/miyabi/internal/netx"
 )
 
 const (
-	javdbDeviceSetting = "javdb.device_uuid"
-	javdbRouteSetting  = "javdb.route"
+	javdbDeviceSetting   = "javdb.device_uuid"
+	javdbRouteSetting    = "javdb.route"
+	javbusEnabledSetting = "magnet.javbus.enabled"
+	javbusBaseURLSetting = "magnet.javbus.base_url"
 )
 
 type persistedRoute struct {
@@ -30,16 +34,40 @@ type persistedRoute struct {
 
 // Service combines JavDB catalogue data with Miyabi's local library and workflow state.
 type Service struct {
-	database *ent.Client
-	local    LocalState
-	javdb    Provider
-	lists    *responseCache[[]domain.Movie]
-	details  *responseCache[domain.MovieDetail]
-	tags     *responseCache[[]domain.TagCategory]
-	magnets  *responseCache[[]domain.Magnet]
+	database   *ent.Client
+	local      LocalState
+	javdb      Provider
+	javbus     *javbus.Client
+	aggregator *magnet.Aggregator
+	lists      *responseCache[[]domain.Movie]
+	details    *responseCache[domain.MovieDetail]
+	tags       *responseCache[[]domain.TagCategory]
+	magnets    *responseCache[[]domain.Magnet]
 
 	routeMu sync.RWMutex
 	route   RouteStatus
+}
+
+type dynamicJavBusSource struct {
+	client   *javbus.Client
+	database *ent.Client
+}
+
+func (s *dynamicJavBusSource) Name() string {
+	return "javbus"
+}
+
+func (s *dynamicJavBusSource) Find(ctx context.Context, ref domain.MovieRef) ([]domain.Magnet, error) {
+	if s.client == nil {
+		return nil, nil
+	}
+	if s.database != nil {
+		enabled, found, _ := loadSetting[bool](ctx, s.database, javbusEnabledSetting)
+		if !found || !enabled {
+			return nil, nil
+		}
+	}
+	return s.client.Find(ctx, ref)
 }
 
 // New creates the lazy JavDB client and restores/persists device UUID and route settings.
@@ -83,7 +111,20 @@ func New(
 		return nil, err
 	}
 
-	return newService(database, client, local, route), nil
+	javbusBaseURL, _, _ := loadSetting[string](ctx, database, javbusBaseURLSetting)
+	javbusClient, err := javbus.New(javbus.Options{
+		BaseURL: javbusBaseURL,
+		Proxy:   proxy,
+	})
+	if err != nil {
+		client.Close()
+		return nil, fmt.Errorf("initialize JavBus client: %w", err)
+	}
+
+	javbusSource := &dynamicJavBusSource{client: javbusClient, database: database}
+	aggregator := magnet.NewAggregator([]magnet.Source{client, javbusSource}, 8*time.Second, nil)
+
+	return newService(database, client, javbusClient, aggregator, local, route), nil
 }
 
 // NewWithProvider creates a catalogue Service with an explicit Provider.
@@ -98,7 +139,11 @@ func NewWithProvider(
 	if err != nil {
 		return nil, err
 	}
-	return newService(database, provider, local, route), nil
+	var agg *magnet.Aggregator
+	if src, ok := provider.(magnet.Source); ok {
+		agg = magnet.NewAggregator([]magnet.Source{src}, 8*time.Second, nil)
+	}
+	return newService(database, provider, nil, agg, local, route), nil
 }
 
 // Response caches absorb repeated page loads; entries are small and short-lived
@@ -110,15 +155,24 @@ const (
 	magnetsCacheSize, magnetsCacheTTL = 64, time.Minute
 )
 
-func newService(database *ent.Client, provider Provider, local LocalState, route persistedRoute) *Service {
+func newService(
+	database *ent.Client,
+	provider Provider,
+	javbusClient *javbus.Client,
+	aggregator *magnet.Aggregator,
+	local LocalState,
+	route persistedRoute,
+) *Service {
 	return &Service{
-		database: database,
-		javdb:    provider,
-		lists:    newResponseCache[[]domain.Movie](listCacheSize, listCacheTTL),
-		details:  newResponseCache[domain.MovieDetail](detailCacheSize, detailCacheTTL),
-		tags:     newResponseCache[[]domain.TagCategory](tagsCacheSize, tagsCacheTTL),
-		magnets:  newResponseCache[[]domain.Magnet](magnetsCacheSize, magnetsCacheTTL),
-		local:    local,
+		database:   database,
+		javdb:      provider,
+		javbus:     javbusClient,
+		aggregator: aggregator,
+		lists:      newResponseCache[[]domain.Movie](listCacheSize, listCacheTTL),
+		details:    newResponseCache[domain.MovieDetail](detailCacheSize, detailCacheTTL),
+		tags:       newResponseCache[[]domain.TagCategory](tagsCacheSize, tagsCacheTTL),
+		magnets:    newResponseCache[[]domain.Magnet](magnetsCacheSize, magnetsCacheTTL),
+		local:      local,
 		route: RouteStatus{
 			Host:      route.Host,
 			LatencyMS: route.LatencyMS,
@@ -131,6 +185,9 @@ func newService(database *ent.Client, provider Provider, local LocalState, route
 func (service *Service) Close() {
 	if service.javdb != nil {
 		service.javdb.Close()
+	}
+	if service.javbus != nil {
+		service.javbus.Close()
 	}
 }
 
@@ -196,10 +253,23 @@ func (service *Service) MovieDetail(ctx context.Context, movieID string) (MovieD
 
 func (service *Service) Magnets(ctx context.Context, movieID string) ([]Magnet, error) {
 	magnets, err := cachedJavDB(ctx, service, service.magnets, movieID, func(ctx context.Context) ([]domain.Magnet, error) {
+		if service.aggregator != nil {
+			var code string
+			var zone domain.Zone
+			if d, err := service.CatalogueDetail(ctx, movieID); err == nil {
+				code = d.Code
+				zone = d.Zone
+			}
+			return service.aggregator.Find(ctx, domain.MovieRef{
+				Code:    code,
+				JavDBID: movieID,
+				Zone:    zone,
+			})
+		}
 		return service.javdb.Magnets(ctx, movieID)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("get JavDB magnets: %w", err)
+		return nil, fmt.Errorf("get magnets: %w", err)
 	}
 	return projectMagnets(magnets), nil
 }
