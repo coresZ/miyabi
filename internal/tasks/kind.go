@@ -6,8 +6,9 @@ type Kind string
 const (
 	KindScan    Kind = "scan"
 	KindScrape  Kind = "scrape"
-	KindCover   Kind = "cover"
-	KindOffline Kind = "offline"
+	KindCover             Kind = "cover"
+	KindOffline           Kind = "offline"
+	KindSubscriptionBatch Kind = "subscription_batch"
 )
 
 // String returns the string representation of the task kind.

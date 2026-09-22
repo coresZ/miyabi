@@ -99,6 +99,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	taskRegistry.Register(tasks.NewHandler(tasks.KindScan, libSvc.Scan, libSvc.Finished))
 	taskRegistry.Register(tasks.NewHandler(tasks.KindScrape, scrapeSvc.Scrape, scrapeSvc.Finished))
 	taskRegistry.Register(tasks.NewHandler(tasks.KindCover, scrapeSvc.Cover, scrapeSvc.Finished))
+	taskRegistry.Register(tasks.NewHandler(tasks.KindSubscriptionBatch, monitorSvc.BatchHandler, monitorSvc.BatchFinished))
 
 	pool := tasks.NewPool(taskSvc.Queue(), taskSvc.Bus(), taskRegistry, cfg.Runtime.TaskPoolWorkers, logger)
 

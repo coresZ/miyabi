@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 import type { JavDBZone } from '@/api/discover'
 
-export type DiscoverView = 'released' | 'upcoming' | 'category' | 'monitor'
+export type DiscoverView = 'released' | 'upcoming' | 'category'
 
 export type CategoryFilters = {
   zone: JavDBZone
@@ -23,7 +23,7 @@ type DiscoverState = {
 // Keep the browsing context when a movie detail page unmounts the list.
 export const useDiscoverStore = create<DiscoverState>(set => ({
   view: 'released',
-  pages: { released: 1, upcoming: 1, category: 1, monitor: 1 },
+  pages: { released: 1, upcoming: 1, category: 1 },
   category: { zone: 'censored', categoryID: '', tagID: '', main: '' },
   setView: view => set({ view }),
   setPage: (view, page) => set(state => ({ pages: { ...state.pages, [view]: page } })),

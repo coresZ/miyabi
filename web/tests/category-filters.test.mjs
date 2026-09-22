@@ -31,7 +31,7 @@ test('subcategory changes preserve the common filter and reset only the category
     main: ['m'],
     tagIds: ['tag-2']
   })
-  assert.deepEqual(store.getState().pages, { released: 4, upcoming: 2, category: 1, monitor: 1 })
+  assert.deepEqual(store.getState().pages, { released: 4, upcoming: 2, category: 1 })
 })
 
 test('year browsing combines the common filter with a year instead of a tag ID', t => {

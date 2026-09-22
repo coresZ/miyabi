@@ -10,6 +10,7 @@ import { JavDBSection } from '@/features/settings/javdb-section'
 import { NetworkSection } from '@/features/settings/network-section'
 import { PanSection } from '@/features/settings/pan-section'
 import { PrivacySection } from '@/features/settings/privacy-section'
+import { SubscriptionSection } from '@/features/settings/subscription-section'
 import { TasksSection } from '@/features/settings/tasks-section'
 
 export const Route = createFileRoute('/settings')({
@@ -28,6 +29,8 @@ function SettingsPage() {
           <PrivacySection />
           <Separator />
           <NetworkSection />
+          <Separator />
+          <SubscriptionSection />
           <Separator />
           <JavDBSection />
           <Separator />

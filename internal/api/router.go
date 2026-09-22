@@ -22,7 +22,7 @@ type Dependencies struct {
 	Catalogue   CatalogueManager
 	Drive       DriveManager
 	Offline     OfflineManager
-	Monitor     MonitorManager
+	Monitor     SubscriptionManager
 	Library     LibraryManager
 	Play        PlayManager
 	Tasks       TaskManager
@@ -52,6 +52,8 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	settingsAPI.GET("/network", networkHandler(deps.Network))
 	settingsAPI.PUT("/network", networkUpdateHandler(deps.Network))
 	settingsAPI.POST("/network/test", networkTestHandler(deps.Network))
+	settingsAPI.GET("/subscription", subscriptionSettingsGetHandler(deps.Monitor))
+	settingsAPI.PUT("/subscription", subscriptionSettingsUpdateHandler(deps.Monitor))
 	api.GET("/library/movies", libraryMoviesHandler(deps.Library))
 	api.PUT("/library/movies/:id/watched", libraryWatchedHandler(deps.Library))
 	api.GET("/library/history", libraryHistoryHandler(deps.Library))
@@ -69,11 +71,14 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.GET("/tasks", noStore(), tasksHandler(deps.Tasks))
 	api.GET("/tasks/events", taskEventsHandler(deps.Tasks))
 	api.GET("/offline/tasks", noStore(), offlineActivityHandler(deps.Offline))
-	monitorAPI := api.Group("/monitors", noStore())
-	monitorAPI.GET("", monitorListHandler(deps.Monitor))
-	monitorAPI.POST("", monitorAddHandler(deps.Monitor))
-	monitorAPI.DELETE("/:id", monitorRemoveHandler(deps.Monitor))
-	monitorAPI.POST("/:id/retry", monitorRetryHandler(deps.Monitor))
+	subscriptionsAPI := api.Group("/subscriptions", noStore())
+	subscriptionsAPI.GET("", subscriptionListHandler(deps.Monitor))
+	subscriptionsAPI.POST("", subscriptionCreateHandler(deps.Monitor))
+	subscriptionsAPI.PATCH("/:id", subscriptionUpdateHandler(deps.Monitor))
+	subscriptionsAPI.DELETE("/:id", subscriptionRemoveHandler(deps.Monitor))
+	subscriptionsAPI.POST("/:id/enqueue", subscriptionEnqueueSingleHandler(deps.Monitor))
+	subscriptionsAPI.POST("/enqueue", subscriptionEnqueueBatchHandler(deps.Monitor))
+	subscriptionsAPI.GET("/actors/:id/feed", subscriptionActorFeedHandler(deps.Monitor))
 	api.GET("/discover/movies", discoverBrowseHandler(deps.Catalogue))
 	api.POST("/discover/movie-states", noStore(), discoverMovieStatesHandler(deps.Catalogue))
 	api.GET("/discover/viewed", noStore(), discoverViewedHandler(deps.Library))

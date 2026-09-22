@@ -321,6 +321,32 @@ func (service *Service) FirstMagnetHash(ctx context.Context, movieID string) (st
 	return strings.ToLower(magnets[0].Hash), nil
 }
 
+// CatalogueMagnets returns magnets as domain types for callers requiring domain boundaries.
+func (service *Service) CatalogueMagnets(ctx context.Context, movieID string) ([]domain.Magnet, error) {
+	magnets, err := service.Magnets(ctx, movieID)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]domain.Magnet, len(magnets))
+	for i, m := range magnets {
+		res[i] = m.Magnet
+	}
+	return res, nil
+}
+
+// BrowseMovies returns browsed movies as domain types for callers requiring domain boundaries.
+func (service *Service) BrowseMovies(ctx context.Context, options domain.BrowseOptions) ([]domain.Movie, error) {
+	movies, err := service.Browse(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]domain.Movie, len(movies))
+	for i, m := range movies {
+		res[i] = m.Movie
+	}
+	return res, nil
+}
+
 func (service *Service) Media(ctx context.Context, rawURL string) (domain.Media, error) {
 	media, err := service.javdb.FetchMedia(ctx, rawURL)
 	if err != nil {

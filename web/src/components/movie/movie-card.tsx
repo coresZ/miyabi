@@ -4,13 +4,13 @@ import type { ReactNode } from 'react'
 import type { DiscoverMovie } from '@/api/discover'
 import { MovieResourceBadges, MovieStateBadge } from '@/components/movie/movie-badges'
 import { MovieCover } from '@/components/movie/movie-cover'
-import { MovieMonitorButton } from '@/components/movie/movie-monitor-button'
+import { MovieSubscribeButton } from '@/components/movie/movie-subscribe-button'
 import { OverflowTooltip } from '@/components/overflow-tooltip'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 
 export function DiscoverMovieCard({ movie }: { movie: DiscoverMovie }) {
-  const monitorable = movie.release_status === 'upcoming' && movie.magnets_count === 0
+  const subscribable = movie.release_status === 'upcoming' && movie.magnets_count === 0
   return (
     <Link
       to="/discover/$movieId"
@@ -22,9 +22,9 @@ export function DiscoverMovieCard({ movie }: { movie: DiscoverMovie }) {
         description={movie.release_date}
         state={<MovieStateBadge movie={movie} />}
         coverOverlay={
-          monitorable ? (
+          subscribable ? (
             <div className="absolute top-2 right-2">
-              <MovieMonitorButton movie={movie} />
+              <MovieSubscribeButton movie={movie} />
             </div>
           ) : undefined
         }

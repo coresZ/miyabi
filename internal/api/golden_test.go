@@ -186,18 +186,18 @@ func (goldenOffline) Activity(context.Context) (offline.Activity, error) {
 	}}, nil
 }
 
-type goldenMonitor struct {
-	MonitorManager
+type goldenSubscription struct {
+	SubscriptionManager
 }
 
-func (goldenMonitor) List(context.Context) ([]monitor.Item, error) {
+func (goldenSubscription) List(context.Context, string, int, int) ([]monitor.Item, error) {
 	taskID, failure, next := 9, "JavDB 暂不可用", goldenTime().Add(time.Hour)
 	last := goldenTime()
 	return []monitor.Item{
-		{ID: 2, MovieID: "movie-upcoming", Code: "SONE-002", Title: "Upcoming", Cover: "https://media.example/upcoming.jpg", ReleaseDate: "2026-10-01",
-			Status: monitor.StatusWaiting, NextCheckAt: &next, LastCheckedAt: &last, Checks: 3, Error: &failure, CreatedAt: goldenTime(), UpdatedAt: goldenTime()},
-		{ID: 1, MovieID: "movie-exact", Code: "ABP-123", Title: "Localized title", Cover: "https://media.example/cover.jpg", ReleaseDate: "2026-08-01",
-			Status: monitor.StatusAdded, Hash: "0000000000000000000000000000000000000003", TaskID: &taskID, Checks: 1, CreatedAt: goldenTime(), UpdatedAt: goldenTime()},
+		{ID: 2, Kind: "movie", TargetID: "movie-upcoming", Code: "SONE-002", Title: "Upcoming", Cover: "https://media.example/upcoming.jpg", ReleaseDate: "2026-10-01",
+			AutoDownload: true, Status: monitor.StatusWaiting, NextCheckAt: &next, LastCheckedAt: &last, Checks: 3, Error: &failure, CreatedAt: goldenTime(), UpdatedAt: goldenTime()},
+		{ID: 1, Kind: "movie", TargetID: "movie-exact", Code: "ABP-123", Title: "Localized title", Cover: "https://media.example/cover.jpg", ReleaseDate: "2026-08-01",
+			AutoDownload: true, Status: monitor.StatusAdded, Hash: "0000000000000000000000000000000000000003", TaskID: &taskID, Checks: 1, CreatedAt: goldenTime(), UpdatedAt: goldenTime()},
 	}, nil
 }
 
@@ -243,7 +243,7 @@ func (goldenData) Info(context.Context) (maintenance.Info, error) {
 func goldenRouter() http.Handler {
 	return NewRouter(Dependencies{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Catalogue: goldenDiscover{}, Library: goldenLibrary{},
-		Tasks: goldenTasks{}, Offline: goldenOffline{}, Monitor: goldenMonitor{}, Drive: goldenPan{}, Play: goldenPlay{}, Maintenance: goldenData{},
+		Tasks: goldenTasks{}, Offline: goldenOffline{}, Monitor: goldenSubscription{}, Drive: goldenPan{}, Play: goldenPlay{}, Maintenance: goldenData{},
 	})
 }
 
@@ -265,7 +265,7 @@ func TestResponseContractsMatchGoldenFiles(t *testing.T) {
 		{name: "library_history", method: http.MethodGet, path: "/api/library/history"},
 		{name: "tasks", method: http.MethodGet, path: "/api/tasks"},
 		{name: "offline_tasks", method: http.MethodGet, path: "/api/offline/tasks"},
-		{name: "monitors", method: http.MethodGet, path: "/api/monitors"},
+		{name: "subscriptions", method: http.MethodGet, path: "/api/subscriptions"},
 		{name: "pan_account", method: http.MethodGet, path: "/api/pan/account"},
 		{name: "play_files", method: http.MethodGet, path: "/api/play/files?movie_id=7"},
 		{name: "play_start", method: http.MethodGet, path: "/api/play/101"},

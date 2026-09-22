@@ -12,8 +12,8 @@ import {
 
 import { invalidateMovieStates } from '@/api/movie-state-cache'
 import { libraryKeys } from '@/api/library'
-import { monitorKeys } from '@/api/monitor'
 import { offlineKeys } from '@/api/offline'
+import { subscriptionKeys } from '@/api/subscriptions'
 import { taskKeys, type ScanTask, type TaskRevisions } from '@/api/tasks'
 import { watchHistoryKeys } from '@/api/watch-history'
 
@@ -97,7 +97,7 @@ export function TaskEventsProvider({ children }: PropsWithChildren) {
               ? queryClient.invalidateQueries({ queryKey: offlineKeys.all })
               : Promise.resolve(),
             refreshMonitors
-              ? queryClient.invalidateQueries({ queryKey: monitorKeys.all })
+              ? queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })
               : Promise.resolve(),
             refreshLibrary
               ? queryClient.invalidateQueries({ queryKey: libraryKeys.all })

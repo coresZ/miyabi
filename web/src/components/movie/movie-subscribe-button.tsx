@@ -2,22 +2,27 @@ import { BellPlusIcon, BellRingIcon, LoaderCircleIcon } from 'lucide-react'
 import type { MouseEvent } from 'react'
 
 import type { DiscoverMovie } from '@/api/discover'
-import { useAddMonitor, useMonitor } from '@/api/monitor'
+import { useAddSubscription, useSubscription } from '@/api/subscriptions'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 // Shown on unreleased cards without a magnet. Sits inside a Link, so clicks
 // must not navigate.
-export function MovieMonitorButton({ movie }: { movie: DiscoverMovie }) {
-  const { monitor, isPending } = useMonitor(movie.id)
-  const add = useAddMonitor()
-  const monitoring = monitor?.status === 'waiting'
+export function MovieSubscribeButton({ movie }: { movie: DiscoverMovie }) {
+  const { subscription, isPending } = useSubscription('movie', movie.id)
+  const add = useAddSubscription()
+  const subscribed = subscription?.status === 'waiting' || subscription?.status === 'added'
 
   function handleClick(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault()
     event.stopPropagation()
-    if (monitoring || add.isPending) return
-    add.mutate(movie.id)
+    if (subscribed || add.isPending) return
+    add.mutate({
+      kind: 'movie',
+      target_id: movie.id,
+      title: movie.title,
+      cover: movie.cover
+    })
   }
 
   return (
@@ -25,17 +30,17 @@ export function MovieMonitorButton({ movie }: { movie: DiscoverMovie }) {
       <TooltipTrigger asChild>
         <Button
           type="button"
-          variant={monitoring ? 'default' : 'outline'}
+          variant={subscribed ? 'default' : 'outline'}
           size="icon-sm"
-          aria-label={monitoring ? '监控中' : '加入监控'}
-          aria-pressed={monitoring}
+          aria-label={subscribed ? '已订阅' : '订阅影片'}
+          aria-pressed={subscribed}
           disabled={isPending || add.isPending}
-          className={monitoring ? undefined : 'bg-background/85 backdrop-blur'}
+          className={subscribed ? undefined : 'bg-background/85 backdrop-blur'}
           onClick={handleClick}
         >
           {add.isPending ? (
             <LoaderCircleIcon className="animate-spin" />
-          ) : monitoring ? (
+          ) : subscribed ? (
             <BellRingIcon />
           ) : (
             <BellPlusIcon />
@@ -43,7 +48,7 @@ export function MovieMonitorButton({ movie }: { movie: DiscoverMovie }) {
         </Button>
       </TooltipTrigger>
       <TooltipContent side="left">
-        {monitoring ? '监控中，出现磁力后自动加入 115' : '加入监控'}
+        {subscribed ? '已订阅，出现磁力后将自动处理' : '订阅影片'}
       </TooltipContent>
     </Tooltip>
   )

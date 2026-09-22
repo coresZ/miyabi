@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatSize } from '@/lib/format'
-import { MovieMonitorAction } from './monitor-action'
+import { MovieSubscriptionAction } from './subscription-action'
 
 const phaseLabels: Record<OfflineSubmission['phase'], string> = {
   available: '一键加入 115',
@@ -83,7 +83,7 @@ export function MovieMagnets({
           磁力加载失败
         </InlineError>
       ) : query.data.length === 0 ? (
-        <MovieMonitorAction movieID={movieID} />
+        <MovieSubscriptionAction movieID={movieID} />
       ) : (
         <div className="space-y-4">
           {query.data.map(magnet => (
