@@ -6,14 +6,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/ppxb/miyabi/internal/netx"
-	"github.com/ppxb/miyabi/internal/service"
 )
 
 type NetworkManager interface {
 	Network(context.Context) (netx.ProxyConfig, error)
 	UpdateNetwork(context.Context, netx.ProxyConfig) error
-	TestNetwork(context.Context, netx.ProxyConfig) (service.NetworkTestResponse, error)
+	TestNetwork(context.Context, netx.ProxyConfig) (netx.NetworkTestResponse, error)
 }
+
 
 func networkHandler(network NetworkManager) gin.HandlerFunc {
 	return func(c *gin.Context) {

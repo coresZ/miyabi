@@ -76,10 +76,17 @@ type Service struct {
 	database *ent.Client
 	drive    *drive.Drive
 	tasks    *tasks.Service
+	scanner  *scan.Scanner
 }
 
 func New(database *ent.Client, d *drive.Drive, tasks *tasks.Service, images *mediaimage.Cache) *Service {
-	svc := &Service{database: database, drive: d, tasks: tasks, images: images}
+	svc := &Service{
+		database: database,
+		drive:    d,
+		tasks:    tasks,
+		images:   images,
+		scanner:  scan.New(d, database, images, tasks),
+	}
 	if d != nil && tasks != nil {
 		d.SubscribeMount(func(ctx context.Context, event drive.MountEvent) error {
 			if event.Source.Directory.ID != "" {
@@ -91,11 +98,9 @@ func New(database *ent.Client, d *drive.Drive, tasks *tasks.Service, images *med
 			return nil
 		})
 	}
-	if database != nil {
-		_ = migrateViewedMovies(context.Background(), database)
-	}
 	return svc
 }
+
 
 func (s *Service) StartScan(ctx context.Context) (tasks.TaskInfo, error) {
 	sess, err := s.drive.Open(ctx)
@@ -139,8 +144,9 @@ func (s *Service) MatchingMovies(ctx context.Context, javdbIDs []string, codes [
 }
 
 func (s *Service) Scan(ctx context.Context, job tasks.Job) error {
-	return scan.Scan(ctx, job, s.drive, s.database, s.images, s.tasks)
+	return s.scanner.Run(ctx, job)
 }
+
 
 
 func (s *Service) Finished(context.Context, *ent.Tx, tasks.Job, error) (tasks.Change, error) {

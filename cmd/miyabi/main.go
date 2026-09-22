@@ -3,32 +3,14 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/ppxb/miyabi"
-	"github.com/ppxb/miyabi/internal/api"
-	"github.com/ppxb/miyabi/internal/catalogue"
+	"github.com/ppxb/miyabi/internal/app"
 	"github.com/ppxb/miyabi/internal/config"
-	"github.com/ppxb/miyabi/internal/database"
-	"github.com/ppxb/miyabi/internal/drive"
-	mediaimage "github.com/ppxb/miyabi/internal/image"
-	"github.com/ppxb/miyabi/internal/javdb"
-	"github.com/ppxb/miyabi/internal/library"
-	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/logging"
-	"github.com/ppxb/miyabi/internal/maintenance"
-	"github.com/ppxb/miyabi/internal/monitor"
-	"github.com/ppxb/miyabi/internal/offline"
-	"github.com/ppxb/miyabi/internal/playback"
-	"github.com/ppxb/miyabi/internal/service"
-	"github.com/ppxb/miyabi/internal/tasks"
 )
 
 func main() {
@@ -57,121 +39,14 @@ func run(args []string) error {
 	}
 	slog.SetDefault(logger)
 
-	store, err := database.Open(context.Background(), cfg.DataDir)
+	application, err := app.New(&cfg, logger)
 	if err != nil {
 		return err
 	}
-	defer store.Close()
-	network, err := service.NewNetworkService(context.Background(), store.Client)
-	if err != nil {
-		return fmt.Errorf("initialize network service: %w", err)
-	}
-	taskRegistry := tasks.NewRegistry()
-	taskSvc := tasks.NewService(store.Client, taskRegistry)
-	driveSvc, err := drive.New(context.Background(), store.Client)
-	if err != nil {
-		return fmt.Errorf("initialize drive service: %w", err)
-	}
-	defer driveSvc.Close()
-	images, err := mediaimage.NewCache(cfg.DataDir)
-	if err != nil {
-		return err
-	}
-	library := library.New(store.Client, driveSvc, taskSvc, images)
-	catalogueSvc, err := catalogue.New(context.Background(), store.Client, javdb.Options{}, network.ProxyManager(), library)
-	if err != nil {
-		return fmt.Errorf("initialize catalogue service: %w", err)
-	}
-	defer catalogueSvc.Close()
-	offline := offline.New(store.Client, catalogueSvc, driveSvc, taskSvc, library)
-	monitors := monitor.New(store.Client, catalogueSvc, offline, taskSvc)
-	play := playback.New(store.Client, driveSvc)
-	defer play.Close()
-	scrapeSvc := scrape.New(store.Client, driveSvc, catalogueSvc, images, taskSvc)
-	data, err := maintenance.New(cfg.DataDir, store.Client, images, scrapeSvc)
-	if err != nil {
-		return fmt.Errorf("initialize data service: %w", err)
-	}
-	taskRegistry.Register(tasks.NewHandler(tasks.KindScan, library.Scan, library.Finished))
-	taskRegistry.Register(tasks.NewHandler(tasks.KindScrape, scrapeSvc.Scrape, scrapeSvc.Finished))
-	taskRegistry.Register(tasks.NewHandler(tasks.KindCover, scrapeSvc.Cover, scrapeSvc.Finished))
-	// Keep scans, metadata writes and directory sidecars ordered.
-	pool := tasks.NewPool(taskSvc.Queue(), taskSvc.Bus(), taskRegistry, 1, logger)
+	defer application.Close()
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	router := api.NewRouter(api.Dependencies{
-		Logger:   logger,
-		Health:   store,
-		Access:   service.NewAccessGateService(cfg.AccessPassword),
-		Discover: catalogueSvc,
-		Pan:      driveSvc,
-		Offline:  offline,
-		Monitor:  monitors,
-		Library:  library,
-		Play:     play,
-		Tasks:    taskSvc,
-
-		Artwork:  scrapeSvc,
-		Data:     data,
-		Network:  network,
-		Frontend: miyabi.Frontend(),
-	})
-	server := &http.Server{
-		Addr:              cfg.Listen,
-		Handler:           router,
-		ReadHeaderTimeout: 10 * time.Second,
-		BaseContext:       func(net.Listener) context.Context { return ctx },
-	}
-
-	workerDone := make(chan struct{})
-	monitorDone := make(chan struct{})
-	poolDone := make(chan struct{})
-	poolError := make(chan error, 1)
-	go func() {
-		defer close(poolDone)
-		poolError <- pool.Run(ctx)
-	}()
-	go func() {
-		defer close(workerDone)
-		tasks.RunPeriodic(ctx, logger, "sync 115 offline tasks", 30*time.Second, nil, offline.Sync)
-	}()
-	go func() {
-		defer close(monitorDone)
-		tasks.RunPeriodic(ctx, logger, "monitor", 5*time.Minute, monitors.Pending(), monitors.Check)
-	}()
-	defer func() {
-		stop()
-		<-workerDone
-		<-monitorDone
-		<-poolDone
-	}()
-
-	serverError := make(chan error, 1)
-	go func() {
-		logger.Info("HTTP server started", "address", cfg.Listen)
-		serverError <- server.ListenAndServe()
-	}()
-
-	var runError error
-	select {
-	case err := <-serverError:
-		if !errors.Is(err, http.ErrServerClosed) {
-			runError = fmt.Errorf("serve HTTP: %w", err)
-		}
-	case err := <-poolError:
-		if err != nil {
-			runError = fmt.Errorf("run task pool: %w", err)
-		}
-	case <-ctx.Done():
-	}
-	stop()
-	shutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := server.Shutdown(shutdownContext); err != nil {
-		return errors.Join(runError, fmt.Errorf("shutdown HTTP server: %w", err))
-	}
-
-	logger.Info("HTTP server stopped")
-	return runError
+	return application.Run(ctx)
 }

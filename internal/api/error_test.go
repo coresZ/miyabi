@@ -23,8 +23,8 @@ import (
 	"github.com/ppxb/miyabi/internal/netx"
 	"github.com/ppxb/miyabi/internal/offline"
 	"github.com/ppxb/miyabi/internal/pan"
-	"github.com/ppxb/miyabi/internal/service"
 )
+
 
 type publicError struct{ message string }
 
@@ -62,8 +62,9 @@ func TestErrorMiddlewareMapsDomainErrorsToStatusAndMessage(t *testing.T) {
 		{name: "cache busy", err: maintenance.ErrCacheBusy, status: http.StatusConflict, message: maintenance.ErrCacheBusy.PublicMessage()},
 		{name: "file missing", err: fmt.Errorf("影片文件不存在，请重新扫描: %w", fs.ErrNotExist), status: http.StatusNotFound, message: "影片文件不存在，请重新扫描: file does not exist"},
 		{name: "pan unauthorized", err: fmt.Errorf("list: %w", pan.ErrUnauthorized), status: http.StatusUnauthorized, message: pan.ErrUnauthorized.PublicMessage()},
-		{name: "access password", err: service.ErrAccessPassword, status: http.StatusUnauthorized, message: service.ErrAccessPassword.PublicMessage()},
+		{name: "access password", err: ErrAccessPassword, status: http.StatusUnauthorized, message: ErrAccessPassword.PublicMessage()},
 		{name: "upstream gateway error", err: domain.E(domain.KindUpstream, "上游服务异常", errors.New("javdb timeout")), status: http.StatusBadGateway, message: "上游服务异常"},
+
 		{name: "javdb api error", err: fmt.Errorf("get JavDB movie detail: %w", &javdb.APIError{Action: "movie", Message: "not found"}), status: http.StatusBadGateway, message: "JavDB 返回了错误：not found"},
 		{name: "javdb http error", err: fmt.Errorf("search JavDB: %w", &javdb.HTTPError{StatusCode: 503}), status: http.StatusBadGateway, message: "JavDB 服务异常（HTTP 503），请稍后重试"},
 		{name: "public message wins", err: fmt.Errorf("wrapped: %w", &publicError{message: "115 说明文案"}), status: http.StatusInternalServerError, message: "115 说明文案"},

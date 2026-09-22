@@ -205,7 +205,7 @@ B4 与原计划的偏差与遗留（后续里程碑处理）：
 **B7 `catalogue`（已完成，2026-09-22）**：`discover.go、discover_cache.go、discover_tags.go、movie_state.go` 迁入 `internal/catalogue`。`MovieStates` 所需本地库状态通过 `catalogue.LocalState` 接口由 `library` 实现注入（`MatchingMovies`）。`DiscoverService.javdb` 改为 `catalogue.Provider` 接口，JavDB 是唯一实现；`Facets()` 暴露 zones、排序槽位供前端后续数据驱动（本轮前端不接）。
 
 
-**B8 `app` 组合根**：`cmd/miyabi/main.go` 的 `run()` 拆为 `internal/app/app.go`，`New(cfg) (*App, error)`、`Run(ctx)`；任务处理器由各包 `Register`；`pipeline_e2e_test.go` 迁入；`internal/service` 目录删除（`access_gate.go`、`network.go`、`setting.go` 归 `app` 或 `api`）。
+**B8 `app` 组合根（已完成，2026-09-22）**：`cmd/miyabi/main.go` 的 `run()` 拆为 `internal/app/app.go`，`New(cfg, logger) (*App, error)`、`Run(ctx)`、`Close()`、`CheckHealth(listen)`；任务处理器统一在此组装与注册；`pipeline_e2e_test.go`、`drive_fixture_test.go`、`task_test.go`、`task_payload_test.go` 迁入 `internal/app`；`access_gate` 归 `api`，`network` 与 `setting` 归 `app`，网络探测类型抽取至 `netx`；`internal/service` 目录彻底删除。M4 重构阶段全部完成。
 
 ### 3.7 步骤 B9：API 层与配置
 
@@ -461,14 +461,14 @@ func (a *Aggregator) Find(ctx, ref domain.MovieRef) ([]domain.Magnet, error)
 | M1 | 全局代理 | 工作线 A | ✅ 2026-09-20 | 无 |
 | M2 | 模型与错误 | B1 | ✅ 2026-09-21 | M0 |
 | M3 | 任务与会话 | B2、B3 | ✅ 2026-09-21 | M2 |
-| M4 | 业务包迁移 | B4 ✅ 2026-09-21；B5、B6、B7 ✅ 2026-09-22；B8 待做 | 进行中 | M3 |
+| M4 | 业务包迁移 | B4（2026-09-21）、B5、B6、B7、B8（2026-09-22）全部完成 | ✅ 2026-09-22 | M3 |
 | M5 | API 与配置收口 | B9、3.8 后端清单 | 待做，约 4 天 | M4 |
 | M6 | 磁力聚合 | 工作线 C | 待做，1 到 1.5 周 | M1、M2 |
 | M7 | JavDB 接口补齐 | 工作线 D | 待做，3 到 5 天 | M2 |
 | M8 | 前端结构清理 | 3.9 清单、`/api/discover/viewed` 增量 | 分页已收敛，其余待做，约 1 周 | 可与 M4 到 M5 并行 |
 | M9 | 字幕自动化与播放集成 | 工作线 E | 待做，4 到 5 天 | M2、M5 |
 
-剩余约 6 到 7 周单人工作量。串行顺序 M4（B5 → B8）→ M5 → M6 → M7 → M9；M8 并行。下一步：B8（`app` 组合根落地，彻底移除 `internal/service`）。
+剩余约 6 周单人工作量。串行顺序 M4（B5 → B8 已完成）→ M5（B9）→ M6 → M7 → M9；M8 并行。下一步：M4 审查（fabel 审查）后进入 M5（B9 API 层与配置收敛）。
 
 
 ---

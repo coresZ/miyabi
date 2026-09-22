@@ -1,4 +1,4 @@
-package service
+package api
 
 import (
 	"crypto/sha256"
@@ -18,7 +18,8 @@ type AccessGateService struct {
 
 func NewAccessGateService(password string) *AccessGateService {
 	return &AccessGateService{
-		enabled: password != "", passwordHash: sha256.Sum256([]byte(password)),
+		enabled:      password != "",
+		passwordHash: sha256.Sum256([]byte(password)),
 	}
 }
 

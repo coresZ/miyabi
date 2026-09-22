@@ -111,9 +111,10 @@ func (s *Service) AddViewedMovieIDs(ctx context.Context, ids []string) error {
 	})
 }
 
-// migrateViewedMovies transfers legacy settings "browse.viewed_movies" JSON blob into the viewed_movie table.
-func migrateViewedMovies(ctx context.Context, client *ent.Client) error {
+// MigrateViewedMovies transfers legacy settings "browse.viewed_movies" JSON blob into the viewed_movie table.
+func MigrateViewedMovies(ctx context.Context, client *ent.Client) error {
 	record, err := client.Setting.Query().Where(setting.KeyEQ(viewedMoviesLegacySetting)).Only(ctx)
+
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil

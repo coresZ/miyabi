@@ -17,9 +17,33 @@ import (
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
+// Scanner encapsulates the dependencies required to execute library scan jobs.
+type Scanner struct {
+	driveSvc *drive.Drive
+	db       *ent.Client
+	images   *mediaimage.Cache
+	tasksSvc *tasks.Service
+}
+
+// New creates a new Scanner with the provided dependencies.
+func New(driveSvc *drive.Drive, db *ent.Client, images *mediaimage.Cache, tasksSvc *tasks.Service) *Scanner {
+	return &Scanner{
+		driveSvc: driveSvc,
+		db:       db,
+		images:   images,
+		tasksSvc: tasksSvc,
+	}
+}
+
+// Run executes a library scan job.
+func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
+	return Scan(ctx, job, s.driveSvc, s.db, s.images, s.tasksSvc)
+}
+
 // Scan executes a library scan job, traversing media directories, matching NFOs and videos,
 // indexing movies and files, and triggering metadata scraping.
 func Scan(ctx context.Context, job tasks.Job, driveSvc *drive.Drive, db *ent.Client, images *mediaimage.Cache, tasksSvc *tasks.Service) error {
+
 	payload, err := tasks.DecodePayload[Payload](job.Payload)
 	if err != nil {
 		return err

@@ -11,14 +11,14 @@ import (
 	"testing"
 
 	"github.com/ppxb/miyabi/internal/netx"
-	"github.com/ppxb/miyabi/internal/service"
 )
 
 type networkStub struct {
 	config     netx.ProxyConfig
 	tested     netx.ProxyConfig
-	testResult service.NetworkTestResponse
+	testResult netx.NetworkTestResponse
 }
+
 
 func (stub *networkStub) Network(context.Context) (netx.ProxyConfig, error) {
 	return stub.config, nil
@@ -29,10 +29,11 @@ func (stub *networkStub) UpdateNetwork(_ context.Context, config netx.ProxyConfi
 	return nil
 }
 
-func (stub *networkStub) TestNetwork(_ context.Context, config netx.ProxyConfig) (service.NetworkTestResponse, error) {
+func (stub *networkStub) TestNetwork(_ context.Context, config netx.ProxyConfig) (netx.NetworkTestResponse, error) {
 	stub.tested = config
 	return stub.testResult, nil
 }
+
 
 func TestNetworkEndpointsReadAndWrite(t *testing.T) {
 	stub := &networkStub{config: netx.ProxyConfig{Enabled: true, URL: "http://user:secret@127.0.0.1:7890"}}
@@ -63,9 +64,9 @@ func TestNetworkEndpointsReadAndWrite(t *testing.T) {
 func TestNetworkTestEndpoint(t *testing.T) {
 	stub := &networkStub{
 		config: netx.ProxyConfig{Enabled: true, URL: "http://127.0.0.1:7890"},
-		testResult: service.NetworkTestResponse{
-			JavDB:  service.NetworkProbeResult{Available: true, LatencyMS: 120},
-			JavBus: service.NetworkProbeResult{Available: false, Error: "timeout"},
+		testResult: netx.NetworkTestResponse{
+			JavDB:  netx.NetworkProbeResult{Available: true, LatencyMS: 120},
+			JavBus: netx.NetworkProbeResult{Available: false, Error: "timeout"},
 		},
 	}
 	router := NewRouter(Dependencies{Network: stub, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
@@ -76,7 +77,8 @@ func TestNetworkTestEndpoint(t *testing.T) {
 		t.Fatalf("POST status=%d body=%s", post.Code, post.Body)
 	}
 
-	var result service.NetworkTestResponse
+	var result netx.NetworkTestResponse
+
 	if err := json.Unmarshal(post.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}

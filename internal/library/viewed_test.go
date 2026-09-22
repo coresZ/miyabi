@@ -75,7 +75,11 @@ func TestViewedMovies_MigrationFromSettings(t *testing.T) {
 		SetValue(jsontext.Value(`{"ids":["legacy-1","legacy-2","legacy-3"]}`)).
 		SaveX(ctx)
 
-	// Instantiating library should run migration
+	// Explicit migration step
+	if err := MigrateViewedMovies(ctx, store.Client); err != nil {
+		t.Fatal(err)
+	}
+
 	svc := New(store.Client, nil, nil, nil)
 
 	ids, err := svc.ViewedMovieIDs(ctx)
@@ -95,11 +99,13 @@ func TestViewedMovies_MigrationFromSettings(t *testing.T) {
 		t.Fatal("legacy setting was not cleaned up after migration")
 	}
 
-	// Subsequence New() calls should be idempotent
-	svc2 := New(store.Client, nil, nil, nil)
+	// Subsequent MigrateViewedMovies calls should be idempotent
+	if err := MigrateViewedMovies(ctx, store.Client); err != nil {
+		t.Fatal(err)
+	}
 	count, err := store.Client.ViewedMovie.Query().Count(ctx)
 	if err != nil || count != 3 {
 		t.Fatalf("idempotent migration changed count: %d, %v", count, err)
 	}
-	_ = svc2
+
 }
