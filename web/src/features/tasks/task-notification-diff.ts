@@ -1,12 +1,17 @@
 import type { OfflineActivity, OfflineSubmission } from '../../api/offline'
-import {
-  isBatchTask,
-  isScanTask,
-  isTaskActive,
-  type BatchTask,
-  type ScanTask,
-  type Task
-} from '../../api/tasks'
+import type { BatchTask, ScanTask, Task } from '../../api/tasks'
+
+function isScanTask(task: Task): task is ScanTask {
+  return task.type === 'scan'
+}
+
+function isBatchTask(task: Task): task is BatchTask {
+  return task.type === 'subscription_batch'
+}
+
+function isTaskActive(task: Task): boolean {
+  return task.status === 'queued' || task.status === 'running'
+}
 
 export type NotificationEntry = {
   active: boolean

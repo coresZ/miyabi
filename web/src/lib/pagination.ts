@@ -1,4 +1,6 @@
-import { clamp } from './math'
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max)
+}
 
 export type PageItem = number | 'ellipsis-left' | 'ellipsis-right'
 

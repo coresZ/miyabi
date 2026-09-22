@@ -1,8 +1,16 @@
 import { queryOptions, type QueryClient } from '@tanstack/react-query'
 
-import { discoverKeys, type DiscoverMovie, type DiscoverMovieDetail } from './discover'
+import type { DiscoverMovie, DiscoverMovieDetail } from './discover'
 
-export { discoverKeys }
+export const discoverKeys = {
+  all: ['discover'] as const,
+  movies: (params?: unknown) => ['discover', 'movies', params] as const,
+  movie: (id: string) => ['discover', 'movie', id] as const,
+  magnets: (id: string) => ['discover', 'movie', id, 'magnets'] as const,
+  search: (params?: unknown) => ['discover', 'search', params] as const,
+  tags: (zone: string) => ['discover', 'tags', zone] as const,
+  route: ['javdb', 'route'] as const
+}
 
 const detailStaleTime = 5 * 60_000
 
