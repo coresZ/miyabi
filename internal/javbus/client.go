@@ -18,8 +18,9 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// JavBus has a single public endpoint; there are no mirrors to manage.
 const (
-	DefaultBaseURL = "https://www.javbus.com"
+	baseURL        = "https://www.javbus.com"
 	defaultTimeout = 15 * time.Second
 	defaultRate    = 1
 	defaultBurst   = 2
@@ -34,7 +35,6 @@ type httpClient interface {
 
 // Options configures a JavBus client.
 type Options struct {
-	BaseURL string
 	Timeout time.Duration
 	Proxy   *netx.ProxyManager
 
@@ -43,7 +43,6 @@ type Options struct {
 
 // Client accesses JavBus for movie magnets and metadata.
 type Client struct {
-	baseURL      string
 	timeout      time.Duration
 	proxyManager *netx.ProxyManager
 	proxyChanges <-chan struct{}
@@ -59,15 +58,6 @@ type Client struct {
 
 // New creates a JavBus client.
 func New(options Options) (*Client, error) {
-	baseURL := strings.TrimRight(strings.TrimSpace(options.BaseURL), "/")
-	if baseURL == "" {
-		baseURL = DefaultBaseURL
-	}
-	parsedURL, err := url.Parse(baseURL)
-	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
-		return nil, domain.E(domain.KindInvalid, fmt.Sprintf("invalid JavBus base URL: %s", baseURL), err)
-	}
-
 	timeout := options.Timeout
 	if timeout <= 0 {
 		timeout = defaultTimeout
@@ -75,7 +65,6 @@ func New(options Options) (*Client, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &Client{
-		baseURL:      baseURL,
 		timeout:      timeout,
 		proxyManager: options.Proxy,
 		limiter:      rate.NewLimiter(rate.Every(time.Second/time.Duration(defaultRate)), defaultBurst),
@@ -106,7 +95,7 @@ func New(options Options) (*Client, error) {
 
 // Name identifies the magnet source.
 func (c *Client) Name() string {
-	return "javbus"
+	return domain.MagnetSourceJavBus
 }
 
 // Find retrieves magnets for the specified movie reference.
@@ -145,7 +134,7 @@ func (c *Client) ensureDetailParams(ctx context.Context, code string) (gid, uc, 
 		return "", "", "", err
 	}
 
-	detailURL := fmt.Sprintf("%s/%s?existmag=all", c.baseURL, url.PathEscape(code))
+	detailURL := fmt.Sprintf("%s/%s?existmag=all", baseURL, url.PathEscape(code))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, detailURL, nil)
 	if err != nil {
 		return "", "", "", err
@@ -208,7 +197,7 @@ func (c *Client) fetchMagnets(ctx context.Context, code, gid, uc, img string) ([
 
 	floor := rand.IntN(1000) + 1
 	ajaxURL := fmt.Sprintf("%s/ajax/uncledatoolsbyajax.php?gid=%s&lang=zh&img=%s&uc=%s&floor=%d",
-		c.baseURL, url.QueryEscape(gid), url.QueryEscape(img), url.QueryEscape(uc), floor)
+		baseURL, url.QueryEscape(gid), url.QueryEscape(img), url.QueryEscape(uc), floor)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ajaxURL, nil)
 	if err != nil {
@@ -216,7 +205,7 @@ func (c *Client) fetchMagnets(ctx context.Context, code, gid, uc, img string) ([
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Cookie", "dv=1; existmag=all")
-	req.Header.Set("Referer", fmt.Sprintf("%s/%s", c.baseURL, url.PathEscape(code)))
+	req.Header.Set("Referer", fmt.Sprintf("%s/%s", baseURL, url.PathEscape(code)))
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 
 	client := c.getHTTPClient()

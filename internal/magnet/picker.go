@@ -3,12 +3,11 @@ package magnet
 import (
 	"cmp"
 	"slices"
-	"strings"
 
 	"github.com/ppxb/miyabi/internal/domain"
 )
 
-// PreferenceLevel specifies user tolerance for attributes like subtitles or HD.
+// PreferenceLevel specifies how much an attribute such as subtitles matters.
 type PreferenceLevel string
 
 const (
@@ -17,7 +16,7 @@ const (
 	PreferenceAny       PreferenceLevel = "any"       // 不限
 )
 
-// UncensoredFilter specifies user tolerance or exclusion for uncensored / leaked releases.
+// UncensoredFilter specifies tolerance for uncensored / leaked releases.
 type UncensoredFilter string
 
 const (
@@ -27,219 +26,154 @@ const (
 	UncensoredAny       UncensoredFilter = "any"       // 不限
 )
 
-// Preferences configures magnet selection criteria.
+// Preferences configures magnet selection.
 type Preferences struct {
 	Subtitle   PreferenceLevel  `json:"subtitle"`
 	HD         PreferenceLevel  `json:"hd"`
 	Uncensored UncensoredFilter `json:"uncensored"`
-	MaxSizeGiB int64            `json:"max_size_gib"` // 0 indicates no limit
 }
 
-// DefaultPreferences returns the default magnet selection preferences.
+// DefaultPreferences prefers subtitles and HD and does not care about censorship.
 func DefaultPreferences() Preferences {
-	return Preferences{
-		Subtitle:   PreferencePreferred,
-		HD:         PreferencePreferred,
-		Uncensored: UncensoredAny,
-		MaxSizeGiB: 0,
-	}
+	return Preferences{Subtitle: PreferencePreferred, HD: PreferencePreferred, Uncensored: UncensoredAny}
 }
 
-// Picker selects the best matching magnet from candidates according to user preferences.
+// Normalized fills empty fields with the defaults.
+func (p Preferences) Normalized() Preferences {
+	defaults := DefaultPreferences()
+	if p.Subtitle == "" {
+		p.Subtitle = defaults.Subtitle
+	}
+	if p.HD == "" {
+		p.HD = defaults.HD
+	}
+	if p.Uncensored == "" {
+		p.Uncensored = defaults.Uncensored
+	}
+	return p
+}
+
+// Validate rejects values outside the enumerations.
+func (p Preferences) Validate() error {
+	switch p.Subtitle {
+	case PreferencePreferred, PreferenceRequired, PreferenceAny:
+	default:
+		return domain.E(domain.KindInvalid, "字幕偏好无效", nil)
+	}
+	switch p.HD {
+	case PreferencePreferred, PreferenceRequired, PreferenceAny:
+	default:
+		return domain.E(domain.KindInvalid, "高清偏好无效", nil)
+	}
+	switch p.Uncensored {
+	case UncensoredPreferred, UncensoredRequired, UncensoredExclude, UncensoredAny:
+	default:
+		return domain.E(domain.KindInvalid, "无码偏好无效", nil)
+	}
+	return nil
+}
+
+// Picker selects the best magnet for a set of preferences.
 type Picker struct {
 	prefs Preferences
 }
 
-// NewPicker creates a magnet picker with the provided preferences.
 func NewPicker(prefs Preferences) *Picker {
-	normalized := prefs
-	if normalized.Subtitle == "" {
-		normalized.Subtitle = PreferencePreferred
-	}
-	if normalized.HD == "" {
-		normalized.HD = PreferencePreferred
-	}
-	if normalized.Uncensored == "" {
-		normalized.Uncensored = UncensoredAny
-	}
-	return &Picker{prefs: normalized}
+	return &Picker{prefs: prefs.Normalized()}
 }
+
+// Score tiers keep the attributes strictly ordered: subtitle beats HD beats
+// uncensored. An inferred attribute is worth half of a site-verified one.
+const (
+	scoreSubtitle   = 10000
+	scoreHD         = 1000
+	scoreUncensored = 100
+)
 
 type candidate struct {
-	magnet   domain.Magnet
-	score    int
-	hasSub   bool
-	subInf   bool
-	hasHD    bool
-	hdInf    bool
-	hasUncen bool
-	uncenInf bool
+	magnet domain.Magnet
+	score  int
 }
 
-// Pick filters and scores candidate magnets according to preferences,
-// returning the highest scoring magnet or (zero, false) if no qualified magnet exists.
+// Pick filters by the required and excluded preferences, scores the rest by
+// the preferred ones, and returns the best magnet. The second result is false
+// when nothing qualifies.
 func (p *Picker) Pick(magnets []domain.Magnet) (domain.Magnet, bool) {
-	if len(magnets) == 0 {
-		return domain.Magnet{}, false
-	}
-
 	var passed []candidate
-	maxSizeBytes := p.prefs.MaxSizeGiB * 1024 * 1024 * 1024
-
 	for _, m := range magnets {
-		// Ensure tags and inference are applied
-		magnetCopy := m
-		ApplyInference(&magnetCopy)
+		// Callers usually pass aggregated magnets; applying again is a no-op.
+		ApplyInference(&m)
+		verifiedSubtitle := m.HasSubtitle
+		inferredSubtitle := !verifiedSubtitle && hasTag(m, domain.MagnetTagSubtitle)
+		verifiedHD := m.HD || hasTag(m, domain.MagnetTagHD)
+		inferredHD := !verifiedHD && hasTag(m, domain.MagnetTag4K)
+		uncensored := IsUncensored(m)
 
-		hasSub, subInf := inspectSubtitle(magnetCopy)
-		hasHD, hdInf := inspectHD(magnetCopy)
-		hasUncen, uncenInf := inspectUncensored(magnetCopy)
-
-		// 1. Filtering phase
-		if p.prefs.Subtitle == PreferenceRequired && !hasSub {
+		if p.prefs.Subtitle == PreferenceRequired && !verifiedSubtitle && !inferredSubtitle {
 			continue
 		}
-		if p.prefs.HD == PreferenceRequired && !hasHD {
+		if p.prefs.HD == PreferenceRequired && !verifiedHD && !inferredHD {
 			continue
 		}
-		if p.prefs.Uncensored == UncensoredExclude && hasUncen {
+		if p.prefs.Uncensored == UncensoredExclude && uncensored {
 			continue
 		}
-		if p.prefs.Uncensored == UncensoredRequired && !hasUncen {
-			continue
-		}
-		if maxSizeBytes > 0 && magnetCopy.Size > maxSizeBytes {
+		if p.prefs.Uncensored == UncensoredRequired && !uncensored {
 			continue
 		}
 
-		// 2. Scoring phase
-		// Score tiers: Subtitle (10000) > HD (1000) > Uncensored (100)
-		// Inferred tags receive half weight.
 		score := 0
-
-		if p.prefs.Subtitle == PreferencePreferred && hasSub {
-			if subInf {
-				score += 5000
-			} else {
-				score += 10000
-			}
+		if p.prefs.Subtitle == PreferencePreferred {
+			score += weighted(scoreSubtitle, verifiedSubtitle, inferredSubtitle)
 		}
-
-		if p.prefs.HD == PreferencePreferred && hasHD {
-			if hdInf {
-				score += 500
-			} else {
-				score += 1000
-			}
+		if p.prefs.HD == PreferencePreferred {
+			score += weighted(scoreHD, verifiedHD, inferredHD)
 		}
-
-		if p.prefs.Uncensored == UncensoredPreferred && hasUncen {
-			if uncenInf {
-				score += 50
-			} else {
-				score += 100
-			}
+		if p.prefs.Uncensored == UncensoredPreferred && uncensored {
+			score += scoreUncensored / 2
 		}
-
-		passed = append(passed, candidate{
-			magnet:   magnetCopy,
-			score:    score,
-			hasSub:   hasSub,
-			subInf:   subInf,
-			hasHD:    hasHD,
-			hdInf:    hdInf,
-			hasUncen: hasUncen,
-			uncenInf: uncenInf,
-		})
+		passed = append(passed, candidate{magnet: m, score: score})
 	}
-
 	if len(passed) == 0 {
 		return domain.Magnet{}, false
 	}
 
-	// Tie-breaking: score > size > files_count > JavDB source > CreatedAt
+	// Ties: larger, more files, JavDB-listed, then most recently added.
 	slices.SortStableFunc(passed, func(a, b candidate) int {
 		if a.score != b.score {
-			if a.score > b.score {
-				return -1
-			}
-			return 1
+			return cmp.Compare(b.score, a.score)
 		}
-		if a.magnet.Size != b.magnet.Size {
-			if a.magnet.Size > b.magnet.Size {
-				return -1
-			}
-			return 1
-		}
-		if a.magnet.FilesCount != b.magnet.FilesCount {
-			if a.magnet.FilesCount > b.magnet.FilesCount {
-				return -1
-			}
-			return 1
-		}
-		aJavDB := slices.Contains(a.magnet.Sources, "javdb")
-		bJavDB := slices.Contains(b.magnet.Sources, "javdb")
-		if aJavDB != bJavDB {
-			if aJavDB {
-				return -1
-			}
-			return 1
-		}
-		if a.magnet.CreatedAt != "" && b.magnet.CreatedAt != "" && a.magnet.CreatedAt != b.magnet.CreatedAt {
-			return cmp.Compare(a.magnet.CreatedAt, b.magnet.CreatedAt)
-		}
-		return 0
+		return compareMagnets(a.magnet, b.magnet)
 	})
-
 	return passed[0].magnet, true
 }
 
-func inspectSubtitle(m domain.Magnet) (has bool, inferred bool) {
-	if m.HasSubtitle || slices.Contains(m.Tags, "字幕") {
-		// If inferred is true, check whether subtitle was from inference
-		inf := Infer(m.Name)
-		if m.Inferred && inf.HasSubtitle && !slices.Contains(m.Sources, "javdb") && !slices.Contains(m.Sources, "javbus") {
-			return true, true
+func weighted(full int, verified, inferred bool) int {
+	switch {
+	case verified:
+		return full
+	case inferred:
+		return full / 2
+	default:
+		return 0
+	}
+}
+
+// compareMagnets orders by size, file count, JavDB presence and newest date.
+func compareMagnets(a, b domain.Magnet) int {
+	if a.Size != b.Size {
+		return cmp.Compare(b.Size, a.Size)
+	}
+	if a.FilesCount != b.FilesCount {
+		return cmp.Compare(b.FilesCount, a.FilesCount)
+	}
+	aJavDB := slices.Contains(a.Sources, domain.MagnetSourceJavDB)
+	bJavDB := slices.Contains(b.Sources, domain.MagnetSourceJavDB)
+	if aJavDB != bJavDB {
+		if aJavDB {
+			return -1
 		}
-		// If magnet has inferred flag and source didn't explicitly tag it
-		if m.Inferred && !hasExplicitSubtitleTag(m) {
-			return true, true
-		}
-		return true, false
+		return 1
 	}
-	inf := Infer(m.Name)
-	if inf.HasSubtitle {
-		return true, true
-	}
-	return false, false
-}
-
-func hasExplicitSubtitleTag(m domain.Magnet) bool {
-	// If m was from javdb or javbus and had HasSubtitle true, it was explicit
-	return m.HasSubtitle && (!m.Inferred || !Infer(m.Name).HasSubtitle)
-}
-
-func inspectHD(m domain.Magnet) (has bool, inferred bool) {
-	if m.HD || slices.Contains(m.Tags, "高清") {
-		return true, false
-	}
-	if slices.Contains(m.Tags, "4K") || Infer(m.Name).Has4K {
-		return true, true
-	}
-	return false, false
-}
-
-func inspectUncensored(m domain.Magnet) (has bool, inferred bool) {
-	if slices.Contains(m.Tags, "无码") || slices.Contains(m.Tags, "破解") {
-		return true, true
-	}
-	inf := Infer(m.Name)
-	if inf.HasUncensored || inf.HasCracked {
-		return true, true
-	}
-	nameLower := strings.ToLower(m.Name)
-	if strings.Contains(nameLower, "leaked") || strings.Contains(nameLower, "uncensored") {
-		return true, true
-	}
-	return false, false
+	return cmp.Compare(b.CreatedAt, a.CreatedAt)
 }

@@ -12,9 +12,8 @@ import (
 // ProxyConfig is the process-wide upstream proxy configuration. A disabled
 // proxy keeps its URL so it can be enabled again without re-entering it.
 type ProxyConfig struct {
-	Enabled       bool   `json:"enabled"`
-	URL           string `json:"url"`
-	JavBusEnabled bool   `json:"javbus_enabled"`
+	Enabled bool   `json:"enabled"`
+	URL     string `json:"url"`
 }
 
 type proxyState struct {

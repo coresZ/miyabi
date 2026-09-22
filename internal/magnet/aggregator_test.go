@@ -16,9 +16,7 @@ type stubSource struct {
 	delay   time.Duration
 }
 
-func (s *stubSource) Name() string {
-	return s.name
-}
+func (s *stubSource) Name() string { return s.name }
 
 func (s *stubSource) Find(ctx context.Context, ref domain.MovieRef) ([]domain.Magnet, error) {
 	if s.delay > 0 {
@@ -31,144 +29,93 @@ func (s *stubSource) Find(ctx context.Context, ref domain.MovieRef) ([]domain.Ma
 	return s.magnets, s.err
 }
 
-func TestAggregator_DeduplicationAndMerging(t *testing.T) {
-	hashCommon := "30291c52bb72d46affc1574ec01a4e16fc28a292"
+func TestAggregatorDeduplicationAndMerging(t *testing.T) {
+	hashCommon := "30291C52BB72D46AFFC1574EC01A4E16FC28A292"
 	hashJavDBOnly := "1111111111111111111111111111111111111111"
 	hashJavBusOnly := "2222222222222222222222222222222222222222"
 
-	srcJavDB := &stubSource{
-		name: "javdb",
-		magnets: []domain.Magnet{
-			{
-				Hash:        hashCommon,
-				Name:        "SSIS-001 Cleaned",
-				Size:        2000,
-				HasSubtitle: false,
-				HD:          true,
-				CreatedAt:   "2025-10-30",
-				Sources:     []string{"javdb"},
-			},
-			{
-				Hash:        hashJavDBOnly,
-				Name:        "SSIS-001 JavDB Only",
-				Size:        1000,
-				HasSubtitle: true,
-				Sources:     []string{"javdb"},
-			},
-		},
-	}
+	srcJavDB := &stubSource{name: domain.MagnetSourceJavDB, magnets: []domain.Magnet{
+		{Hash: hashCommon, Name: "SSIS-001 Cleaned", Size: 2000, HD: true, CreatedAt: "2025-10-30", Sources: []string{domain.MagnetSourceJavDB}, Tags: []string{domain.MagnetTagHD}},
+		{Hash: hashJavDBOnly, Name: "SSIS-001 JavDB Only", Size: 1000, HasSubtitle: true, Sources: []string{domain.MagnetSourceJavDB}, Tags: []string{domain.MagnetTagSubtitle}},
+	}}
+	srcJavBus := &stubSource{name: domain.MagnetSourceJavBus, magnets: []domain.Magnet{
+		{Hash: hashCommon, Name: "SSIS-001 Raw", Size: 2500, HasSubtitle: true, CreatedAt: "2025-10-28", Sources: []string{domain.MagnetSourceJavBus}, Tags: []string{domain.MagnetTagSubtitle}},
+		{Hash: hashJavBusOnly, Name: "SSIS-001 JavBus Only", Size: 5000, HD: true, Sources: []string{domain.MagnetSourceJavBus}, Tags: []string{domain.MagnetTagHD}},
+	}}
 
-	srcJavBus := &stubSource{
-		name: "javbus",
-		magnets: []domain.Magnet{
-			{
-				Hash:        hashCommon,
-				Name:        "SSIS-001 Raw",
-				Size:        2500, // larger size
-				HasSubtitle: true, // has subtitle
-				HD:          false,
-				CreatedAt:   "2025-10-28", // earlier date
-				Sources:     []string{"javbus"},
-			},
-			{
-				Hash:    hashJavBusOnly,
-				Name:    "SSIS-001 JavBus Only",
-				Size:    5000,
-				HD:      true,
-				Sources: []string{"javbus"},
-			},
-		},
-	}
-
-	agg := NewAggregator([]Source{srcJavDB, srcJavBus}, time.Second, nil)
-	results, err := agg.Find(t.Context(), domain.MovieRef{Code: "SSIS-001"})
+	results, err := NewAggregator([]Source{srcJavBus, srcJavDB}, time.Second, nil).Find(t.Context(), domain.MovieRef{Code: "SSIS-001"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
 	if len(results) != 3 {
 		t.Fatalf("expected 3 merged magnets, got %d", len(results))
 	}
 
-	// Verify common magnet properties
-	var common *domain.Magnet
-	for i := range results {
-		if results[i].Hash == hashCommon {
-			common = &results[i]
-			break
-		}
+	common := results[0]
+	if common.Hash != "30291c52bb72d46affc1574ec01a4e16fc28a292" {
+		t.Fatalf("expected the merged magnet first with a lower-cased hash, got %+v", common)
 	}
-	if common == nil {
-		t.Fatalf("common magnet not found in results")
+	if common.Name != "SSIS-001 Cleaned" || common.Size != 2500 || !common.HasSubtitle || !common.HD || common.CreatedAt != "2025-10-28" {
+		t.Errorf("merge rules violated: %+v", common)
 	}
-
-	if common.Name != "SSIS-001 Cleaned" {
-		t.Errorf("expected javdb name to be preserved, got %s", common.Name)
+	if len(common.Sources) != 2 || common.Sources[0] != domain.MagnetSourceJavDB || common.Sources[1] != domain.MagnetSourceJavBus {
+		t.Errorf("expected sources [javdb javbus] regardless of source order, got %v", common.Sources)
 	}
-	if common.Size != 2500 {
-		t.Errorf("expected max size 2500, got %d", common.Size)
-	}
-	if !common.HasSubtitle || !common.HD {
-		t.Errorf("expected subtitle and HD both to be true, got sub=%v hd=%v", common.HasSubtitle, common.HD)
-	}
-	if common.CreatedAt != "2025-10-28" {
-		t.Errorf("expected earliest date 2025-10-28, got %s", common.CreatedAt)
-	}
-	if len(common.Sources) != 2 || common.Sources[0] != "javdb" || common.Sources[1] != "javbus" {
-		t.Errorf("expected sources [javdb, javbus], got %v", common.Sources)
-	}
-
-	// Verify ranking: Subtitle first, then HD, then Size.
-	// 1. common has Subtitle AND HD -> Rank 1
-	// 2. hashJavDBOnly has Subtitle but NOT HD -> Rank 2
-	// 3. hashJavBusOnly has HD but NOT Subtitle -> Rank 3
-	if results[0].Hash != hashCommon {
-		t.Errorf("expected rank 1 to be common, got %s", results[0].Hash)
-	}
-	if results[1].Hash != hashJavDBOnly {
-		t.Errorf("expected rank 2 to be javdb-only (has subtitle), got %s", results[1].Hash)
-	}
-	if results[2].Hash != hashJavBusOnly {
-		t.Errorf("expected rank 3 to be javbus-only (no subtitle), got %s", results[2].Hash)
+	if results[1].Hash != hashJavDBOnly || results[2].Hash != hashJavBusOnly {
+		t.Errorf("expected subtitle before HD-only: %s, %s", results[1].Hash, results[2].Hash)
 	}
 }
 
-func TestAggregator_SingleSourceFailure(t *testing.T) {
-	src1 := &stubSource{
-		name:    "javdb",
-		magnets: []domain.Magnet{{Hash: "1111111111111111111111111111111111111111", Name: "Item 1"}},
-	}
-	src2 := &stubSource{
-		name: "javbus",
-		err:  errors.New("network timeout"),
-	}
-
-	agg := NewAggregator([]Source{src1, src2}, time.Second, nil)
-	results, err := agg.Find(t.Context(), domain.MovieRef{Code: "SSIS-001"})
+func TestAggregatorMarksInferredTags(t *testing.T) {
+	src := &stubSource{name: domain.MagnetSourceJavBus, magnets: []domain.Magnet{
+		{Hash: "3333333333333333333333333333333333333333", Name: "SSIS-001-C 4K", Sources: []string{domain.MagnetSourceJavBus}},
+		{Hash: "4444444444444444444444444444444444444444", Name: "SSIS-001", HD: true, Tags: []string{domain.MagnetTagHD}, Sources: []string{domain.MagnetSourceJavBus}},
+	}}
+	results, err := NewAggregator([]Source{src}, time.Second, nil).Find(t.Context(), domain.MovieRef{Code: "SSIS-001"})
 	if err != nil {
-		t.Fatalf("expected success when at least one source succeeds, got error: %v", err)
+		t.Fatal(err)
 	}
-	if len(results) != 1 {
-		t.Fatalf("expected 1 magnet, got %d", len(results))
+	inferred, verified := results[0], results[1]
+	if !inferred.Inferred || inferred.HasSubtitle || !HasSubtitle(inferred) || !IsHD(inferred) {
+		t.Errorf("name-derived tags must be marked inferred without touching site flags: %+v", inferred)
+	}
+	if verified.Inferred {
+		t.Errorf("site-labelled magnet must not be marked inferred: %+v", verified)
 	}
 }
 
-func TestAggregator_AllSourcesFailed(t *testing.T) {
-	src1 := &stubSource{
-		name: "javdb",
-		err:  errors.New("javdb down"),
+func TestAggregatorSingleSourceFailure(t *testing.T) {
+	ok := &stubSource{name: domain.MagnetSourceJavDB, magnets: []domain.Magnet{{Hash: "1111111111111111111111111111111111111111", Name: "Item 1"}}}
+	broken := &stubSource{name: domain.MagnetSourceJavBus, err: errors.New("network timeout")}
+	results, err := NewAggregator([]Source{ok, broken}, time.Second, nil).Find(t.Context(), domain.MovieRef{Code: "SSIS-001"})
+	if err != nil || len(results) != 1 {
+		t.Fatalf("one healthy source must succeed: %v, %d results", err, len(results))
 	}
-	src2 := &stubSource{
-		name: "javbus",
-		err:  errors.New("javbus blocked"),
-	}
+}
 
-	agg := NewAggregator([]Source{src1, src2}, time.Second, nil)
-	_, err := agg.Find(t.Context(), domain.MovieRef{Code: "SSIS-001"})
-	if err == nil {
-		t.Fatalf("expected error when all sources fail")
+func TestAggregatorSingleSourceTimeout(t *testing.T) {
+	fast := &stubSource{name: domain.MagnetSourceJavDB, magnets: []domain.Magnet{{Hash: "1111111111111111111111111111111111111111", Name: "Fast"}}}
+	slow := &stubSource{name: domain.MagnetSourceJavBus, delay: time.Second, magnets: []domain.Magnet{{Hash: "2222222222222222222222222222222222222222", Name: "Slow"}}}
+	started := time.Now()
+	results, err := NewAggregator([]Source{fast, slow}, 50*time.Millisecond, nil).Find(t.Context(), domain.MovieRef{Code: "SSIS-001"})
+	if err != nil {
+		t.Fatalf("a timed-out source must not fail the query: %v", err)
 	}
+	if len(results) != 1 || results[0].Name != "Fast" {
+		t.Fatalf("expected only the fast source's magnet, got %+v", results)
+	}
+	if time.Since(started) > 500*time.Millisecond {
+		t.Fatalf("aggregator waited for the slow source past its timeout")
+	}
+}
+
+func TestAggregatorAllSourcesFailed(t *testing.T) {
+	sources := []Source{
+		&stubSource{name: domain.MagnetSourceJavDB, err: errors.New("javdb down")},
+		&stubSource{name: domain.MagnetSourceJavBus, err: errors.New("javbus blocked")},
+	}
+	_, err := NewAggregator(sources, time.Second, nil).Find(t.Context(), domain.MovieRef{Code: "SSIS-001"})
 	if !domain.IsKind(err, domain.KindUpstream) {
-		t.Errorf("expected KindUpstream error, got %v", err)
+		t.Fatalf("expected KindUpstream when all sources fail, got %v", err)
 	}
 }

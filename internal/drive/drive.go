@@ -2,16 +2,13 @@ package drive
 
 import (
 	"context"
-	"encoding/json"
-	"encoding/json/jsontext"
-	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
-	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/syncx"
 	"golang.org/x/sync/singleflight"
@@ -91,21 +88,21 @@ type Drive struct {
 	events *eventBus
 }
 
-func New(ctx context.Context, database *ent.Client) (*Drive, error) {
-	return NewWithClient(ctx, database, pan.New())
+func New(ctx context.Context, db *ent.Client) (*Drive, error) {
+	return NewWithClient(ctx, db, pan.New())
 }
 
-func NewWithClient(ctx context.Context, database *ent.Client, client Client) (*Drive, error) {
-	tokens, _, err := loadSetting[pan.Tokens](ctx, database, credentialsSetting)
+func NewWithClient(ctx context.Context, db *ent.Client, client Client) (*Drive, error) {
+	tokens, _, err := database.LoadSetting[pan.Tokens](ctx, db, credentialsSetting)
 	if err != nil {
 		return nil, err
 	}
-	directory, _, err := loadSetting[mountRecord](ctx, database, directorySetting)
+	directory, _, err := database.LoadSetting[mountRecord](ctx, db, directorySetting)
 	if err != nil {
 		return nil, err
 	}
 	return &Drive{
-		database:  database,
+		database:  db,
 		client:    client,
 		tokens:    tokens,
 		directory: directory,
@@ -215,31 +212,4 @@ func (d *Drive) Source() *domain.LibrarySource {
 // the mount back.
 func (d *Drive) SubscribeMount(listener MountListener) func() {
 	return d.events.subscribe(listener)
-}
-
-func loadSetting[T any](ctx context.Context, database *ent.Client, key string) (T, bool, error) {
-	var value T
-	record, err := database.Setting.Query().Where(setting.Key(key)).Only(ctx)
-	if ent.IsNotFound(err) {
-		return value, false, nil
-	}
-	if err != nil {
-		return value, false, fmt.Errorf("load setting %s: %w", key, err)
-	}
-	if err := json.Unmarshal(record.Value, &value); err != nil {
-		return value, false, fmt.Errorf("decode setting %s: %w", key, err)
-	}
-	return value, true, nil
-}
-
-func saveSetting(ctx context.Context, database *ent.Client, key string, value any) error {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return fmt.Errorf("encode setting %s: %w", key, err)
-	}
-	if err := database.Setting.Create().SetKey(key).SetValue(jsontext.Value(encoded)).
-		OnConflictColumns(setting.FieldKey).UpdateNewValues().Exec(ctx); err != nil {
-		return fmt.Errorf("save setting %s: %w", key, err)
-	}
-	return nil
 }

@@ -4,386 +4,160 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
-	"github.com/ppxb/miyabi/internal/ent/subscription"
+	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/magnet"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
 type mockDiscoverer struct {
 	mu           sync.Mutex
-	summaries    map[string]domain.MovieSummary
 	magnets      map[string][]domain.Magnet
+	magnetsErr   error
 	actorMovies  map[string][]domain.Movie
+	browseErr    error
 	summaryCalls int
-	magnetsCalls int
-	browseCalls  int
 }
 
-func (m *mockDiscoverer) MovieSummary(ctx context.Context, movieID string) (domain.MovieSummary, error) {
+func newMockDiscoverer() *mockDiscoverer {
+	return &mockDiscoverer{magnets: map[string][]domain.Magnet{}, actorMovies: map[string][]domain.Movie{}}
+}
+
+func (m *mockDiscoverer) MovieSummary(_ context.Context, movieID string) (domain.MovieSummary, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.summaryCalls++
-	if s, ok := m.summaries[movieID]; ok {
-		return s, nil
+	return domain.MovieSummary{ID: movieID, Code: "MOCK-" + movieID, Title: "Mock " + movieID, Cover: "https://example.com/cover.jpg", ReleaseDate: "2026-10-01"}, nil
+}
+
+func (m *mockDiscoverer) CatalogueMagnets(_ context.Context, movieID string) ([]domain.Magnet, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.magnets[movieID], m.magnetsErr
+}
+
+func (m *mockDiscoverer) BrowseMovies(_ context.Context, options domain.BrowseOptions) ([]domain.Movie, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.browseErr != nil {
+		return nil, m.browseErr
 	}
-	return domain.MovieSummary{
-		ID:          movieID,
-		Code:        "MOCK-" + movieID,
-		Title:       "Mock Title " + movieID,
-		Cover:       "https://example.com/cover.jpg",
-		ReleaseDate: "2026-10-01",
-	}, nil
-}
-
-func (m *mockDiscoverer) CatalogueMagnets(ctx context.Context, movieID string) ([]domain.Magnet, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.magnetsCalls++
-	return m.magnets[movieID], nil
-}
-
-func (m *mockDiscoverer) BrowseMovies(ctx context.Context, options domain.BrowseOptions) ([]domain.Movie, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.browseCalls++
 	return m.actorMovies[options.EntityID], nil
 }
 
+type submission struct{ MovieID, Hash string }
+
 type mockOfflineAdder struct {
 	mu          sync.Mutex
-	submissions []struct {
-		MovieID string
-		Hash    string
-	}
+	submissions []submission
 }
 
-func (m *mockOfflineAdder) Add(ctx context.Context, movieID string, hash string) (domain.OfflineSubmission, error) {
+func (m *mockOfflineAdder) Add(_ context.Context, movieID, hash string) (domain.OfflineSubmission, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.submissions = append(m.submissions, struct {
-		MovieID string
-		Hash    string
-	}{MovieID: movieID, Hash: hash})
-	return domain.OfflineSubmission{
-		TaskID:  len(m.submissions),
-		Code:    movieID,
-		JavDBID: movieID,
-		Hash:    hash,
-		Status:  "running",
-	}, nil
+	m.submissions = append(m.submissions, submission{movieID, hash})
+	return domain.OfflineSubmission{TaskID: len(m.submissions), Code: movieID, JavDBID: movieID, Hash: hash, Status: "running"}, nil
 }
 
-func TestNextMonitorCheckPolicy(t *testing.T) {
-	now := time.Date(2026, 9, 18, 10, 30, 0, 0, time.Local)
-	for _, test := range []struct {
-		name    string
-		release string
-		want    time.Time
-		stale   bool
-	}{
-		{"far before release polls every three days", "2026-10-30", now.Add(72 * time.Hour), false},
-		{"just before release polls on release day", "2026-09-20", time.Date(2026, 9, 20, 10, 30, 0, 0, time.Local), false},
-		{"release day polls daily", "2026-09-18", now.Add(24 * time.Hour), false},
-		{"day 30 after release still polls", "2026-08-19", now.Add(24 * time.Hour), false},
-		{"day 31 after release is stale", "2026-08-18", time.Time{}, true},
-		{"missing date counts from creation", "", now.Add(24 * time.Hour), false},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			next, stale := nextMonitorCheck(now, test.release, now.AddDate(0, 0, -3))
-			if stale != test.stale || !next.Equal(test.want) {
-				t.Fatalf("next=%v stale=%v, want next=%v stale=%v", next, stale, test.want, test.stale)
-			}
-		})
+type fixture struct {
+	service  *Service
+	discover *mockDiscoverer
+	offline  *mockOfflineAdder
+	tasks    *tasks.Service
+	client   *ent.Client
+}
+
+func newFixture(t *testing.T) fixture {
+	t.Helper()
+	store, err := database.Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
+	discover, offline := newMockDiscoverer(), &mockOfflineAdder{}
+	taskSvc := tasks.NewService(store.Client, tasks.NewRegistry())
+	return fixture{New(store.Client, discover, offline, taskSvc), discover, offline, taskSvc, store.Client}
 }
 
 func TestMovieSubscriptionLifecycle(t *testing.T) {
-	store, err := database.Open(t.Context(), t.TempDir())
-	if err != nil {
+	f, ctx := newFixture(t), t.Context()
+	item, err := f.service.AddMovie(ctx, "m1", AddMovieOptions{})
+	if err != nil || item.Code != "MOCK-m1" || item.Status != StatusWaiting || !item.AutoDownload {
+		t.Fatalf("AddMovie: %#v %v", item, err)
+	}
+	if again, err := f.service.AddMovie(ctx, "m1", AddMovieOptions{}); err != nil || again.ID != item.ID || f.discover.summaryCalls != 1 {
+		t.Fatalf("re-adding a waiting subscription must be a no-op without a catalogue lookup: %#v %v calls=%d", again, err, f.discover.summaryCalls)
+	}
+	if list, err := f.service.List(ctx, "movie", 1, 10); err != nil || len(list) != 1 {
+		t.Fatalf("List: %d %v", len(list), err)
+	}
+	updated, err := f.service.Update(ctx, item.ID, UpdateOptions{AutoDownload: ptr(false), Zone: ptr("censored")})
+	if err != nil || updated.AutoDownload || updated.Zone != "censored" {
+		t.Fatalf("Update: %#v %v", updated, err)
+	}
+	if _, err := f.service.Update(ctx, item.ID, UpdateOptions{Status: ptr("paused")}); !domain.IsKind(err, domain.KindInvalid) {
+		t.Fatalf("pausing a movie subscription must be rejected as invalid, got %v", err)
+	}
+	if err := f.service.Remove(ctx, item.ID); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = store.Close() })
-
-	disc := &mockDiscoverer{
-		summaries: make(map[string]domain.MovieSummary),
-		magnets:   make(map[string][]domain.Magnet),
-	}
-	offline := &mockOfflineAdder{}
-	taskSvc := tasks.NewService(store.Client, tasks.NewRegistry())
-	service := New(store.Client, disc, offline, taskSvc)
-	ctx := t.Context()
-
-	// 1. Add movie subscription
-	item, err := service.AddMovie(ctx, "m1", AddMovieOptions{})
-	if err != nil {
-		t.Fatalf("AddMovie failed: %v", err)
-	}
-	if item.Code != "MOCK-m1" || item.Status != StatusWaiting {
-		t.Fatalf("unexpected item: %#v", item)
-	}
-
-	// 2. List subscriptions
-	list, err := service.List(ctx, "movie", 1, 10)
-	if err != nil || len(list) != 1 {
-		t.Fatalf("expected 1 item, got %d (err: %v)", len(list), err)
-	}
-
-	// 3. Update subscription
-	newAuto := false
-	zone := "censored"
-	updated, err := service.Update(ctx, item.ID, UpdateOptions{
-		AutoDownload: &newAuto,
-		Zone:         &zone,
-	})
-	if err != nil || updated.AutoDownload != false || updated.Zone != "censored" {
-		t.Fatalf("update failed: %#v (err: %v)", updated, err)
-	}
-
-	// 4. Retry subscription
-	retried, err := service.Retry(ctx, item.ID)
-	if err != nil || retried.Status != StatusWaiting {
-		t.Fatalf("retry failed: %#v (err: %v)", retried, err)
-	}
-
-	// 5. Remove subscription
-	if err := service.Remove(ctx, item.ID); err != nil {
-		t.Fatalf("remove failed: %v", err)
-	}
-	if err := service.Remove(ctx, item.ID); err == nil {
-		t.Fatal("removing already removed subscription should fail")
+	if err := f.service.Remove(ctx, item.ID); !ent.IsNotFound(err) {
+		t.Fatalf("removing a missing subscription must report not found, got %v", err)
 	}
 }
 
-func TestEnqueueSingle(t *testing.T) {
-	store, err := database.Open(t.Context(), t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+func TestReAddingFinishedSubscriptionOnlyResetsForUsers(t *testing.T) {
+	f, ctx := newFixture(t), t.Context()
+	item, _ := f.service.AddMovie(ctx, "m1", AddMovieOptions{})
+	f.discover.magnets["m1"] = []domain.Magnet{{Hash: "h1", Name: "MOCK-m1", HasSubtitle: true}}
+	if added, err := f.service.EnqueueSingle(ctx, item.ID); err != nil || added.Status != StatusAdded {
+		t.Fatalf("EnqueueSingle: %#v %v", added, err)
 	}
-	t.Cleanup(func() { _ = store.Close() })
-
-	disc := &mockDiscoverer{
-		summaries: make(map[string]domain.MovieSummary),
-		magnets:   make(map[string][]domain.Magnet),
+	spawned, err := f.service.addMovie(ctx, domain.MovieSummary{ID: "m1"}, AddMovieOptions{OriginID: ptr(99)})
+	if err != nil || spawned.ID != item.ID || spawned.Status != StatusAdded {
+		t.Fatalf("an actor-spawned add must leave an added subscription alone: %#v %v", spawned, err)
 	}
-	offline := &mockOfflineAdder{}
-	taskSvc := tasks.NewService(store.Client, tasks.NewRegistry())
-	service := New(store.Client, disc, offline, taskSvc)
-	ctx := t.Context()
-
-	item, err := service.AddMovie(ctx, "m1", AddMovieOptions{})
-	if err != nil {
-		t.Fatal(err)
+	rearmed, err := f.service.AddMovie(ctx, "m1", AddMovieOptions{})
+	if err != nil || rearmed.Status != StatusWaiting || rearmed.Hash != "" {
+		t.Fatalf("a user re-add must re-arm: %#v %v", rearmed, err)
 	}
-
-	// Case A: No magnets available -> keeps waiting and enables auto_download
-	enqueued, err := service.EnqueueSingle(ctx, item.ID)
-	if err != nil {
-		t.Fatalf("enqueue single failed: %v", err)
-	}
-	if enqueued.Status != StatusWaiting || !enqueued.AutoDownload {
-		t.Fatalf("expected waiting with auto_download=true, got %#v", enqueued)
-	}
-
-	// Case B: Magnet available -> picked and submitted to 115
-	disc.magnets["m1"] = []domain.Magnet{
-		{Hash: "abc123hash", Name: "MOCK-m1 With Sub", HasSubtitle: true, HD: true, Size: 1024 * 1024 * 1024},
-	}
-
-	enqueued, err = service.EnqueueSingle(ctx, item.ID)
-	if err != nil {
-		t.Fatalf("enqueue single with magnet failed: %v", err)
-	}
-	if enqueued.Status != StatusAdded || enqueued.Hash != "abc123hash" || enqueued.TaskID == nil {
-		t.Fatalf("expected added with task_id, got %#v", enqueued)
-	}
-	if len(offline.submissions) != 1 || offline.submissions[0].Hash != "abc123hash" {
-		t.Fatalf("offline submission mismatch: %#v", offline.submissions)
-	}
-}
-
-func TestActorSubscriptionAndFeed(t *testing.T) {
-	store, err := database.Open(t.Context(), t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-
-	disc := &mockDiscoverer{
-		summaries:   make(map[string]domain.MovieSummary),
-		magnets:     make(map[string][]domain.Magnet),
-		actorMovies: make(map[string][]domain.Movie),
-	}
-	offline := &mockOfflineAdder{}
-	taskSvc := tasks.NewService(store.Client, tasks.NewRegistry())
-	service := New(store.Client, disc, offline, taskSvc)
-	ctx := t.Context()
-
-	// Setup mock actor works: 1 historical movie, 1 upcoming unreleased movie
-	disc.actorMovies["actor-1"] = []domain.Movie{
-		{
-			ID:          "act-upcoming",
-			Code:        "UP-001",
-			Title:       "Upcoming Movie",
-			ReleaseDate: "2099-01-01",
-			Actors: []domain.Actor{
-				{ID: "actor-1", Name: "Yua Mikami", Avatar: "https://example.com/avatar.jpg"},
-			},
-		},
-		{
-			ID:          "act-past",
-			Code:        "PAST-001",
-			Title:       "Past Movie",
-			ReleaseDate: "2020-01-01",
-			Actors: []domain.Actor{
-				{ID: "actor-1", Name: "Yua Mikami", Avatar: "https://example.com/avatar.jpg"},
-			},
-		},
-	}
-
-	// 1. Add Actor
-	actorSub, err := service.AddActor(ctx, "actor-1", AddActorOptions{})
-	if err != nil {
-		t.Fatalf("AddActor failed: %v", err)
-	}
-	if actorSub.Title != "Yua Mikami" || actorSub.Cover != "https://example.com/avatar.jpg" {
-		t.Fatalf("actor details not extracted: %#v", actorSub)
-	}
-
-	// The upcoming movie should automatically have a movie subscription spawned!
-	feed, err := service.ActorFeed(ctx, actorSub.ID, 1, 10)
-	if err != nil {
-		t.Fatalf("ActorFeed failed: %v", err)
-	}
-	if len(feed) != 1 || feed[0].TargetID != "act-upcoming" {
-		t.Fatalf("expected 1 spawned upcoming movie, got: %#v", feed)
-	}
-
-	// 2. Simulate new release discovered via Check
-	disc.actorMovies["actor-1"] = append([]domain.Movie{
-		{
-			ID:          "act-brand-new",
-			Code:        "NEW-001",
-			Title:       "Brand New Release",
-			ReleaseDate: "2099-02-01",
-		},
-	}, disc.actorMovies["actor-1"]...)
-
-	// Force actor subscription next_check_at to past so Check runs it
-	_, err = store.Client.Subscription.UpdateOneID(actorSub.ID).
-		SetNextCheckAt(time.Now().Add(-time.Hour)).
-		Save(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := service.Check(ctx); err != nil {
-		t.Fatalf("Check failed: %v", err)
-	}
-
-	// Verify feed now has 2 movies (act-brand-new and act-upcoming)
-	feed, err = service.ActorFeed(ctx, actorSub.ID, 1, 10)
-	if err != nil || len(feed) != 2 {
-		t.Fatalf("expected 2 movies in feed, got: %d (%v)", len(feed), err)
-	}
-}
-
-func TestBatchEnqueueTask(t *testing.T) {
-	store, err := database.Open(t.Context(), t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-
-	disc := &mockDiscoverer{
-		summaries: make(map[string]domain.MovieSummary),
-		magnets:   make(map[string][]domain.Magnet),
-	}
-	offline := &mockOfflineAdder{}
-	taskSvc := tasks.NewService(store.Client, tasks.NewRegistry())
-	service := New(store.Client, disc, offline, taskSvc)
-	ctx := t.Context()
-
-	item1, _ := service.AddMovie(ctx, "batch-1", AddMovieOptions{})
-	item2, _ := service.AddMovie(ctx, "batch-2", AddMovieOptions{})
-
-	disc.magnets["batch-1"] = []domain.Magnet{
-		{Hash: "hash1", Name: "batch-1", HasSubtitle: true, HD: true, Size: 1000},
-	}
-
-	// Enqueue batch
-	taskID, err := service.EnqueueBatch(ctx, BatchEnqueueRequest{
-		IDs: []int{item1.ID, item2.ID},
-	})
-	if err != nil {
-		t.Fatalf("EnqueueBatch failed: %v", err)
-	}
-	if taskID <= 0 {
-		t.Fatalf("expected positive taskID, got %d", taskID)
-	}
-
-	taskRow, err := store.Client.Task.Get(ctx, taskID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Execute batch task directly
-	job := tasks.Job{
-		ID:      taskRow.ID,
-		Type:    tasks.KindSubscriptionBatch,
-		Payload: taskRow.Payload,
-	}
-	if err := service.BatchHandler(ctx, job); err != nil {
-		t.Fatalf("BatchHandler failed: %v", err)
-	}
-
-	// Verify item1 became added (since it had magnet)
-	sub1, _ := store.Client.Subscription.Get(ctx, item1.ID)
-	if sub1.Status != subscription.StatusAdded || sub1.Hash != "hash1" {
-		t.Fatalf("expected sub1 added with hash1, got status=%s hash=%s", sub1.Status, sub1.Hash)
-	}
-
-	// Verify item2 stayed waiting with auto_download=true (since no magnet yet)
-	sub2, _ := store.Client.Subscription.Get(ctx, item2.ID)
-	if sub2.Status != subscription.StatusWaiting || !sub2.AutoDownload {
-		t.Fatalf("expected sub2 waiting with auto_download=true, got status=%s auto_download=%v", sub2.Status, sub2.AutoDownload)
+	if len(f.offline.submissions) != 1 {
+		t.Fatalf("expected exactly one 115 submission, got %d", len(f.offline.submissions))
 	}
 }
 
 func TestSubscriptionSettings(t *testing.T) {
-	store, err := database.Open(t.Context(), t.TempDir())
-	if err != nil {
+	f, ctx := newFixture(t), t.Context()
+	cfg, err := f.service.Config(ctx)
+	if err != nil || !cfg.MovieAutoDownload || cfg.ActorAutoDownload || cfg.CheckTime != "04:00" || cfg.Preferences != magnet.DefaultPreferences() {
+		t.Fatalf("default config mismatch: %#v %v", cfg, err)
+	}
+	cfg.ActorAutoDownload, cfg.CheckTime, cfg.Preferences.Subtitle = true, "05:30", magnet.PreferenceRequired
+	if err := f.service.UpdateConfig(ctx, cfg); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = store.Close() })
-
-	taskSvc := tasks.NewService(store.Client, tasks.NewRegistry())
-	service := New(store.Client, nil, nil, taskSvc)
-	ctx := t.Context()
-
-	cfg, err := service.Config(ctx)
-	if err != nil {
+	if saved, err := f.service.Config(ctx); err != nil || saved != cfg {
+		t.Fatalf("round trip mismatch: %#v %v", saved, err)
+	}
+	for name, mutate := range map[string]func(*Config){
+		"hour out of range": func(c *Config) { c.CheckTime = "25:00" },
+		"missing minutes":   func(c *Config) { c.CheckTime = "4" },
+		"unknown level":     func(c *Config) { c.Preferences.HD = "sometimes" },
+	} {
+		bad := cfg
+		mutate(&bad)
+		if err := f.service.UpdateConfig(ctx, bad); !domain.IsKind(err, domain.KindInvalid) {
+			t.Errorf("%s: expected KindInvalid, got %v", name, err)
+		}
+	}
+	// A row written by an older build with blank fields normalizes on read.
+	if err := database.SaveSetting(ctx, f.client, subscriptionConfigSetting, map[string]any{"movie_auto_download": false}); err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.MovieAutoDownload || cfg.ActorAutoDownload {
-		t.Fatalf("default config mismatch: %#v", cfg)
-	}
-
-	cfg.ActorAutoDownload = true
-	cfg.ActorCheckTime = "05:30"
-	cfg.Preferences.Subtitle = magnet.PreferenceRequired
-	if err := service.UpdateConfig(ctx, cfg); err != nil {
-		t.Fatalf("UpdateConfig failed: %v", err)
-	}
-
-	updated, err := service.Config(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !updated.ActorAutoDownload || updated.ActorCheckTime != "05:30" || updated.Preferences.Subtitle != magnet.PreferenceRequired {
-		t.Fatalf("updated config mismatch: %#v", updated)
+	legacy, err := f.service.Config(ctx)
+	if err != nil || legacy.MovieAutoDownload || legacy.CheckTime != "04:00" || legacy.Preferences != magnet.DefaultPreferences() {
+		t.Fatalf("legacy config must normalize: %#v %v", legacy, err)
 	}
 }

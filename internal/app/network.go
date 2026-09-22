@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/javbus"
 	"github.com/ppxb/miyabi/internal/javdb"
@@ -14,31 +15,28 @@ import (
 )
 
 const (
-	networkProxySetting  = "network.proxy"
-	javbusEnabledSetting = "magnet.javbus.enabled"
-	networkProbeTimeout  = 8 * time.Second
+	networkProxySetting = "network.proxy"
+	networkProbeTimeout = 8 * time.Second
 )
 
-// NetworkService owns the persisted upstream network configuration.
+// NetworkService owns the persisted upstream proxy configuration. The proxy
+// applies to JavDB and JavBus alike; whether JavBus is queried at all is a
+// catalogue setting, not a network one.
 type NetworkService struct {
 	database *ent.Client
 	proxy    *netx.ProxyManager
 }
 
-func NewNetworkService(ctx context.Context, database *ent.Client) (*NetworkService, error) {
-	config, _, err := loadSetting[netx.ProxyConfig](ctx, database, networkProxySetting)
+func NewNetworkService(ctx context.Context, db *ent.Client) (*NetworkService, error) {
+	config, _, err := database.LoadSetting[netx.ProxyConfig](ctx, db, networkProxySetting)
 	if err != nil {
 		return nil, err
-	}
-	javbusEnabled, found, err := loadSetting[bool](ctx, database, javbusEnabledSetting)
-	if err == nil && found {
-		config.JavBusEnabled = javbusEnabled
 	}
 	proxy, err := netx.NewProxyManager(config)
 	if err != nil {
 		return nil, fmt.Errorf("load network proxy setting: %w", err)
 	}
-	return &NetworkService{database: database, proxy: proxy}, nil
+	return &NetworkService{database: db, proxy: proxy}, nil
 }
 
 func (service *NetworkService) ProxyManager() *netx.ProxyManager {
@@ -55,11 +53,7 @@ func (service *NetworkService) UpdateNetwork(ctx context.Context, config netx.Pr
 	if err != nil {
 		return err
 	}
-	normalized.JavBusEnabled = config.JavBusEnabled
-	if err := saveSetting(ctx, service.database, networkProxySetting, normalized); err != nil {
-		return err
-	}
-	if err := saveSetting(ctx, service.database, javbusEnabledSetting, config.JavBusEnabled); err != nil {
+	if err := database.SaveSetting(ctx, service.database, networkProxySetting, normalized); err != nil {
 		return err
 	}
 	return service.proxy.Update(normalized)

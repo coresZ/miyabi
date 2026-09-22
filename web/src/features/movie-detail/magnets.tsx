@@ -19,6 +19,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { formatSize } from '@/lib/format'
 import { MovieSubscriptionAction } from './subscription-action'
 
+const sourceLabels: Record<string, string> = { javdb: 'JavDB', javbus: 'JavBus' }
+
 const phaseLabels: Record<OfflineSubmission['phase'], string> = {
   available: '一键加入 115',
   downloading: '下载中',
@@ -157,21 +159,14 @@ function MagnetCard({
               <span className="text-xs">{formatSize(magnet.size)}</span>
               {magnet.sources?.map(source => (
                 <Badge key={source} variant="outline">
-                  {source === 'javdb' ? 'JavDB' : source === 'javbus' ? 'JavBus' : source}
+                  {sourceLabels[source] ?? source}
                 </Badge>
               ))}
-              {magnet.tags && magnet.tags.length > 0 ? (
-                magnet.tags.map(tag => (
-                  <Badge key={tag} variant="outline">
-                    {tag}
-                  </Badge>
-                ))
-              ) : (
-                <>
-                  {magnet.has_subtitle ? <Badge variant="outline">字幕</Badge> : null}
-                  {magnet.hd ? <Badge variant="outline">高清</Badge> : null}
-                </>
-              )}
+              {magnet.tags?.map(tag => (
+                <Badge key={tag} variant="outline">
+                  {tag}
+                </Badge>
+              ))}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">

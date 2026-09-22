@@ -2,6 +2,7 @@ package magnet
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -19,9 +20,10 @@ var (
 	// 4K patterns.
 	fourKRegex = regexp.MustCompile(`(?i)(?:[^A-Za-z0-9]|^)(?:4K(?:UHD)?|2160P)(?:[^A-Za-z0-9]|$)`)
 
-	// Uncensored / Leaked patterns.
+	// Uncensored / leaked patterns.
 	uncensoredRegex       = regexp.MustCompile(`(?i)(?:[^A-Za-z0-9]|^)(?:uncensored|mosaic)(?:[^A-Za-z0-9]|$)`)
 	uncensoredSuffixRegex = regexp.MustCompile(`(?i)[-_]U(?:C)?(?:[^A-Za-z0-9]|$)`)
+	leakedRegex           = regexp.MustCompile(`(?i)(?:[^A-Za-z]|^)leaked(?:[^A-Za-z]|$)`)
 	uncensoredWords       = []string{"无码", "無碼"}
 	crackedWords          = []string{"破解", "破坏", "破壞", "流出"}
 
@@ -32,6 +34,7 @@ var (
 	}
 )
 
+// QualityInference is what the resource name alone says about a magnet.
 type QualityInference struct {
 	HasSubtitle   bool
 	Has4K         bool
@@ -50,7 +53,6 @@ func Infer(name string) QualityInference {
 	cleaned := CleanTitle(name)
 	res := QualityInference{}
 
-	// 1. Subtitle detection
 	if fhdcRegex.MatchString(cleaned) || subCodeRegex.MatchString(cleaned) {
 		res.HasSubtitle = true
 	} else {
@@ -65,12 +67,10 @@ func Infer(name string) QualityInference {
 		}
 	}
 
-	// 2. 4K detection
 	if fourKRegex.MatchString(cleaned) {
 		res.Has4K = true
 	}
 
-	// 3. Uncensored / Cracked detection
 	if uncensoredRegex.MatchString(cleaned) || uncensoredSuffixRegex.MatchString(cleaned) {
 		res.HasUncensored = true
 	} else {
@@ -82,10 +82,14 @@ func Infer(name string) QualityInference {
 		}
 	}
 
-	for _, w := range crackedWords {
-		if strings.Contains(cleaned, w) {
-			res.HasCracked = true
-			break
+	if leakedRegex.MatchString(cleaned) {
+		res.HasCracked = true
+	} else {
+		for _, w := range crackedWords {
+			if strings.Contains(cleaned, w) {
+				res.HasCracked = true
+				break
+			}
 		}
 	}
 
@@ -96,7 +100,6 @@ func Infer(name string) QualityInference {
 // (excluding generic version/release modifiers) and zero Japanese kana,
 // which strongly indicates Chinese release translated naming.
 func hasHanziWithoutKana(s string) bool {
-	// Strip common release modifiers before checking for actual Chinese titles.
 	stripped := versionModifierRegex.ReplaceAllString(s, "")
 	hanCount := 0
 	for _, r := range stripped {
@@ -107,49 +110,56 @@ func hasHanziWithoutKana(s string) bool {
 			hanCount++
 		}
 	}
-	// At least 2 content Hanzi characters without Japanese kana indicates a Chinese title.
 	return hanCount >= 2
 }
 
-// ApplyInference enriches a domain.Magnet with inferred tags and attributes.
+// ApplyInference adds tags read from the resource name. The site's own
+// HasSubtitle and HD flags are never touched, so a 字幕 tag without
+// HasSubtitle is known to be inferred, and 4K, 无码 and 破解 are always
+// inferred. Inferred is set only when at least one tag came from the name.
+// Applying it twice is a no-op.
 func ApplyInference(m *domain.Magnet) {
 	inf := Infer(m.Name)
-	newInferred := false
-
-	existingTags := make(map[string]bool)
-	for _, t := range m.Tags {
-		existingTags[t] = true
-	}
-
-	addTag := func(tag string) {
-		if !existingTags[tag] {
-			existingTags[tag] = true
+	added := false
+	add := func(tag string) {
+		if !slices.Contains(m.Tags, tag) {
 			m.Tags = append(m.Tags, tag)
-			newInferred = true
+			added = true
 		}
 	}
-
 	if inf.HasSubtitle {
-		if !m.HasSubtitle {
-			m.HasSubtitle = true
-			newInferred = true
-		}
-		addTag("字幕")
+		add(domain.MagnetTagSubtitle)
 	}
-
 	if inf.Has4K {
-		addTag("4K")
+		add(domain.MagnetTag4K)
 	}
-
 	if inf.HasUncensored {
-		addTag("无码")
+		add(domain.MagnetTagUncensored)
 	}
-
 	if inf.HasCracked {
-		addTag("破解")
+		add(domain.MagnetTagCracked)
 	}
-
-	if newInferred {
+	if added {
 		m.Inferred = true
 	}
+}
+
+func hasTag(m domain.Magnet, tag string) bool {
+	return slices.Contains(m.Tags, tag)
+}
+
+// HasSubtitle reports a subtitle label from either the site or inference.
+func HasSubtitle(m domain.Magnet) bool {
+	return m.HasSubtitle || hasTag(m, domain.MagnetTagSubtitle)
+}
+
+// IsHD reports an HD label from the site or a 4K marker in the name.
+func IsHD(m domain.Magnet) bool {
+	return m.HD || hasTag(m, domain.MagnetTagHD) || hasTag(m, domain.MagnetTag4K)
+}
+
+// IsUncensored reports an uncensored or leaked release. Sites never label
+// these, so the answer is always inferred.
+func IsUncensored(m domain.Magnet) bool {
+	return hasTag(m, domain.MagnetTagUncensored) || hasTag(m, domain.MagnetTagCracked)
 }

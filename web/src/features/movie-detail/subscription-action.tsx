@@ -27,7 +27,7 @@ export function MovieSubscriptionAction({ movieID }: { movieID: string }) {
         disabled={busy}
         onClick={() =>
           subscribed
-            ? remove.mutate(subscription.id)
+            ? remove.mutate(subscription)
             : add.mutate({ kind: 'movie', target_id: movieID })
         }
       >

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/pan"
@@ -256,7 +257,7 @@ func (d *Drive) completeLogin(ctx context.Context, session *loginSession, login 
 		d.commit.Unlock()
 		return nil
 	}
-	if err := saveSetting(ctx, d.database, credentialsSetting, tokens); err != nil {
+	if err := database.SaveSetting(ctx, d.database, credentialsSetting, tokens); err != nil {
 		d.commit.Unlock()
 		return err
 	}

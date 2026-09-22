@@ -1,11 +1,11 @@
 package tasks
 
-// Kind represents the type of a background task.
+// Kind identifies the type of background task.
 type Kind string
 
 const (
-	KindScan    Kind = "scan"
-	KindScrape  Kind = "scrape"
+	KindScan              Kind = "scan"
+	KindScrape            Kind = "scrape"
 	KindCover             Kind = "cover"
 	KindOffline           Kind = "offline"
 	KindSubscriptionBatch Kind = "subscription_batch"

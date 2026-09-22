@@ -113,10 +113,10 @@ func parseMagnetsHTML(body string) ([]domain.Magnet, error) {
 
 		var tags []string
 		if hasSub {
-			tags = append(tags, "字幕")
+			tags = append(tags, domain.MagnetTagSubtitle)
 		}
 		if hd {
-			tags = append(tags, "高清")
+			tags = append(tags, domain.MagnetTagHD)
 		}
 
 		magnets = append(magnets, domain.Magnet{
@@ -127,7 +127,7 @@ func parseMagnetsHTML(body string) ([]domain.Magnet, error) {
 			HD:          hd,
 			FilesCount:  0,
 			CreatedAt:   createdAt,
-			Sources:     []string{"javbus"},
+			Sources:     []string{domain.MagnetSourceJavBus},
 			Tags:        tags,
 			Inferred:    false,
 		})

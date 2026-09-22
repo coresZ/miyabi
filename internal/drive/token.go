@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/pan"
 )
 
@@ -38,7 +39,7 @@ func (d *Drive) refreshTokens(ctx context.Context, expected snapshot) error {
 		if err != nil || current.tokenVersion != expected.tokenVersion {
 			return nil, err
 		}
-		if err := saveSetting(tokenContext, d.database, credentialsSetting, tokens); err != nil {
+		if err := database.SaveSetting(tokenContext, d.database, credentialsSetting, tokens); err != nil {
 			return nil, err
 		}
 		d.mu.Lock()

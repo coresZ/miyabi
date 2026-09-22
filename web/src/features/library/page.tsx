@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { LoaderCircleIcon, RefreshCwIcon, ScanLineIcon } from 'lucide-react'
 
 import { LIBRARY_PAGE_SIZE, useLibraryMovies, useStartLibraryScan } from '@/api/library'
-import { isTaskActive, useTasks } from '@/api/tasks'
+import { isScanTask, isTaskActive, useTasks } from '@/api/tasks'
 import { AppPage } from '@/components/app-page'
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState, InlineError } from '@/components/error-state'
@@ -28,12 +28,14 @@ export function LibraryPage({
   const connection = useTaskConnection()
   const startScan = useStartLibraryScan()
   const source = library.data?.source
-  const latest = tasks.data?.find(
-    task =>
-      source !== undefined &&
-      task.source.account_id === source.account_id &&
-      task.source.directory.id === source.directory.id
-  )
+  const latest = tasks.data
+    ?.filter(isScanTask)
+    .find(
+      task =>
+        source !== undefined &&
+        task.source.account_id === source.account_id &&
+        task.source.directory.id === source.directory.id
+    )
   const scanning = latest !== undefined && isTaskActive(latest)
   const processing = scanning && connection.status === 'connected'
   const scanLabel = scanning

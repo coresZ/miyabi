@@ -1,10 +1,13 @@
 import { BellIcon } from 'lucide-react'
+import { toast } from 'sonner'
 
 import {
+  type MagnetPreferences,
+  type SubscriptionConfig,
   useSubscriptionSettings,
-  useUpdateSubscriptionSettings,
-  type SubscriptionConfig
-} from '@/api/subscriptions'
+  useUpdateSubscriptionSettings
+} from '@/api/subscription-settings'
+import { InlineError } from '@/components/error-state'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -16,180 +19,136 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { SettingRow, SettingsSection } from './shared'
 
-export function SubscriptionSection() {
-  const query = useSubscriptionSettings()
-  const update = useUpdateSubscriptionSettings()
-  const cfg = query.data
+const levelOptions = [
+  { value: 'preferred', label: '优先' },
+  { value: 'required', label: '必须' },
+  { value: 'any', label: '不限' }
+] as const
 
-  function save(patch: Partial<SubscriptionConfig>) {
-    if (!cfg) return
-    update.mutate({
-      ...cfg,
-      ...patch,
-      preferences: {
-        ...cfg.preferences,
-        ...patch.preferences
+const uncensoredOptions = [
+  { value: 'any', label: '不限' },
+  { value: 'preferred', label: '优先' },
+  { value: 'required', label: '必须' },
+  { value: 'exclude', label: '排除' }
+] as const
+
+export function SubscriptionSection() {
+  const settings = useSubscriptionSettings()
+  const update = useUpdateSubscriptionSettings()
+  const config = settings.data
+  const disabled = settings.isLoading || settings.isError || update.isPending
+
+  function save(patch: Partial<SubscriptionConfig>, preferences?: Partial<MagnetPreferences>) {
+    if (!config) return
+    update.mutate(
+      { ...config, ...patch, preferences: { ...config.preferences, ...preferences } },
+      {
+        onSuccess: () => toast.success('订阅设置已保存'),
+        onError: error => {
+          toast.error(error instanceof Error ? error.message : '保存订阅设置失败')
+        }
       }
-    })
+    )
   }
 
-  const disabled = query.isLoading || query.isError || update.isPending
-
   return (
-    <SettingsSection icon={<BellIcon className="size-4" />} title="订阅与磁力偏好">
-      <div className="space-y-6">
-        <SettingRow
-          inline
-          title="影片默认自动推送"
-          description="添加影片订阅时默认启用自动下载，出现符合偏好的磁力后自动提交 115 离线下载"
-        >
-          <Switch
-            checked={cfg?.movie_auto_download ?? true}
-            disabled={disabled}
-            onCheckedChange={checked => save({ movie_auto_download: checked })}
-          />
-        </SettingRow>
+    <SettingsSection icon={<BellIcon className="size-4" />} title="订阅设置">
+      <SettingRow
+        title="影片默认自动入库"
+        description="新订阅的影片出现符合偏好的磁力后自动加入 115"
+        inline
+      >
+        <Switch
+          checked={config?.movie_auto_download ?? true}
+          disabled={disabled}
+          onCheckedChange={checked => save({ movie_auto_download: checked })}
+        />
+      </SettingRow>
 
-        <SettingRow
-          inline
-          title="演员新作默认自动推送"
-          description="订阅演员后发现新发行的影片时，是否默认直接自动推送到 115"
-        >
-          <Switch
-            checked={cfg?.actor_auto_download ?? false}
-            disabled={disabled}
-            onCheckedChange={checked => save({ actor_auto_download: checked })}
-          />
-        </SettingRow>
+      <SettingRow
+        title="演员新作默认自动入库"
+        description="演员订阅发现的新作是否默认自动加入 115"
+        inline
+      >
+        <Switch
+          checked={config?.actor_auto_download ?? false}
+          disabled={disabled}
+          onCheckedChange={checked => save({ actor_auto_download: checked })}
+        />
+      </SettingRow>
 
-        <SettingRow
-          title="演员新作每日检查时间"
-          description="系统每天定时轮询已订阅演员的最新发行动态（默认 04:00）"
-        >
-          <Input
-            type="text"
-            className="w-32"
-            value={cfg?.actor_check_time ?? '04:00'}
-            disabled={disabled}
-            placeholder="04:00"
-            onChange={event => save({ actor_check_time: event.target.value })}
-          />
-        </SettingRow>
+      <SettingRow title="每日检查时间" description="影片磁力与演员新作都在这个时间检查一次">
+        <Input
+          type="time"
+          value={config?.check_time ?? '04:00'}
+          disabled={disabled}
+          className="w-32 appearance-none bg-background [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+          onChange={event => {
+            if (event.target.value) save({ check_time: event.target.value })
+          }}
+        />
+      </SettingRow>
 
-        <SettingRow
-          title="中文字幕偏好"
-          description="选择磁力资源时对字幕的容忍度：「必须」无字幕时不入库保持等待；「优先」按字幕加权排序"
+      <SettingRow title="字幕" description="「必须」时没有字幕的磁力不会入库，继续等待">
+        <Select
+          value={config?.preferences.subtitle ?? 'preferred'}
+          disabled={disabled}
+          onValueChange={value => save({}, { subtitle: value as MagnetPreferences['subtitle'] })}
         >
-          <Select
-            value={cfg?.preferences.subtitle ?? 'preferred'}
-            disabled={disabled}
-            onValueChange={value =>
-              save({
-                preferences: {
-                  subtitle: value as 'preferred' | 'required' | 'any',
-                  hd: cfg?.preferences.hd ?? 'preferred',
-                  uncensored: cfg?.preferences.uncensored ?? 'any',
-                  max_size_gib: cfg?.preferences.max_size_gib ?? 0
-                }
-              })
-            }
-          >
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="preferred">字幕优先</SelectItem>
-              <SelectItem value="required">必须有字幕</SelectItem>
-              <SelectItem value="any">不限字幕</SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingRow>
+          <SelectTrigger className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {levelOptions.map(option => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingRow>
 
-        <SettingRow
-          title="高清画质偏好"
-          description="选择磁力资源时对画质的偏好：「必须」仅限 1080P/4K 高清；「优先」优先选择高清"
+      <SettingRow title="高清" description="「必须」时只接受站方标注高清或名称含 4K 的磁力">
+        <Select
+          value={config?.preferences.hd ?? 'preferred'}
+          disabled={disabled}
+          onValueChange={value => save({}, { hd: value as MagnetPreferences['hd'] })}
         >
-          <Select
-            value={cfg?.preferences.hd ?? 'preferred'}
-            disabled={disabled}
-            onValueChange={value =>
-              save({
-                preferences: {
-                  subtitle: cfg?.preferences.subtitle ?? 'preferred',
-                  hd: value as 'preferred' | 'required' | 'any',
-                  uncensored: cfg?.preferences.uncensored ?? 'any',
-                  max_size_gib: cfg?.preferences.max_size_gib ?? 0
-                }
-              })
-            }
-          >
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="preferred">高清优先</SelectItem>
-              <SelectItem value="required">必须高清</SelectItem>
-              <SelectItem value="any">不限画质</SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingRow>
+          <SelectTrigger className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {levelOptions.map(option => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingRow>
 
-        <SettingRow
-          title="无码/破解资源偏好"
-          description="对带有无码破解、流出标签资源的策略：「排除」过滤掉该类磁力"
+      <SettingRow title="无码 / 破解" description="「排除」时过滤掉无码、破解、流出资源">
+        <Select
+          value={config?.preferences.uncensored ?? 'any'}
+          disabled={disabled}
+          onValueChange={value =>
+            save({}, { uncensored: value as MagnetPreferences['uncensored'] })
+          }
         >
-          <Select
-            value={cfg?.preferences.uncensored ?? 'any'}
-            disabled={disabled}
-            onValueChange={value =>
-              save({
-                preferences: {
-                  subtitle: cfg?.preferences.subtitle ?? 'preferred',
-                  hd: cfg?.preferences.hd ?? 'preferred',
-                  uncensored: value as 'preferred' | 'required' | 'exclude' | 'any',
-                  max_size_gib: cfg?.preferences.max_size_gib ?? 0
-                }
-              })
-            }
-          >
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="any">不限</SelectItem>
-              <SelectItem value="preferred">无码优先</SelectItem>
-              <SelectItem value="exclude">排除无码/破解</SelectItem>
-              <SelectItem value="required">必须无码/破解</SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingRow>
+          <SelectTrigger className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {uncensoredOptions.map(option => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingRow>
 
-        <SettingRow
-          title="单部资源体积上限 (GiB)"
-          description="过滤超过指定大小的磁力，避免单任务占用过大网盘空间；设置为 0 表示不限制"
-        >
-          <Input
-            type="number"
-            min={0}
-            className="w-32"
-            value={cfg?.preferences.max_size_gib ?? 0}
-            disabled={disabled}
-            onChange={event => {
-              const val = Number(event.target.value)
-              if (!Number.isNaN(val) && val >= 0) {
-                save({
-                  preferences: {
-                    subtitle: cfg?.preferences.subtitle ?? 'preferred',
-                    hd: cfg?.preferences.hd ?? 'preferred',
-                    uncensored: cfg?.preferences.uncensored ?? 'any',
-                    max_size_gib: val
-                  }
-                })
-              }
-            }}
-          />
-        </SettingRow>
-      </div>
+      {settings.isError ? <InlineError>后端服务暂不可用，无法读取订阅设置。</InlineError> : null}
     </SettingsSection>
   )
 }

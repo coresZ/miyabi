@@ -27,12 +27,11 @@ export function NetworkSection() {
   const url = userInput ?? config?.url ?? ''
   const isDirty = userInput !== null && userInput !== (config?.url ?? '')
   const isEnabled = config?.enabled ?? false
-  const isJavBusEnabled = config?.javbus_enabled ?? false
   const disabled = network.isLoading || network.isError || updateConfig.isPending
 
   function save(enabled: boolean, successMessage: string) {
     updateConfig.mutate(
-      { enabled, url: normalizeProxyInput(url), javbus_enabled: isJavBusEnabled },
+      { enabled, url: normalizeProxyInput(url) },
       {
         onSuccess: () => {
           setUserInput(null)
@@ -45,30 +44,13 @@ export function NetworkSection() {
     )
   }
 
-  function saveJavBus(enabled: boolean) {
-    updateConfig.mutate(
-      { enabled: isEnabled, url: normalizeProxyInput(url), javbus_enabled: enabled },
-      {
-        onSuccess: () => {
-          toast.success(enabled ? '已开启 JavBus 数据源' : '已关闭 JavBus 数据源')
-          if (enabled) {
-            handleTest()
-          }
-        },
-        onError: error => {
-          toast.error(error instanceof Error ? error.message : '保存 JavBus 设置失败')
-        }
-      }
-    )
-  }
-
   function handleSave() {
     if (isDirty) save(isEnabled, '代理地址已保存')
   }
 
   function handleTest() {
     testNetwork.mutate(
-      { enabled: true, url: normalizeProxyInput(url), javbus_enabled: isJavBusEnabled },
+      { enabled: true, url: normalizeProxyInput(url) },
       {
         onSuccess: showProbeResult,
         onError: error => {
@@ -86,14 +68,6 @@ export function NetworkSection() {
           disabled={disabled}
           onCheckedChange={enabled => save(enabled, enabled ? '已开启网络代理' : '已关闭网络代理')}
         />
-      </SettingRow>
-
-      <SettingRow
-        title="JavBus 数据源"
-        description="启用 JavBus 磁力聚合与画质标签推断（需代理）"
-        inline
-      >
-        <Switch checked={isJavBusEnabled} disabled={disabled} onCheckedChange={saveJavBus} />
       </SettingRow>
 
       {isEnabled ? (

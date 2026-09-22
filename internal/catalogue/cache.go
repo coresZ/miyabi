@@ -119,3 +119,12 @@ func cachedJavDB[T any](ctx context.Context, service *Service, cache *responseCa
 		return value, err
 	})
 }
+
+// reset drops every cached entry; in-flight loads finish but are not stored.
+func (cache *responseCache[T]) reset() {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	cache.entries = make(map[string]*list.Element)
+	cache.recent.Init()
+	clear(cache.pending)
+}

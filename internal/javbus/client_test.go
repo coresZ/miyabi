@@ -89,10 +89,7 @@ func TestClient_FindSuccessWithCaching(t *testing.T) {
 		}, nil
 	}
 
-	client, err := New(Options{
-		BaseURL:    "https://www.javbus.com",
-		testClient: mock,
-	})
+	client, err := New(Options{testClient: mock})
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}

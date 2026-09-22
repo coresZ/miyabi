@@ -130,7 +130,7 @@ function ActorSubscribeButton({ actorID, actorName }: { actorID: string; actorNa
       disabled={busy}
       onClick={() =>
         subscribed
-          ? remove.mutate(subscription.id)
+          ? remove.mutate(subscription)
           : add.mutate({ kind: 'actor', target_id: actorID, title: actorName })
       }
     >

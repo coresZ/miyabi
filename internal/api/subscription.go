@@ -39,13 +39,12 @@ type subscriptionCreateInput struct {
 type subscriptionUpdateInput struct {
 	AutoDownload *bool   `json:"auto_download"`
 	Zone         *string `json:"zone"`
-	Status       *string `json:"status" binding:"omitempty,oneof=active paused waiting added stale error"`
+	Status       *string `json:"status" binding:"omitempty,oneof=active paused"`
 }
 
 type subscriptionEnqueueBatchInput struct {
-	IDs  []int  `json:"ids"`
-	All  bool   `json:"all"`
-	Kind string `json:"kind"`
+	IDs []int `json:"ids"`
+	All bool  `json:"all"`
 }
 
 type subscriptionURI struct {

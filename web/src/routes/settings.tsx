@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { AppearanceSection } from '@/features/settings/appearance-section'
 import { DataSection } from '@/features/settings/data-section'
+import { JavBusSection } from '@/features/settings/javbus-section'
 import { JavDBSection } from '@/features/settings/javdb-section'
 import { NetworkSection } from '@/features/settings/network-section'
 import { PanSection } from '@/features/settings/pan-section'
@@ -30,11 +31,13 @@ function SettingsPage() {
           <Separator />
           <NetworkSection />
           <Separator />
-          <SubscriptionSection />
-          <Separator />
           <JavDBSection />
           <Separator />
+          <JavBusSection />
+          <Separator />
           <PanSection />
+          <Separator />
+          <SubscriptionSection />
           <Separator />
           <TasksSection />
           <Separator />

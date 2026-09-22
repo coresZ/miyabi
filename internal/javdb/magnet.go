@@ -34,10 +34,10 @@ func (c *Client) Magnets(ctx context.Context, movieID string) ([]domain.Magnet, 
 		}
 		var tags []string
 		if item.CNSub {
-			tags = append(tags, "字幕")
+			tags = append(tags, domain.MagnetTagSubtitle)
 		}
 		if item.HD {
-			tags = append(tags, "高清")
+			tags = append(tags, domain.MagnetTagHD)
 		}
 		magnets[index] = domain.Magnet{
 			Hash:        hex.EncodeToString(hash),
@@ -47,7 +47,7 @@ func (c *Client) Magnets(ctx context.Context, movieID string) ([]domain.Magnet, 
 			HD:          item.HD,
 			FilesCount:  item.FilesCount,
 			CreatedAt:   item.CreatedAt,
-			Sources:     []string{"javdb"},
+			Sources:     []string{domain.MagnetSourceJavDB},
 			Tags:        tags,
 		}
 	}
@@ -74,7 +74,7 @@ func (c *Client) Magnets(ctx context.Context, movieID string) ([]domain.Magnet, 
 
 // Name identifies JavDB as a magnet source.
 func (c *Client) Name() string {
-	return "javdb"
+	return domain.MagnetSourceJavDB
 }
 
 // Find retrieves magnets for the given movie reference.

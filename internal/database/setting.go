@@ -1,4 +1,4 @@
-package app
+package database
 
 import (
 	"context"
@@ -10,9 +10,11 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/setting"
 )
 
-func loadSetting[T any](ctx context.Context, database *ent.Client, key string) (T, bool, error) {
+// LoadSetting decodes one JSON settings row. The second result reports
+// whether the key exists; a missing key is not an error.
+func LoadSetting[T any](ctx context.Context, client *ent.Client, key string) (T, bool, error) {
 	var value T
-	record, err := database.Setting.Query().Where(setting.Key(key)).Only(ctx)
+	record, err := client.Setting.Query().Where(setting.Key(key)).Only(ctx)
 	if ent.IsNotFound(err) {
 		return value, false, nil
 	}
@@ -25,12 +27,13 @@ func loadSetting[T any](ctx context.Context, database *ent.Client, key string) (
 	return value, true, nil
 }
 
-func saveSetting(ctx context.Context, database *ent.Client, key string, value any) error {
+// SaveSetting upserts one JSON settings row.
+func SaveSetting(ctx context.Context, client *ent.Client, key string, value any) error {
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("encode setting %s: %w", key, err)
 	}
-	if err := database.Setting.Create().SetKey(key).SetValue(jsontext.Value(encoded)).
+	if err := client.Setting.Create().SetKey(key).SetValue(jsontext.Value(encoded)).
 		OnConflictColumns(setting.FieldKey).UpdateNewValues().Exec(ctx); err != nil {
 		return fmt.Errorf("save setting %s: %w", key, err)
 	}

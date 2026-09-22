@@ -5,7 +5,6 @@ import { apiGet, apiPost, apiPut } from '@/api/client'
 export type NetworkConfig = {
   enabled: boolean
   url: string
-  javbus_enabled?: boolean
 }
 
 export type NetworkProbeResult = {
@@ -43,8 +42,7 @@ export function useUpdateNetworkConfig() {
       const previous = queryClient.getQueryData<NetworkConfig>(networkKeys.config)
       queryClient.setQueryData<NetworkConfig>(networkKeys.config, old => ({
         enabled: next.enabled,
-        url: next.url || old?.url || '',
-        javbus_enabled: next.javbus_enabled ?? old?.javbus_enabled ?? false
+        url: next.url || old?.url || ''
       }))
       return { previous }
     },

@@ -17,12 +17,7 @@ export function MovieSubscribeButton({ movie }: { movie: DiscoverMovie }) {
     event.preventDefault()
     event.stopPropagation()
     if (subscribed || add.isPending) return
-    add.mutate({
-      kind: 'movie',
-      target_id: movie.id,
-      title: movie.title,
-      cover: movie.cover
-    })
+    add.mutate({ kind: 'movie', target_id: movie.id })
   }
 
   return (

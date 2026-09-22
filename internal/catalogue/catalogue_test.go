@@ -108,7 +108,7 @@ func TestNewRestoresPersistedRoute(t *testing.T) {
 	}
 	defer store.Close()
 	saved := persistedRoute{Host: "https://cached.example", LatencyMS: 125, Manual: true}
-	if err := saveSetting(t.Context(), store.Client, javdbRouteSetting, saved); err != nil {
+	if err := database.SaveSetting(t.Context(), store.Client, javdbRouteSetting, saved); err != nil {
 		t.Fatal(err)
 	}
 	service, err := New(t.Context(), store.Client, javdb.Options{}, nil, nil)
@@ -123,7 +123,7 @@ func TestNewRestoresPersistedRoute(t *testing.T) {
 	if err := service.persistActiveRoute(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	restored, found, err := loadSetting[persistedRoute](t.Context(), store.Client, javdbRouteSetting)
+	restored, found, err := database.LoadSetting[persistedRoute](t.Context(), store.Client, javdbRouteSetting)
 	if err != nil || !found || restored != saved {
 		t.Fatalf("persisted route = %#v, found = %t, error = %v", restored, found, err)
 	}
@@ -327,21 +327,41 @@ type stubProviderWithMagnets struct {
 	magnets []domain.Magnet
 }
 
-func (s *stubProviderWithMagnets) Close()                                                             {}
-func (s *stubProviderWithMagnets) Search(context.Context, string, domain.SearchOptions) ([]domain.Movie, error) { return nil, nil }
-func (s *stubProviderWithMagnets) Browse(context.Context, domain.BrowseOptions) ([]domain.Movie, error) { return nil, nil }
+func (s *stubProviderWithMagnets) Close() {}
+func (s *stubProviderWithMagnets) Search(context.Context, string, domain.SearchOptions) ([]domain.Movie, error) {
+	return nil, nil
+}
+func (s *stubProviderWithMagnets) Browse(context.Context, domain.BrowseOptions) ([]domain.Movie, error) {
+	return nil, nil
+}
 func (s *stubProviderWithMagnets) MovieDetail(context.Context, string) (domain.MovieDetail, error) {
 	return domain.MovieDetail{Movie: domain.Movie{ID: "movie-1", Code: "SSIS-001"}}, nil
 }
-func (s *stubProviderWithMagnets) Magnets(context.Context, string) ([]domain.Magnet, error) { return s.magnets, nil }
-func (s *stubProviderWithMagnets) FetchMedia(context.Context, string) (domain.Media, error) { return domain.Media{}, nil }
-func (s *stubProviderWithMagnets) Tags(context.Context, domain.Zone) ([]domain.TagCategory, error) { return nil, nil }
-func (s *stubProviderWithMagnets) ResolveMovieID(context.Context, string) (string, error) { return "movie-1", nil }
-func (s *stubProviderWithMagnets) Route() (javdb.RouteStatus, bool) { return javdb.RouteStatus{}, false }
-func (s *stubProviderWithMagnets) SelectRoute(context.Context, string) (javdb.RouteStatus, error) { return javdb.RouteStatus{}, nil }
-func (s *stubProviderWithMagnets) Reselect(context.Context) (javdb.RouteStatus, error) { return javdb.RouteStatus{}, nil }
+func (s *stubProviderWithMagnets) Magnets(context.Context, string) ([]domain.Magnet, error) {
+	return s.magnets, nil
+}
+func (s *stubProviderWithMagnets) FetchMedia(context.Context, string) (domain.Media, error) {
+	return domain.Media{}, nil
+}
+func (s *stubProviderWithMagnets) Tags(context.Context, domain.Zone) ([]domain.TagCategory, error) {
+	return nil, nil
+}
+func (s *stubProviderWithMagnets) ResolveMovieID(context.Context, string) (string, error) {
+	return "movie-1", nil
+}
+func (s *stubProviderWithMagnets) Route() (javdb.RouteStatus, bool) {
+	return javdb.RouteStatus{}, false
+}
+func (s *stubProviderWithMagnets) SelectRoute(context.Context, string) (javdb.RouteStatus, error) {
+	return javdb.RouteStatus{}, nil
+}
+func (s *stubProviderWithMagnets) Reselect(context.Context) (javdb.RouteStatus, error) {
+	return javdb.RouteStatus{}, nil
+}
 func (s *stubProviderWithMagnets) Name() string { return "javdb" }
-func (s *stubProviderWithMagnets) Find(ctx context.Context, ref domain.MovieRef) ([]domain.Magnet, error) { return s.magnets, nil }
+func (s *stubProviderWithMagnets) Find(ctx context.Context, ref domain.MovieRef) ([]domain.Magnet, error) {
+	return s.magnets, nil
+}
 
 func TestServiceMagnetsWithAggregator(t *testing.T) {
 	store, err := database.Open(t.Context(), t.TempDir())
@@ -381,10 +401,5 @@ func TestServiceMagnetsWithAggregator(t *testing.T) {
 	has, err := service.HasMagnet(t.Context(), "movie-1", "1111111111111111111111111111111111111111")
 	if err != nil || !has {
 		t.Errorf("expected HasMagnet to return true, got %v, err=%v", has, err)
-	}
-
-	firstHash, err := service.FirstMagnetHash(t.Context(), "movie-1")
-	if err != nil || firstHash != "1111111111111111111111111111111111111111" {
-		t.Errorf("expected FirstMagnetHash to return hash, got %s, err=%v", firstHash, err)
 	}
 }

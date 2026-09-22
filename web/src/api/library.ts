@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 
 import { ApiError, apiGet, apiPost, apiPut } from '@/api/client'
 import { panKeys, type PanAccountStatus } from '@/api/pan'
-import { taskKeys, type LibrarySource, type ScanTask } from '@/api/tasks'
+import { taskKeys, type LibrarySource, type ScanTask, type Task } from '@/api/tasks'
 import type { WatchHistoryScope, WatchSession } from '@/api/watch-history'
 import { notifyScanTask, notifyTaskError } from '@/features/tasks/task-toast'
 
@@ -105,7 +105,7 @@ export function useStartLibraryScan() {
       )
         return queryClient.invalidateQueries({ queryKey: taskKeys.all })
       notifyScanTask(task)
-      queryClient.setQueryData<ScanTask[]>(taskKeys.all, tasks => [
+      queryClient.setQueryData<Task[]>(taskKeys.all, tasks => [
         task,
         ...(tasks ?? []).filter(item => item.id !== task.id)
       ])

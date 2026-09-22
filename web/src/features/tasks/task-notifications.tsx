@@ -2,9 +2,23 @@ import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 
 import { isOfflineTaskActive, useOfflineActivity } from '@/api/offline'
-import { isTaskActive, useTasks, type ScanTask } from '@/api/tasks'
+import {
+  isBatchTask,
+  isScanTask,
+  isTaskActive,
+  useTasks,
+  type BatchTask,
+  type ScanTask
+} from '@/api/tasks'
 import { useTaskConnection } from './task-events'
-import { notifyOfflineTask, notifyScanTask, offlineToastID, scanToastID } from './task-toast'
+import {
+  batchToastID,
+  notifyBatchTask,
+  notifyOfflineTask,
+  notifyScanTask,
+  offlineToastID,
+  scanToastID
+} from './task-toast'
 
 type NotificationState = { version: string; active: boolean; playable?: boolean }
 
@@ -53,7 +67,8 @@ export function TaskNotifications() {
     }
 
     const waiting = connection.status !== 'connected'
-    for (const task of tasks.data) {
+    const scans = tasks.data.filter(isScanTask)
+    for (const task of scans) {
       if (
         !source ||
         task.offline_task_id ||
@@ -72,10 +87,22 @@ export function TaskNotifications() {
       )
     }
 
-    const scans = new Map(tasks.data.map(task => [task.id, task]))
+    for (const task of tasks.data.filter(isBatchTask)) {
+      const id = batchToastID(task.id)
+      update(
+        id,
+        {
+          active: isTaskActive(task),
+          version: JSON.stringify([batchVersion(task), waiting, tasks.isError])
+        },
+        () => notifyBatchTask(task, { ...callbacks(id), waiting: waiting || tasks.isError })
+      )
+    }
+
+    const scansByID = new Map(scans.map(task => [task.id, task]))
     for (const task of activity.data.tasks) {
       const id = offlineToastID(task.task_id)
-      const scan = task.scan_task_id ? scans.get(task.scan_task_id) : undefined
+      const scan = task.scan_task_id ? scansByID.get(task.scan_task_id) : undefined
       const active = isOfflineTaskActive(task)
       update(
         id,
@@ -129,4 +156,8 @@ function scanVersion(task: ScanTask) {
     task.scan.metadata_total,
     task.scan.metadata_completed
   ]
+}
+
+function batchVersion(task: BatchTask) {
+  return [task.status, task.progress, task.error, task.batch.processed, task.batch.failed]
 }

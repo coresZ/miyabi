@@ -20,7 +20,7 @@ func Probe(ctx context.Context, proxy *url.URL, timeout time.Duration) (time.Dur
 	}
 	defer client.CloseIdleConnections()
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, DefaultBaseURL, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
 	if err != nil {
 		return 0, err
 	}

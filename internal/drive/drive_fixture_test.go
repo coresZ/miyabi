@@ -257,7 +257,7 @@ func awaitCondition(t testing.TB, ready func() bool) {
 
 func assertTokens(t testing.TB, d *Drive, want pan.Tokens) {
 	t.Helper()
-	saved, exists, err := loadSetting[pan.Tokens](t.Context(), d.database, credentialsSetting)
+	saved, exists, err := database.LoadSetting[pan.Tokens](t.Context(), d.database, credentialsSetting)
 	if err != nil || exists != (want.AccessToken != "") {
 		t.Fatalf("persisted credentials: exists=%t err=%v", exists, err)
 	}
@@ -276,7 +276,7 @@ func expireTokens(d *Drive) {
 
 func savedDirectory(t testing.TB, d *Drive) (mountRecord, bool) {
 	t.Helper()
-	record, found, err := loadSetting[mountRecord](t.Context(), d.database, directorySetting)
+	record, found, err := database.LoadSetting[mountRecord](t.Context(), d.database, directorySetting)
 	if err != nil {
 		t.Fatal(err)
 	}

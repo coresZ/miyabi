@@ -91,9 +91,11 @@ func (goldenDiscover) MovieStates(context.Context, []catalogue.MovieIdentity) ([
 func (goldenDiscover) Magnets(context.Context, string) ([]catalogue.Magnet, error) {
 	return []catalogue.Magnet{
 		{Magnet: domain.Magnet{Hash: "0000000000000000000000000000000000000003", Name: "HD subtitle fixture", Size: 1024 << 20,
-			HasSubtitle: true, HD: true, FilesCount: 3, CreatedAt: "2026-08-03"}, URI: "magnet:?xt=urn:btih:0000000000000000000000000000000000000003"},
+			HasSubtitle: true, HD: true, FilesCount: 3, CreatedAt: "2026-08-03",
+			Sources: []string{"javdb", "javbus"}, Tags: []string{"字幕", "高清"}}, URI: "magnet:?xt=urn:btih:0000000000000000000000000000000000000003"},
 		{Magnet: domain.Magnet{Hash: "0000000000000000000000000000000000000002", Name: "HD fixture", Size: 16384 << 20,
-			HD: true, FilesCount: 2, CreatedAt: "2026-08-02"}, URI: "magnet:?xt=urn:btih:0000000000000000000000000000000000000002"},
+			HD: true, FilesCount: 2, CreatedAt: "2026-08-02",
+			Sources: []string{"javbus"}, Tags: []string{"高清", "4K"}, Inferred: true}, URI: "magnet:?xt=urn:btih:0000000000000000000000000000000000000002"},
 	}, nil
 }
 

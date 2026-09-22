@@ -7,6 +7,14 @@
     "hd": true,
     "files_count": 3,
     "created_at": "2026-08-03",
+    "sources": [
+      "javdb",
+      "javbus"
+    ],
+    "tags": [
+      "字幕",
+      "高清"
+    ],
     "uri": "magnet:?xt=urn:btih:0000000000000000000000000000000000000003"
   },
   {
@@ -17,6 +25,14 @@
     "hd": true,
     "files_count": 2,
     "created_at": "2026-08-02",
+    "sources": [
+      "javbus"
+    ],
+    "tags": [
+      "高清",
+      "4K"
+    ],
+    "inferred": true,
     "uri": "magnet:?xt=urn:btih:0000000000000000000000000000000000000002"
   }
 ]

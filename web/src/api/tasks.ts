@@ -10,14 +10,17 @@ export type LibrarySource = {
 
 export type TaskRevisions = { library: number; offline: number; history: number; monitor: number }
 
-export type ScanTask = {
+type TaskBase = {
   id: number
-  type: 'scan'
   status: 'queued' | 'running' | 'done' | 'failed'
   progress: number
   error?: string
   created_at: string
   updated_at: string
+}
+
+export type ScanTask = TaskBase & {
+  type: 'scan'
   source: LibrarySource
   offline_task_id?: number
   scan: {
@@ -37,12 +40,28 @@ export type ScanTask = {
   }
 }
 
+// A queued subscription batch: each movie is submitted to 115, left waiting
+// for a qualifying magnet, or failed.
+export type BatchTask = TaskBase & {
+  type: 'subscription_batch'
+  batch: {
+    total: number
+    processed: number
+    submitted: number
+    waiting: number
+    failed: number
+    failures?: { code: string; error: string }[]
+  }
+}
+
+export type Task = ScanTask | BatchTask
+
 export const taskKeys = { all: ['tasks'] as const }
 
 export function useTasks() {
   return useQuery({
     queryKey: taskKeys.all,
-    queryFn: ({ signal }) => apiGet<ScanTask[]>('/api/tasks', undefined, signal),
+    queryFn: ({ signal }) => apiGet<Task[]>('/api/tasks', undefined, signal),
     staleTime: Infinity,
     refetchOnMount: 'always',
     retry: false,
@@ -50,6 +69,14 @@ export function useTasks() {
   })
 }
 
-export function isTaskActive(task: ScanTask) {
+export function isScanTask(task: Task): task is ScanTask {
+  return task.type === 'scan'
+}
+
+export function isBatchTask(task: Task): task is BatchTask {
+  return task.type === 'subscription_batch'
+}
+
+export function isTaskActive(task: Task) {
   return task.status === 'queued' || task.status === 'running'
 }

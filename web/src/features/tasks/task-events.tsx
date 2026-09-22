@@ -14,7 +14,7 @@ import { invalidateMovieStates } from '@/api/movie-state-cache'
 import { libraryKeys } from '@/api/library'
 import { offlineKeys } from '@/api/offline'
 import { subscriptionKeys } from '@/api/subscriptions'
-import { taskKeys, type ScanTask, type TaskRevisions } from '@/api/tasks'
+import { taskKeys, type Task, type TaskRevisions } from '@/api/tasks'
 import { watchHistoryKeys } from '@/api/watch-history'
 
 type ConnectionState = 'connecting' | 'connected' | 'disconnected'
@@ -112,7 +112,7 @@ export function TaskEventsProvider({ children }: PropsWithChildren) {
     }
 
     events.addEventListener('tasks', async (event: MessageEvent<string>) => {
-      const snapshot = JSON.parse(event.data) as ScanTask[]
+      const snapshot = JSON.parse(event.data) as Task[]
       await queryClient.cancelQueries({ queryKey: taskKeys.all, exact: true })
       if (events.readyState !== EventSource.OPEN) return
       queryClient.setQueryData(taskKeys.all, snapshot)

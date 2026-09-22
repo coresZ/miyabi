@@ -52,6 +52,8 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	settingsAPI.GET("/network", networkHandler(deps.Network))
 	settingsAPI.PUT("/network", networkUpdateHandler(deps.Network))
 	settingsAPI.POST("/network/test", networkTestHandler(deps.Network))
+	settingsAPI.GET("/javbus", javbusConfigHandler(deps.Catalogue))
+	settingsAPI.PUT("/javbus", javbusUpdateHandler(deps.Catalogue))
 	settingsAPI.GET("/subscription", subscriptionSettingsGetHandler(deps.Monitor))
 	settingsAPI.PUT("/subscription", subscriptionSettingsUpdateHandler(deps.Monitor))
 	api.GET("/library/movies", libraryMoviesHandler(deps.Library))

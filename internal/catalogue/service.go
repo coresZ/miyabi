@@ -2,17 +2,16 @@ package catalogue
 
 import (
 	"context"
-	"encoding/json"
-	"encoding/json/jsontext"
 	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
-	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/javbus"
 	"github.com/ppxb/miyabi/internal/javdb"
 	"github.com/ppxb/miyabi/internal/magnet"
@@ -20,10 +19,8 @@ import (
 )
 
 const (
-	javdbDeviceSetting   = "javdb.device_uuid"
-	javdbRouteSetting    = "javdb.route"
-	javbusEnabledSetting = "magnet.javbus.enabled"
-	javbusBaseURLSetting = "magnet.javbus.base_url"
+	javdbDeviceSetting = "javdb.device_uuid"
+	javdbRouteSetting  = "javdb.route"
 )
 
 type persistedRoute struct {
@@ -39,46 +36,27 @@ type Service struct {
 	javdb      Provider
 	javbus     *javbus.Client
 	aggregator *magnet.Aggregator
-	lists      *responseCache[[]domain.Movie]
-	details    *responseCache[domain.MovieDetail]
-	tags       *responseCache[[]domain.TagCategory]
-	magnets    *responseCache[[]domain.Magnet]
+
+	// javbusEnabled gates the JavBus source at query time; see UpdateJavBus.
+	javbusEnabled atomic.Bool
+	lists         *responseCache[[]domain.Movie]
+	details       *responseCache[domain.MovieDetail]
+	tags          *responseCache[[]domain.TagCategory]
+	magnets       *responseCache[[]domain.Magnet]
 
 	routeMu sync.RWMutex
 	route   RouteStatus
 }
 
-type dynamicJavBusSource struct {
-	client   *javbus.Client
-	database *ent.Client
-}
-
-func (s *dynamicJavBusSource) Name() string {
-	return "javbus"
-}
-
-func (s *dynamicJavBusSource) Find(ctx context.Context, ref domain.MovieRef) ([]domain.Magnet, error) {
-	if s.client == nil {
-		return nil, nil
-	}
-	if s.database != nil {
-		enabled, found, _ := loadSetting[bool](ctx, s.database, javbusEnabledSetting)
-		if !found || !enabled {
-			return nil, nil
-		}
-	}
-	return s.client.Find(ctx, ref)
-}
-
 // New creates the lazy JavDB client and restores/persists device UUID and route settings.
 func New(
 	ctx context.Context,
-	database *ent.Client,
+	db *ent.Client,
 	options javdb.Options,
 	proxy *netx.ProxyManager,
 	local LocalState,
 ) (*Service, error) {
-	deviceUUID, found, err := loadSetting[string](ctx, database, javdbDeviceSetting)
+	deviceUUID, found, err := database.LoadSetting[string](ctx, db, javdbDeviceSetting)
 	if err != nil {
 		return nil, err
 	}
@@ -90,12 +68,12 @@ func New(
 				return nil, err
 			}
 		}
-		if err := saveSetting(ctx, database, javdbDeviceSetting, deviceUUID); err != nil {
+		if err := database.SaveSetting(ctx, db, javdbDeviceSetting, deviceUUID); err != nil {
 			return nil, err
 		}
 	}
 
-	route, found, err := loadSetting[persistedRoute](ctx, database, javdbRouteSetting)
+	route, found, err := database.LoadSetting[persistedRoute](ctx, db, javdbRouteSetting)
 	if err != nil {
 		return nil, err
 	}
@@ -111,39 +89,45 @@ func New(
 		return nil, err
 	}
 
-	javbusBaseURL, _, _ := loadSetting[string](ctx, database, javbusBaseURLSetting)
-	javbusClient, err := javbus.New(javbus.Options{
-		BaseURL: javbusBaseURL,
-		Proxy:   proxy,
-	})
+	javbusClient, err := javbus.New(javbus.Options{Proxy: proxy})
 	if err != nil {
 		client.Close()
 		return nil, fmt.Errorf("initialize JavBus client: %w", err)
 	}
+	javbusEnabled, _, err := database.LoadSetting[bool](ctx, db, javbusEnabledSetting)
+	if err != nil {
+		javbusClient.Close()
+		client.Close()
+		return nil, err
+	}
 
-	javbusSource := &dynamicJavBusSource{client: javbusClient, database: database}
-	aggregator := magnet.NewAggregator([]magnet.Source{client, javbusSource}, 8*time.Second, nil)
-
-	return newService(database, client, javbusClient, aggregator, local, route), nil
+	service := newService(db, client, local, route)
+	service.javbus = javbusClient
+	service.javbusEnabled.Store(javbusEnabled)
+	service.aggregator = magnet.NewAggregator([]magnet.Source{
+		client,
+		gatedSource{Source: javbusClient, enabled: &service.javbusEnabled},
+	}, aggregatorTimeout, nil)
+	return service, nil
 }
 
 // NewWithProvider creates a catalogue Service with an explicit Provider.
 // It is primarily used for testing or alternative catalogue sources.
 func NewWithProvider(
 	ctx context.Context,
-	database *ent.Client,
+	db *ent.Client,
 	provider Provider,
 	local LocalState,
 ) (*Service, error) {
-	route, _, err := loadSetting[persistedRoute](ctx, database, javdbRouteSetting)
+	route, _, err := database.LoadSetting[persistedRoute](ctx, db, javdbRouteSetting)
 	if err != nil {
 		return nil, err
 	}
-	var agg *magnet.Aggregator
-	if src, ok := provider.(magnet.Source); ok {
-		agg = magnet.NewAggregator([]magnet.Source{src}, 8*time.Second, nil)
+	service := newService(db, provider, local, route)
+	if source, ok := provider.(magnet.Source); ok {
+		service.aggregator = magnet.NewAggregator([]magnet.Source{source}, aggregatorTimeout, nil)
 	}
-	return newService(database, provider, nil, agg, local, route), nil
+	return service, nil
 }
 
 // Response caches absorb repeated page loads; entries are small and short-lived
@@ -155,24 +139,15 @@ const (
 	magnetsCacheSize, magnetsCacheTTL = 64, time.Minute
 )
 
-func newService(
-	database *ent.Client,
-	provider Provider,
-	javbusClient *javbus.Client,
-	aggregator *magnet.Aggregator,
-	local LocalState,
-	route persistedRoute,
-) *Service {
+func newService(database *ent.Client, provider Provider, local LocalState, route persistedRoute) *Service {
 	return &Service{
-		database:   database,
-		javdb:      provider,
-		javbus:     javbusClient,
-		aggregator: aggregator,
-		lists:      newResponseCache[[]domain.Movie](listCacheSize, listCacheTTL),
-		details:    newResponseCache[domain.MovieDetail](detailCacheSize, detailCacheTTL),
-		tags:       newResponseCache[[]domain.TagCategory](tagsCacheSize, tagsCacheTTL),
-		magnets:    newResponseCache[[]domain.Magnet](magnetsCacheSize, magnetsCacheTTL),
-		local:      local,
+		database: database,
+		javdb:    provider,
+		lists:    newResponseCache[[]domain.Movie](listCacheSize, listCacheTTL),
+		details:  newResponseCache[domain.MovieDetail](detailCacheSize, detailCacheTTL),
+		tags:     newResponseCache[[]domain.TagCategory](tagsCacheSize, tagsCacheTTL),
+		magnets:  newResponseCache[[]domain.Magnet](magnetsCacheSize, magnetsCacheTTL),
+		local:    local,
 		route: RouteStatus{
 			Host:      route.Host,
 			LatencyMS: route.LatencyMS,
@@ -251,43 +226,6 @@ func (service *Service) MovieDetail(ctx context.Context, movieID string) (MovieD
 	}, nil
 }
 
-func (service *Service) Magnets(ctx context.Context, movieID string) ([]Magnet, error) {
-	magnets, err := cachedJavDB(ctx, service, service.magnets, movieID, func(ctx context.Context) ([]domain.Magnet, error) {
-		if service.aggregator != nil {
-			var code string
-			var zone domain.Zone
-			if d, err := service.CatalogueDetail(ctx, movieID); err == nil {
-				code = d.Code
-				zone = d.Zone
-			}
-			return service.aggregator.Find(ctx, domain.MovieRef{
-				Code:    code,
-				JavDBID: movieID,
-				Zone:    zone,
-			})
-		}
-		return service.javdb.Magnets(ctx, movieID)
-	})
-	if err != nil {
-		return nil, fmt.Errorf("get magnets: %w", err)
-	}
-	return projectMagnets(magnets), nil
-}
-
-func (service *Service) HasMagnet(ctx context.Context, movieID, hash string) (bool, error) {
-	magnets, err := service.Magnets(ctx, movieID)
-	if err != nil {
-		return false, err
-	}
-	hash = strings.ToLower(hash)
-	for _, m := range magnets {
-		if strings.EqualFold(m.Hash, hash) {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 func (service *Service) MovieCode(ctx context.Context, movieID string) (string, error) {
 	movie, err := service.CatalogueDetail(ctx, movieID)
 	if err != nil {
@@ -308,30 +246,6 @@ func (service *Service) MovieSummary(ctx context.Context, movieID string) (domai
 		Cover:       detail.Cover,
 		ReleaseDate: detail.ReleaseDate,
 	}, nil
-}
-
-func (service *Service) FirstMagnetHash(ctx context.Context, movieID string) (string, error) {
-	magnets, err := service.Magnets(ctx, movieID)
-	if err != nil {
-		return "", err
-	}
-	if len(magnets) == 0 {
-		return "", nil
-	}
-	return strings.ToLower(magnets[0].Hash), nil
-}
-
-// CatalogueMagnets returns magnets as domain types for callers requiring domain boundaries.
-func (service *Service) CatalogueMagnets(ctx context.Context, movieID string) ([]domain.Magnet, error) {
-	magnets, err := service.Magnets(ctx, movieID)
-	if err != nil {
-		return nil, err
-	}
-	res := make([]domain.Magnet, len(magnets))
-	for i, m := range magnets {
-		res[i] = m.Magnet
-	}
-	return res, nil
 }
 
 // BrowseMovies returns browsed movies as domain types for callers requiring domain boundaries.
@@ -501,7 +415,7 @@ func (service *Service) persistActiveRoute(ctx context.Context) error {
 	if unchanged {
 		return nil
 	}
-	if err := saveSetting(ctx, service.database, javdbRouteSetting, route); err != nil {
+	if err := database.SaveSetting(ctx, service.database, javdbRouteSetting, route); err != nil {
 		return fmt.Errorf("cache JavDB route: %w", err)
 	}
 	service.route = RouteStatus{
@@ -509,47 +423,6 @@ func (service *Service) persistActiveRoute(ctx context.Context) error {
 		LatencyMS: route.LatencyMS,
 		Active:    true,
 		Manual:    route.Manual,
-	}
-	return nil
-}
-
-func projectMagnets(source []domain.Magnet) []Magnet {
-	result := make([]Magnet, len(source))
-	for index, item := range source {
-		result[index] = Magnet{Magnet: item, URI: "magnet:?xt=urn:btih:" + item.Hash}
-	}
-	return result
-}
-
-func loadSetting[T any](ctx context.Context, database *ent.Client, key string) (T, bool, error) {
-	var value T
-	if database == nil {
-		return value, false, nil
-	}
-	record, err := database.Setting.Query().Where(setting.Key(key)).Only(ctx)
-	if ent.IsNotFound(err) {
-		return value, false, nil
-	}
-	if err != nil {
-		return value, false, fmt.Errorf("load setting %s: %w", key, err)
-	}
-	if err := json.Unmarshal(record.Value, &value); err != nil {
-		return value, false, fmt.Errorf("decode setting %s: %w", key, err)
-	}
-	return value, true, nil
-}
-
-func saveSetting(ctx context.Context, database *ent.Client, key string, value any) error {
-	if database == nil {
-		return nil
-	}
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return fmt.Errorf("encode setting %s: %w", key, err)
-	}
-	if err := database.Setting.Create().SetKey(key).SetValue(jsontext.Value(encoded)).
-		OnConflictColumns(setting.FieldKey).UpdateNewValues().Exec(ctx); err != nil {
-		return fmt.Errorf("save setting %s: %w", key, err)
 	}
 	return nil
 }

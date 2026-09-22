@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/pan"
@@ -106,7 +107,7 @@ func (d *Drive) persistDirectory(ctx context.Context, record mountRecord) error 
 		}
 		return nil
 	}
-	if err := saveSetting(ctx, d.database, directorySetting, record); err != nil {
+	if err := database.SaveSetting(ctx, d.database, directorySetting, record); err != nil {
 		return fmt.Errorf("save media directory setting: %w", err)
 	}
 	return nil

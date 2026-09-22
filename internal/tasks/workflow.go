@@ -25,6 +25,8 @@ type TaskInfo struct {
 	Source        domain.LibrarySource `json:"source"`
 	Scan          domain.ScanProgress  `json:"scan"`
 	OfflineTaskID int                  `json:"offline_task_id,omitempty"`
+	// Batch is set for subscription batch tasks, which have no scan payload.
+	Batch *domain.SubscriptionBatch `json:"batch,omitempty"`
 }
 
 // ScanPayload is the stored JSON payload of a scan task.
@@ -48,8 +50,11 @@ type metadataTaskGroup struct {
 	UpdatedAt time.Time   `json:"updated_at"`
 }
 
+const recentBatchTasks = 5
+
 // ListWorkflows retrieves up to 20 scan tasks and any currently active scans,
-// folded with their scrape and artwork child job status.
+// folded with their scrape and artwork child job status, plus recent and
+// active subscription batch tasks.
 func ListWorkflows(ctx context.Context, database *ent.Client) ([]TaskInfo, error) {
 	records, err := database.Task.Query().Where(task.TypeEQ(string(KindScan))).
 		Order(ent.Desc(task.FieldID)).Limit(20).All(ctx)
@@ -85,6 +90,11 @@ func ListWorkflows(ctx context.Context, database *ent.Client) ([]TaskInfo, error
 	if err != nil {
 		return nil, err
 	}
+	batches, err := listBatchTasks(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	result = append(result, batches...)
 	slices.SortFunc(result, func(a, b TaskInfo) int {
 		aActive := a.Status == task.StatusQueued || a.Status == task.StatusRunning
 		bActive := b.Status == task.StatusQueued || b.Status == task.StatusRunning
