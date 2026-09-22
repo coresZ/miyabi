@@ -13,7 +13,6 @@ type LocalMovie struct {
 	JavDBID *string `json:"javdb_id,omitempty"`
 }
 
-
 // Zone is a movie category/section.
 type Zone string
 

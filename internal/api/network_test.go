@@ -19,7 +19,6 @@ type networkStub struct {
 	testResult netx.NetworkTestResponse
 }
 
-
 func (stub *networkStub) Network(context.Context) (netx.ProxyConfig, error) {
 	return stub.config, nil
 }
@@ -33,7 +32,6 @@ func (stub *networkStub) TestNetwork(_ context.Context, config netx.ProxyConfig)
 	stub.tested = config
 	return stub.testResult, nil
 }
-
 
 func TestNetworkEndpointsReadAndWrite(t *testing.T) {
 	stub := &networkStub{config: netx.ProxyConfig{Enabled: true, URL: "http://user:secret@127.0.0.1:7890"}}

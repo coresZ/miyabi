@@ -2,6 +2,7 @@ package playback
 
 import (
 	"sync"
+	"time"
 
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
@@ -33,13 +34,16 @@ type Service struct {
 	drive    *drive.Drive
 	mu       sync.Mutex
 	sessions map[string]*playSession
+	// sessionTTL releases sessions abandoned by a closed tab.
+	sessionTTL time.Duration
 }
 
-func New(database *ent.Client, d *drive.Drive) *Service {
+func New(database *ent.Client, d *drive.Drive, sessionTTL time.Duration) *Service {
 	return &Service{
-		database: database,
-		drive:    d,
-		sessions: make(map[string]*playSession),
+		database:   database,
+		drive:      d,
+		sessions:   make(map[string]*playSession),
+		sessionTTL: sessionTTL,
 	}
 }
 

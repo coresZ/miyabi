@@ -13,6 +13,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/watchhistory"
+	"github.com/ppxb/miyabi/internal/pan"
 )
 
 func (service *Service) Files(ctx context.Context, movieID int) (PlayFiles, error) {
@@ -68,7 +69,8 @@ func (service *Service) Start(ctx context.Context, fileID string) (Playback, err
 	}
 	sources, err := sess.PlayURL(ctx, info.PickCode)
 	if err != nil {
-		if errors.Is(err, drive.ErrTranscodeUnavailable) {
+		// pan reports the raw condition; the user-facing text lives in drive.
+		if errors.Is(err, pan.ErrTranscodeUnavailable) {
 			return Playback{}, drive.ErrTranscodeUnavailable
 		}
 		return Playback{}, fmt.Errorf("get 115 playback URL: %w", err)

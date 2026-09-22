@@ -43,10 +43,6 @@ type App struct {
 
 // New initializes all services, database connections, and registers task handlers.
 func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
-	cfgCopy := *cfg
-	cfgCopy.Runtime = applyRuntimeDefaults(cfg.Runtime)
-	cfg = &cfgCopy
-
 	ctx := context.Background()
 	store, err := database.Open(ctx, cfg.DataDir)
 	if err != nil {
@@ -87,9 +83,9 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("initialize catalogue service: %w", err)
 	}
 
-	offlineSvc := offline.New(store.Client, catalogueSvc, driveSvc, taskSvc, libSvc)
+	offlineSvc := offline.New(store.Client, catalogueSvc, driveSvc, taskSvc, libSvc, cfg.Runtime.OfflineSubmitTimeout)
 	monitorSvc := monitor.New(store.Client, catalogueSvc, offlineSvc, taskSvc)
-	playSvc := playback.New(store.Client, driveSvc)
+	playSvc := playback.New(store.Client, driveSvc, cfg.Runtime.PlaybackSessionTTL)
 	scrapeSvc := scrape.New(store.Client, driveSvc, catalogueSvc, images, taskSvc)
 	maintenanceSvc, err := maintenance.New(cfg.DataDir, store.Client, images, scrapeSvc)
 	if err != nil {
@@ -244,33 +240,3 @@ func CheckHealth(listen string) error {
 	}
 	return nil
 }
-
-func applyRuntimeDefaults(rt config.Runtime) config.Runtime {
-	def := config.DefaultRuntime()
-	if rt.TaskPoolWorkers <= 0 {
-		rt.TaskPoolWorkers = def.TaskPoolWorkers
-	}
-	if rt.OfflineSyncInterval <= 0 {
-		rt.OfflineSyncInterval = def.OfflineSyncInterval
-	}
-	if rt.MonitorCheckInterval <= 0 {
-		rt.MonitorCheckInterval = def.MonitorCheckInterval
-	}
-	if rt.PanRateLimit <= 0 {
-		rt.PanRateLimit = def.PanRateLimit
-	}
-	if rt.PanTimeout <= 0 {
-		rt.PanTimeout = def.PanTimeout
-	}
-	if rt.DriveAuthTimeout <= 0 {
-		rt.DriveAuthTimeout = def.DriveAuthTimeout
-	}
-	if rt.OfflineTimeout <= 0 {
-		rt.OfflineTimeout = def.OfflineTimeout
-	}
-	if rt.PlaybackSessionTTL <= 0 {
-		rt.PlaybackSessionTTL = def.PlaybackSessionTTL
-	}
-	return rt
-}
-

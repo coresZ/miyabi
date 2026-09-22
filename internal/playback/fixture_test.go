@@ -290,7 +290,7 @@ func playFixture(t *testing.T) (*Service, domain.LibrarySource) {
 	}, &payload, nil, taskSvc); err != nil {
 		t.Fatal(err)
 	}
-	service := New(store.Client, driveSvc)
+	service := New(store.Client, driveSvc, 8*time.Hour)
 	t.Cleanup(service.Close)
 	return service, payload.Source
 }

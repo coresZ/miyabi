@@ -247,7 +247,7 @@ func libraryBaseFixture(t testing.TB) (*Service, *drive.Drive, *ent.Client, doma
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScrape, scrapeSvc.Scrape, scrapeSvc.Finished))
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindCover, scrapeSvc.Cover, scrapeSvc.Finished))
 
-	service := New(store.Client, nil, driveSvc, taskSvc, lib)
+	service := New(store.Client, nil, driveSvc, taskSvc, lib, 2*time.Minute)
 	return service, driveSvc, store.Client, source
 }
 

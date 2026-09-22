@@ -129,7 +129,7 @@ func TestOfflineCompletionWaitsForLocationAcrossRestart(t *testing.T) {
 	if after := service.tasks.Revisions().Offline; after != before {
 		t.Fatalf("unchanged pending completion was announced again: %+v", after)
 	}
-	service = New(service.database, nil, service.drive, tasks.NewService(service.database, tasks.NewRegistry()), service.library)
+	service = New(service.database, nil, service.drive, tasks.NewService(service.database, tasks.NewRegistry()), service.library, service.submitTimeout)
 	activity, err = service.Activity(ctx)
 	if err != nil || len(activity.Tasks) != 1 || activity.Tasks[0].Phase != "processing" ||
 		!activity.Tasks[0].Processing || activity.Tasks[0].ScanTaskID != 0 {
@@ -202,7 +202,7 @@ func TestOfflineMissingLocationStopsPendingWorkflow(t *testing.T) {
 	if state.Status != string(task.StatusDone) || state.Processing || state.Error == nil {
 		t.Fatalf("removed remote history kept an endless pending workflow: %+v", state)
 	}
-	service = New(service.database, nil, service.drive, tasks.NewService(service.database, tasks.NewRegistry()), service.library)
+	service = New(service.database, nil, service.drive, tasks.NewService(service.database, tasks.NewRegistry()), service.library, service.submitTimeout)
 	if err := service.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}

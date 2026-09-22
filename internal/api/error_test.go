@@ -25,7 +25,6 @@ import (
 	"github.com/ppxb/miyabi/internal/pan"
 )
 
-
 type publicError struct{ message string }
 
 func (err *publicError) Error() string         { return "internal detail: " + err.message }

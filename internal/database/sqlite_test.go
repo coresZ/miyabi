@@ -277,4 +277,3 @@ func TestMigrateMonitorsToSubscriptions(t *testing.T) {
 		t.Fatalf("monitors table should be dropped, count=%d, err=%v", count, err)
 	}
 }
-

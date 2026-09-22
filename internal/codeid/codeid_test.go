@@ -260,4 +260,3 @@ func TestIsEquivalent(t *testing.T) {
 		})
 	}
 }
-

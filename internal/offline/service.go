@@ -2,6 +2,7 @@ package offline
 
 import (
 	"context"
+	"time"
 
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
@@ -39,22 +40,27 @@ type offlinePayload struct {
 
 // Service coordinates 115 offline download submissions, remote polling, and indexing transitions.
 type Service struct {
-	database   *ent.Client
-	catalogue  Catalogue
-	drive      *drive.Drive
-	tasks      *tasks.Service
-	library    TargetedScanner
-	operations offlineOperations
-	syncing    syncx.ContextLock
+	database  *ent.Client
+	catalogue Catalogue
+	drive     *drive.Drive
+	tasks     *tasks.Service
+	library   TargetedScanner
+	// submitTimeout bounds one remote submission once it has started; the
+	// caller may have gone away but the mutation must be recorded.
+	submitTimeout time.Duration
+	operations    offlineOperations
+	syncing       syncx.ContextLock
 }
 
 // New creates a new offline download management service.
-func New(database *ent.Client, catalogue Catalogue, drive *drive.Drive, tasks *tasks.Service, library TargetedScanner) *Service {
+func New(database *ent.Client, catalogue Catalogue, drive *drive.Drive, tasks *tasks.Service, library TargetedScanner, submitTimeout time.Duration) *Service {
 	return &Service{
 		database:  database,
 		catalogue: catalogue,
 		drive:     drive,
 		tasks:     tasks,
 		library:   library,
+
+		submitTimeout: submitTimeout,
 	}
 }

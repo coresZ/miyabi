@@ -101,14 +101,23 @@ func NewWithProvider(
 	return newService(database, provider, local, route), nil
 }
 
+// Response caches absorb repeated page loads; entries are small and short-lived
+// so JavDB changes (new magnets, edited metadata) surface within minutes.
+const (
+	listCacheSize, listCacheTTL       = 128, time.Minute
+	detailCacheSize, detailCacheTTL   = 256, 5 * time.Minute
+	tagsCacheSize, tagsCacheTTL       = 5, 24 * time.Hour
+	magnetsCacheSize, magnetsCacheTTL = 64, time.Minute
+)
+
 func newService(database *ent.Client, provider Provider, local LocalState, route persistedRoute) *Service {
 	return &Service{
 		database: database,
 		javdb:    provider,
-		lists:    newResponseCache[[]domain.Movie](128, time.Minute),
-		details:  newResponseCache[domain.MovieDetail](256, 5*time.Minute),
-		tags:     newResponseCache[[]domain.TagCategory](5, 24*time.Hour),
-		magnets:  newResponseCache[[]domain.Magnet](64, time.Minute),
+		lists:    newResponseCache[[]domain.Movie](listCacheSize, listCacheTTL),
+		details:  newResponseCache[domain.MovieDetail](detailCacheSize, detailCacheTTL),
+		tags:     newResponseCache[[]domain.TagCategory](tagsCacheSize, tagsCacheTTL),
+		magnets:  newResponseCache[[]domain.Magnet](magnetsCacheSize, magnetsCacheTTL),
 		local:    local,
 		route: RouteStatus{
 			Host:      route.Host,

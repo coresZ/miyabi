@@ -24,7 +24,7 @@ func (d *Drive) refreshTokens(ctx context.Context, expected snapshot) error {
 		if err != nil || current.tokenVersion != expected.tokenVersion {
 			return nil, err
 		}
-		tokenContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
+		tokenContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), upstreamTimeout)
 		defer cancel()
 		tokens, err := d.client.RefreshToken(tokenContext, current.tokens.RefreshToken)
 		if err != nil {

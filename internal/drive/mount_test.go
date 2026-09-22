@@ -450,4 +450,3 @@ func TestDirectoryEntries(t *testing.T) {
 		t.Fatal("expected error for directory outside library source, got nil")
 	}
 }
-

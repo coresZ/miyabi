@@ -3,7 +3,6 @@ package catalogue
 import (
 	"testing"
 
-
 	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent/task"

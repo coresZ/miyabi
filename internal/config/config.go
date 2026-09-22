@@ -23,7 +23,7 @@ func Load() (Config, error) {
 		DataDir:        envOrDefault("MIYABI_DATA_DIR", "./data"),
 		LogLevel:       envOrDefault("MIYABI_LOG_LEVEL", "info"),
 		AccessPassword: os.Getenv("MIYABI_ACCESS_PASSWORD"),
-		Runtime:        LoadRuntime(),
+		Runtime:        DefaultRuntime(),
 	}
 	if err := cfg.validate(); err != nil {
 		return Config{}, err

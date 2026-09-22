@@ -17,6 +17,8 @@ import (
 const (
 	loginLifetime   = 10 * time.Minute
 	accountCacheTTL = 60 * time.Second
+	// upstreamTimeout bounds credential exchanges that outlive the caller's request.
+	upstreamTimeout = 45 * time.Second
 )
 
 var loginPollWindow = 30 * time.Second
@@ -232,7 +234,7 @@ func (d *Drive) pollLogin(ctx context.Context, session *loginSession) (LoginStat
 }
 
 func (d *Drive) completeLogin(ctx context.Context, session *loginSession, login *pan.Login) error {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), upstreamTimeout)
 	defer cancel()
 	d.mu.Lock()
 	current := d.session == session

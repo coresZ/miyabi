@@ -16,14 +16,14 @@ func TestFileListDecodesNumericAndStringCountsAndSizes(t *testing.T) {
 		wantSize  int64
 	}{
 		{
-			name: "numeric count and size",
-			body: `{"state":true,"code":0,"cid":"123","count":42,"data":[{"fid":"f1","pid":"123","fn":"movie.mp4","fc":"1","fs":1048576,"pc":"pick1","sha1":"abc"}],"path":[{"cid":"123","name":"media"}]}`,
+			name:      "numeric count and size",
+			body:      `{"state":true,"code":0,"cid":"123","count":42,"data":[{"fid":"f1","pid":"123","fn":"movie.mp4","fc":"1","fs":1048576,"pc":"pick1","sha1":"abc"}],"path":[{"cid":"123","name":"media"}]}`,
 			wantTotal: 42,
 			wantSize:  1048576,
 		},
 		{
-			name: "string count and size",
-			body: `{"state":true,"code":0,"cid":"123","count":"99","data":[{"fid":"f2","pid":"123","fn":"movie2.mp4","fc":"1","fs":"2097152","pc":"pick2","sha1":"def"}],"path":[{"cid":"123","name":"media"}]}`,
+			name:      "string count and size",
+			body:      `{"state":true,"code":0,"cid":"123","count":"99","data":[{"fid":"f2","pid":"123","fn":"movie2.mp4","fc":"1","fs":"2097152","pc":"pick2","sha1":"def"}],"path":[{"cid":"123","name":"media"}]}`,
 			wantTotal: 99,
 			wantSize:  2097152,
 		},

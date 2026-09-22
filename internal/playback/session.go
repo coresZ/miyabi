@@ -51,8 +51,8 @@ func (service *Service) createSession(source domain.LibrarySource, version uint6
 	defer service.mu.Unlock()
 	session.ctx, session.cancel = context.WithCancel(context.Background())
 	service.sessions[session.id] = session
-	// Explicit close releases immediately; this also clears sessions abandoned by a closed tab.
-	session.timer = time.AfterFunc(8*time.Hour, func() { service.Release(session.id) })
+	// Explicit close releases immediately; the timer clears sessions abandoned by a closed tab.
+	session.timer = time.AfterFunc(service.sessionTTL, func() { service.Release(session.id) })
 	return result, nil
 }
 

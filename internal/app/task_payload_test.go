@@ -15,7 +15,6 @@ import (
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
-
 func taskPayloadJSON(t testing.TB, value any) json.RawMessage {
 	t.Helper()
 	payload, err := tasks.EncodePayload(value)
@@ -133,4 +132,3 @@ func BenchmarkTaskPayload(b *testing.B) {
 		}
 	})
 }
-

@@ -190,4 +190,3 @@ func splitCode(norm string) (string, string) {
 	}
 	return "", norm
 }
-

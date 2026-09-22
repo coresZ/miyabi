@@ -1,10 +1,10 @@
 # Miyabi 重构方案
 
 - 日期：2026-09-19；最近更新 2026-09-22
-- 基线：`master / 85228f7`；当前进度基线 `9b4d21f`
+- 基线：`master / 85228f7`；当前进度基线 `fe6cc25` 加工作树收口
 - 范围：五条工作线。① 全局代理；② 整体结构重构（含冗余清理）；③ 磁力聚合（JavDB + JavBus）；④ javdb-cli 接口补齐评估；⑤ 字幕自动化与播放集成。
 - 约束：前端所有样式与动效原样沿用，前端只做结构性调整（已记录两次例外，见第 9 节）；预览视频、DMM、第三方图库不在本轮范围。
-- 进度：A、B0 到 B8（M0 到 M4）已完成并收口，`internal/service` 已删除，业务包依赖方向由测试锁定；B9、C、D、E 未开始；前端 3.9 与主线并行，已完成分页收敛。
+- 进度：M0 到 M5 已完成并收口；C、D、E 未开始；前端 3.9 与主线并行，已完成分页收敛。
 
 ---
 
@@ -30,7 +30,7 @@
 cmd/miyabi/                 ✅ main.go 只解析参数、日志与信号，装配在 internal/app（B8）
 internal/
   app/                      ✅ 组合根 New / Run / Close / CheckHealth；network、setting 两个 settings 读写也在这里（B8）
-  config/                   ✅ 环境变量；config.Runtime 待 B9
+  config/                   ✅ 四个 MIYABI_* 环境变量 + config.Runtime 五个内部常量（B9）
   domain/                   ✅ 纯模型与错误（B1）
   netx/                     ✅ 代理管理器、HTTP 客户端工厂、探测类型（A、B8）
   database/                 ✅ ent 客户端、迁移、原生索引、monitors → subscriptions 数据迁移（方案原名 storage，沿用现名）
@@ -48,7 +48,7 @@ internal/
   playback/                 ✅ session / files / proxy / playlist（B6）
   maintenance/              ✅ 数据目录统计与缓存清理（B6）
   magnet/                   ⏳ 工作线 C
-  api/                      ✅ gin 路由、错误映射、DTO、访问密码门；bind/respond 助手待 B9
+  api/                      ✅ gin 路由、错误映射、DTO、访问密码门、bind/respond 助手、noStore 中间件（B9）
   image/ nfo/ codeid/ logging/   不动（codeid 新增 IsEquivalent）
 ```
 
@@ -206,12 +206,13 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 
 仍待做：`GET /api/discover/viewed` 整表下发（最多 5000 条），`since` 增量留 M8 与前端一起做。
 
-### 3.7 步骤 B9：API 层与配置
+### 3.7 步骤 B9：API 层与配置（已完成，2026-09-22，提交 `fe6cc25` 及收口）
 
-- `api/helpers.go`：`bindJSON / bindQuery / bindURI` 与 `respond(c, value, err)`、`accepted(c, value, err)`；保留流式与 SSE 特殊路径。约 60 处样板收敛。
-- `Cache-Control: no-store` 现散在 `router.go` 五处、`discover.go`、`offline.go` 各两处，收敛为一个中间件。
-- `config.Runtime`：收纳 pool 大小、离线轮询 30s、监控 5m、115 限速 2 req/s、超时 35s/45s/2m、播放会话 8h、缓存尺寸与 TTL、`minVideoSize`、视频后缀、sidecar 大小上限、JavBus 域名。环境变量 `MIYABI_*` 可覆盖，未设置用现值。
-- 日志级别校验只留 `logging` 一处。
+- `api/helpers.go`：`bindJSON / bindQuery / bindURI[T]`、`respond / accepted / created`，78 处样板收敛，配 `helpers_test.go`。流式与 SSE 路径保留（SSE 自带 `no-cache, no-transform`，不走 `noStore`）。
+- `noStore()` 中间件一份，路由组与单端点按需挂载，散落的 9 处 `c.Header` 删除。
+- `config.Runtime` 只做内部常量集中，**不新增环境变量**（对外仍只有 `MIYABI_LISTEN / DATA_DIR / LOG_LEVEL / ACCESS_PASSWORD` 四个）。字段只在 `app.New` 有注入点时才存在，现为五个：`TaskPoolWorkers`、`OfflineSyncInterval`、`MonitorCheckInterval`、`OfflineSubmitTimeout`、`PlaybackSessionTTL`。上游客户端与缓存的常量留在各自包内命名（`pan.requestTimeout / requestGap`、`drive.upstreamTimeout`、`catalogue.*CacheSize / *CacheTTL`），不经 Runtime 中转；`fe6cc25` 引入的 13 个 `MIYABI_*` 读取与 16 个无消费者字段随收口删除。
+- 日志级别校验收敛为 `logging.Validate`。
+- 收口时修复 `fe6cc25` 的一处回归：`pan/play.go` 文案迁到 `drive.ErrTranscodeUnavailable` 后，`playback` 用 drive 哨兵去匹配 pan 返回的裸哨兵，永远不中，115 未转码从 502 退化为 500。改为匹配 `pan.ErrTranscodeUnavailable` 再翻译，`playback/transcode_test.go` 从 pan 返回值一路断言到 `KindUpstream` 与用户文案。
 
 ### 3.8 冗余与死代码清单
 
@@ -226,7 +227,7 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 | `javdb/transport.go:82` 先读全 body 再判状态码 | 先判状态码，非 2xx 只做有上限 drain | ✅ M5 |
 | `javdb` 3 处 `slog.Warn` 与 `WarnContext` 混用 | 统一 `WarnContext` | ✅ M5 |
 | `javdb/client.go:41` 字段 `selectRoute` 与包级函数同名 | 字段改名 `selector` | ✅ M5 |
-| `pan/play.go` 基础设施层中文文案 | 改为 `domain.E` 由上层赋文案 | ✅ M5 |
+| `pan/play.go` 基础设施层中文文案 | 改为 `domain.E` 由上层赋文案 | ✅ M5（收口补了映射与测试） |
 | `pan/file.go` `Count/Size` 未用 `json.Number` | 与同结构其它字段一致 | ✅ M5 |
 | `worker/offline.go`、`worker/monitor.go` 两个相同的 ticker 循环 | 合并为 `tasks.RunPeriodic(name, interval, wake, fn)` | ✅ B5/B6 |
 | `library.Service` 四个依赖 getter | 随 B6 删除 | ✅ B6 |
@@ -467,13 +468,14 @@ func (a *Aggregator) Find(ctx, ref domain.MovieRef) ([]domain.Magnet, error)
 | M8 | 前端结构清理 | 3.9 清单、`/api/discover/viewed` 增量 | 分页已收敛，其余待做，约 1 周 | 可与 M5 并行 |
 | M9 | 字幕自动化与播放集成 | 工作线 E | 待做，4 到 5 天 | M2、M5 |
 
-剩余约 5 到 6 周单人工作量。串行顺序 M5 → M6 → M7 → M9，M8 并行。下一步：M6 或 M8。
+剩余约 5 周单人工作量。串行顺序 M6 → M7 → M9，M8 并行。下一步：M6（工作线 C）或 M8。
 
 ---
 
 ## 8. 验证与回归边界
 
-- 每个提交：`go test ./...`、`go vet`、前端 `npm test`、`tsc --noEmit`、oxlint、Vite 构建。间歇失败视为红。
+- 每个提交：`gofmt -l` 为空、`go test ./...`、`go vet`、前端 `npm test`、`tsc --noEmit`、oxlint、Vite 构建。间歇失败视为红。
+- 哨兵错误跨包搬家时，必须有一条测试从最底层的返回值一路断言到 HTTP 状态码；只改类型不跑链路会像 M5 的转码错误那样静默退化成 500。
 - `-race` 需要 cgo；Windows 开发机默认 `CGO_ENABLED=0` 跑不了，在 Linux（Docker 构建镜像或 WSL）上跑 `go test ./... -race`，至少每个里程碑收口时跑一次。
 - M2 起：黄金 JSON 测试证明所列端点响应逐字节一致。
 - M3：`drive` 并发测试覆盖登出、换目录、令牌刷新中途发生三类场景（已迁入 `internal/drive`）。
@@ -513,7 +515,7 @@ func (a *Aggregator) Find(ctx, ref domain.MovieRef) ([]domain.Magnet, error)
 
 - JavBus 数据默认关闭，设置页可开；磁力按来源加徽章。
 - 追踪改为订阅，支持影片与演员；自动推送默认值在设置页选择；独立路由 `/subscriptions` 进 `FloatingNav`；单部、多选、一键入库，批量走任务队列。
-- `config.Runtime` 的环境变量先内部集中，对外开放的在实现时逐个写进 README。
+- `config.Runtime`（2026-09-22）：不新增环境变量，对外配置维持四个。Runtime 只放组合根真正注入的常量，字段只在有消费者时才存在；上游客户端自己的超时与限速留在各自包内命名常量。
 - 审计文档已删除（`badcfa5`）。
 
 **前端样式例外**（"原样沿用"约束的两次例外，3.9 清单以此为新基线）

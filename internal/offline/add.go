@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
@@ -100,7 +99,7 @@ func (service *Service) Add(ctx context.Context, movieID, hash string) (domain.O
 	defer done()
 
 	// Once a remote mutation starts, finish recording it even if the tab closes.
-	submitContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+	submitContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), service.submitTimeout)
 	defer cancel()
 	remote, err := service.submit(submitContext, sess, hash)
 	if err != nil {

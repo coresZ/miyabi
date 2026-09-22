@@ -166,4 +166,3 @@ func FilePath(segments []pan.Directory, name string) string {
 	}
 	return dir + "/" + name
 }
-

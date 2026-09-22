@@ -420,4 +420,3 @@ func TestScanProgressDoesNotInvalidateUnchangedLibrary(t *testing.T) {
 		t.Fatalf("progress invalidated library: before=%+v after=%+v", revision, got)
 	}
 }
-
