@@ -131,7 +131,7 @@ func TestReAddingFinishedSubscriptionOnlyResetsForUsers(t *testing.T) {
 func TestSubscriptionSettings(t *testing.T) {
 	f, ctx := newFixture(t), t.Context()
 	cfg, err := f.service.Config(ctx)
-	if err != nil || !cfg.MovieAutoDownload || cfg.ActorAutoDownload || cfg.CheckTime != "04:00" || cfg.Preferences != magnet.DefaultPreferences() {
+	if err != nil || !cfg.MovieAutoDownload || cfg.ActorAutoDownload || cfg.CheckTime != "00:00" || cfg.Preferences != magnet.DefaultPreferences() {
 		t.Fatalf("default config mismatch: %#v %v", cfg, err)
 	}
 	cfg.ActorAutoDownload, cfg.CheckTime, cfg.Preferences.Subtitle = true, "05:30", magnet.PreferenceRequired
@@ -157,7 +157,7 @@ func TestSubscriptionSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacy, err := f.service.Config(ctx)
-	if err != nil || legacy.MovieAutoDownload || legacy.CheckTime != "04:00" || legacy.Preferences != magnet.DefaultPreferences() {
+	if err != nil || legacy.MovieAutoDownload || legacy.CheckTime != "00:00" || legacy.Preferences != magnet.DefaultPreferences() {
 		t.Fatalf("legacy config must normalize: %#v %v", legacy, err)
 	}
 }

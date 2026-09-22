@@ -43,7 +43,7 @@ func TestNextDaily(t *testing.T) {
 	if got := nextDaily(now, "04:00"); !got.Equal(time.Date(2026, 9, 19, 4, 0, 0, 0, time.Local)) {
 		t.Fatalf("tomorrow expected, got %v", got)
 	}
-	if got := nextDaily(now, "garbage"); !got.Equal(time.Date(2026, 9, 19, 4, 0, 0, 0, time.Local)) {
+	if got := nextDaily(now, "garbage"); !got.Equal(time.Date(2026, 9, 19, 0, 0, 0, 0, time.Local)) {
 		t.Fatalf("invalid time must fall back to the default, got %v", got)
 	}
 }

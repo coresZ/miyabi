@@ -8,7 +8,6 @@ import {
   useUpdateSubscriptionSettings
 } from '@/api/subscription-settings'
 import { InlineError } from '@/components/error-state'
-import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -74,18 +73,6 @@ export function SubscriptionSection() {
           checked={config?.actor_auto_download ?? false}
           disabled={disabled}
           onCheckedChange={checked => save({ actor_auto_download: checked })}
-        />
-      </SettingRow>
-
-      <SettingRow title="每日检查时间" description="影片磁力与演员新作都在这个时间检查一次">
-        <Input
-          type="time"
-          value={config?.check_time ?? '04:00'}
-          disabled={disabled}
-          className="w-32 appearance-none bg-background [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
-          onChange={event => {
-            if (event.target.value) save({ check_time: event.target.value })
-          }}
         />
       </SettingRow>
 

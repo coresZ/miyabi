@@ -18,7 +18,7 @@ import (
 
 const (
 	subscriptionConfigSetting = "subscription.config"
-	defaultCheckTime          = "04:00"
+	defaultCheckTime          = "00:00"
 )
 
 var checkTimePattern = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
