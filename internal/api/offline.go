@@ -5,13 +5,13 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ppxb/miyabi/internal/service"
+	"github.com/ppxb/miyabi/internal/offline"
 )
 
 type OfflineManager interface {
-	Add(context.Context, string, string) (service.OfflineSubmission, error)
-	Tasks(context.Context, string, string) ([]service.OfflineSubmission, error)
-	Activity(context.Context) (service.OfflineActivity, error)
+	Add(context.Context, string, string) (offline.Submission, error)
+	Tasks(context.Context, string, string) ([]offline.Submission, error)
+	Activity(context.Context) (offline.Activity, error)
 }
 
 func offlineActivityHandler(offline OfflineManager) gin.HandlerFunc {

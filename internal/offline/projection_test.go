@@ -1,4 +1,4 @@
-package service
+package offline
 
 import (
 	"errors"
@@ -14,23 +14,6 @@ import (
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
-
-func offlineFixture(t testing.TB) (*OfflineService, *ent.Task, offlinePayload, domain.LibrarySource) {
-	t.Helper()
-	library, _, scan := libraryFixture(t)
-	service := NewOfflineService(library.Database(), nil, library.Drive(), library.Tasks())
-	input := offlinePayload{AccountID: scan.Source.AccountID, DirectoryID: scan.Source.Directory.ID,
-		Code: "ABP-001", JavDBID: "fixture-movie", Hash: "fixture-hash", InfoHash: "fixture-hash"}
-	encoded, err := tasks.EncodePayload(input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	record, err := library.Database().Task.Create().SetType("offline").SetStatus(task.StatusRunning).SetPayload(encoded).Save(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	return service, record, input, scan.Source
-}
 
 func TestOfflineProjectionUsesMovieIdentityAndExposesPlaybackID(t *testing.T) {
 	for _, test := range []struct {
@@ -102,7 +85,7 @@ func TestOfflineCompletionAndTargetedScanCommitTogether(t *testing.T) {
 	if count, err := service.database.Task.Query().Where(task.TypeEQ("scan")).Count(ctx); err != nil || count != 1 {
 		t.Fatalf("scan escaped rollback: count=%d err=%v", count, err)
 	}
-	if err := service.updateTask(ctx, sess, record, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
+	if err := service.UpdateTask(ctx, sess, record, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
 		t.Fatal(err)
 	}
 	done, err := service.database.Task.Get(ctx, record.ID)
@@ -128,11 +111,10 @@ func TestOfflineCompletionAndTargetedScanCommitTogether(t *testing.T) {
 		target.Code != saved.Code || target.JavDBID != saved.JavDBID {
 		t.Fatalf("scan scope: %#v", target)
 	}
-	// A previously queued full scan must not swallow the completed download.
 	if count, err := service.database.Task.Query().Where(task.TypeEQ("scan")).Count(ctx); err != nil || count != 2 {
 		t.Fatalf("targeted scan count=%d err=%v", count, err)
 	}
-	if err := service.updateTask(ctx, sess, done, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
+	if err := service.UpdateTask(ctx, sess, done, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
 		t.Fatal(err)
 	}
 	if count, err := service.database.Task.Query().Where(task.TypeEQ("scan")).Count(ctx); err != nil || count != 2 {
@@ -147,7 +129,7 @@ func TestOfflineActionDependsOnCurrentFilesRatherThanDownloadHistory(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := service.updateTask(ctx, sess, record, pan.OfflineTask{Status: 2, FileID: "video-1"}); err != nil {
+	if err := service.UpdateTask(ctx, sess, record, pan.OfflineTask{Status: 2, FileID: "video-1"}); err != nil {
 		t.Fatal(err)
 	}
 	record, err = service.database.Task.Get(ctx, record.ID)
@@ -173,12 +155,12 @@ func TestOfflineActionDependsOnCurrentFilesRatherThanDownloadHistory(t *testing.
 	if err != nil || state.Phase != "available" {
 		t.Fatalf("history without file: %#v %v", state, err)
 	}
-	movie, err := service.database.Movie.Create().SetCode(input.Code).Save(ctx)
+	movieRecord, err := service.database.Movie.Create().SetCode(input.Code).Save(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := service.database.File.Create().SetFileID("video-1").SetName("ABP-001.mp4").SetSize(1).
-		SetAccountID(source.AccountID).SetRootID(source.Directory.ID).SetMovieID(movie.ID).Exec(ctx); err != nil {
+		SetAccountID(source.AccountID).SetRootID(source.Directory.ID).SetMovieID(movieRecord.ID).Exec(ctx); err != nil {
 		t.Fatal(err)
 	}
 	state, err = service.submission(ctx, record, &source)
@@ -209,7 +191,7 @@ func TestCompletedOfflineTaskDefersScanForAnotherMount(t *testing.T) {
 	mountSource(t, service.drive, stubOf(t, service.drive), domain.LibrarySource{
 		AccountID: source.AccountID, Directory: domain.LibraryDirectory{ID: "another-root", Name: "Another", Path: "/Another"},
 	})
-	if err := service.updateTask(t.Context(), sess, record, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
+	if err := service.UpdateTask(t.Context(), sess, record, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
 		t.Fatal(err)
 	}
 	record, err = service.database.Task.Get(t.Context(), record.ID)
@@ -278,7 +260,7 @@ func TestOfflineActivitySeparatesPlaybackFromArtworkAndRechecksFiles(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := service.updateTask(ctx, sess, download, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
+	if err := service.UpdateTask(ctx, sess, download, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
 		t.Fatal(err)
 	}
 	download, err = service.database.Task.Get(ctx, download.ID)
@@ -289,9 +271,9 @@ func TestOfflineActivitySeparatesPlaybackFromArtworkAndRechecksFiles(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	scan, err := service.tasks.Info(ctx, input.ScanTaskID)
-	if err != nil || scan.OfflineTaskID != download.ID {
-		t.Fatalf("download scan identity: %+v err=%v", scan, err)
+	scanInfo, err := service.tasks.Info(ctx, input.ScanTaskID)
+	if err != nil || scanInfo.OfflineTaskID != download.ID {
+		t.Fatalf("download scan identity: %+v err=%v", scanInfo, err)
 	}
 	film, err := service.database.Movie.Create().SetCode(input.Code).SetScrapeStatus(movie.ScrapeStatusDone).Save(ctx)
 	if err != nil {

@@ -22,6 +22,7 @@ import (
 	"github.com/ppxb/miyabi/internal/library"
 	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/logging"
+	"github.com/ppxb/miyabi/internal/offline"
 	"github.com/ppxb/miyabi/internal/service"
 	"github.com/ppxb/miyabi/internal/tasks"
 	"github.com/ppxb/miyabi/internal/worker"
@@ -74,13 +75,13 @@ func run(args []string) error {
 		return fmt.Errorf("initialize discovery service: %w", err)
 	}
 	defer discover.Close()
-	offline := service.NewOfflineService(store.Client, discover, driveSvc, taskSvc)
-	monitors := service.NewMonitorService(store.Client, discover, offline, taskSvc)
 	images, err := mediaimage.NewCache(cfg.DataDir)
 	if err != nil {
 		return err
 	}
 	library := library.New(store.Client, driveSvc, taskSvc, images)
+	offline := offline.New(store.Client, discover, driveSvc, taskSvc, library)
+	monitors := service.NewMonitorService(store.Client, discover, offline, taskSvc)
 	play := service.NewPlayService(library, driveSvc)
 	defer play.Close()
 	scrapeSvc := scrape.New(store.Client, driveSvc, discover, images, taskSvc)
@@ -129,7 +130,7 @@ func run(args []string) error {
 	}()
 	go func() {
 		defer close(workerDone)
-		worker.RunOffline(ctx, offline, logger)
+		tasks.RunPeriodic(ctx, logger, "sync 115 offline tasks", 30*time.Second, nil, offline.Sync)
 	}()
 	go func() {
 		defer close(monitorDone)

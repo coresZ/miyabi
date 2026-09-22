@@ -1,4 +1,4 @@
-package service
+package offline
 
 import (
 	"context"
@@ -128,7 +128,7 @@ func TestOfflineCompletionWaitsForLocationAcrossRestart(t *testing.T) {
 	if after := service.tasks.Revisions().Offline; after != before {
 		t.Fatalf("unchanged pending completion was announced again: %+v", after)
 	}
-	service = NewOfflineService(service.database, nil, service.drive, tasks.NewService(service.database, tasks.NewRegistry()))
+	service = New(service.database, nil, service.drive, tasks.NewService(service.database, tasks.NewRegistry()), service.library)
 	activity, err = service.Activity(ctx)
 	if err != nil || len(activity.Tasks) != 1 || activity.Tasks[0].Phase != "processing" ||
 		!activity.Tasks[0].Processing || activity.Tasks[0].ScanTaskID != 0 {
@@ -139,7 +139,7 @@ func TestOfflineCompletionWaitsForLocationAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A stale running result must not revert a saved remote completion.
-	if err := service.updateTask(ctx, sess, record, pan.OfflineTask{Status: 1, Progress: 40}); err != nil {
+	if err := service.UpdateTask(ctx, sess, record, pan.OfflineTask{Status: 1, Progress: 40}); err != nil {
 		t.Fatal(err)
 	}
 	fileID = "download-folder"
@@ -182,7 +182,7 @@ func TestOfflineMissingLocationStopsPendingWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := service.updateTask(ctx, sess, record, pan.OfflineTask{Status: 2}); err != nil {
+	if err := service.UpdateTask(ctx, sess, record, pan.OfflineTask{Status: 2}); err != nil {
 		t.Fatal(err)
 	}
 	fetched := 0
@@ -201,7 +201,7 @@ func TestOfflineMissingLocationStopsPendingWorkflow(t *testing.T) {
 	if state.Status != task.StatusDone || state.Processing || state.Error == nil {
 		t.Fatalf("removed remote history kept an endless pending workflow: %+v", state)
 	}
-	service = NewOfflineService(service.database, nil, service.drive, tasks.NewService(service.database, tasks.NewRegistry()))
+	service = New(service.database, nil, service.drive, tasks.NewService(service.database, tasks.NewRegistry()), service.library)
 	if err := service.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestOfflineProgressPublishesChanges(t *testing.T) {
 	defer unsubscribe()
 	before := service.tasks.Revisions()
 	remote := pan.OfflineTask{Status: 1, Progress: 45}
-	if err := service.updateTask(t.Context(), sess, record, remote); err != nil {
+	if err := service.UpdateTask(t.Context(), sess, record, remote); err != nil {
 		t.Fatal(err)
 	}
 	if after := service.tasks.Revisions(); after.Offline != before.Offline+1 {
@@ -231,7 +231,7 @@ func TestOfflineProgressPublishesChanges(t *testing.T) {
 	default:
 		t.Fatal("new progress did not wake the event stream")
 	}
-	if err := service.updateTask(t.Context(), sess, record, remote); err != nil {
+	if err := service.UpdateTask(t.Context(), sess, record, remote); err != nil {
 		t.Fatal(err)
 	}
 	if after := service.tasks.Revisions(); after.Offline != before.Offline+1 {

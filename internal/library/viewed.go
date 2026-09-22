@@ -67,6 +67,16 @@ func (s *Service) AddViewedMovieIDs(ctx context.Context, ids []string) error {
 	}
 
 	return ent.WithTx(ctx, s.database, func(tx *ent.Tx) error {
+		latest, err := tx.ViewedMovie.Query().
+			Order(ent.Desc(viewedmovie.FieldViewedAt)).
+			First(ctx)
+		if err != nil && !ent.IsNotFound(err) {
+			return fmt.Errorf("load latest viewed movie: %w", err)
+		}
+		if latest != nil && !now.After(latest.ViewedAt) {
+			now = latest.ViewedAt.Add(time.Microsecond)
+		}
+
 		var builders []*ent.ViewedMovieCreate
 		for _, id := range clean {
 			builders = append(builders, tx.ViewedMovie.Create().SetJavdbID(id).SetViewedAt(now))

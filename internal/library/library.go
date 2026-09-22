@@ -129,6 +129,34 @@ func (s *Service) Finished(context.Context, *ent.Tx, tasks.Job, error) (tasks.Ch
 	return tasks.ChangeOffline, nil
 }
 
+// EnqueueTargetedScan enqueues a targeted library scan task within the provided transaction.
+func (s *Service) EnqueueTargetedScan(ctx context.Context, tx *ent.Tx, source domain.LibrarySource, targetID string, offlineTaskID int, code, javdbID string) (int, error) {
+	return EnqueueTargetedScan(ctx, tx, source, targetID, offlineTaskID, code, javdbID)
+}
+
+// EnqueueTargetedScan enqueues a targeted library scan task within the provided transaction.
+func EnqueueTargetedScan(ctx context.Context, tx *ent.Tx, source domain.LibrarySource, targetID string, offlineTaskID int, code, javdbID string) (int, error) {
+	encoded, err := tasks.EncodePayload(scan.Payload{
+		Source:        source,
+		Scan:          domain.ScanProgress{Stage: "queued", CurrentPath: source.Directory.Path},
+		TargetID:      targetID,
+		OfflineTaskID: offlineTaskID,
+		Code:          code,
+		JavDBID:       javdbID,
+	})
+	if err != nil {
+		return 0, err
+	}
+	taskRecord, err := tx.Task.Create().
+		SetType(tasks.KindScan.String()).
+		SetPayload(encoded).
+		Save(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return taskRecord.ID, nil
+}
+
 func (s *Service) Movies(ctx context.Context, page, limit int) (Page, error) {
 	result := Page{Movies: []Movie{}, Page: page}
 	source := s.drive.Source()

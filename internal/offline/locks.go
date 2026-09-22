@@ -1,4 +1,4 @@
-package service
+package offline
 
 import (
 	"context"
@@ -12,8 +12,9 @@ type offlineOperation struct {
 	users int
 }
 
-// Unrelated magnets can progress independently. References include waiters,
-// so cancellation and release cannot replace a lock that is still in use.
+// offlineOperations provides per-(account, magnet) mutual exclusion so that
+// concurrent submissions or updates to the same magnet are serialized while
+// unrelated magnets progress independently.
 type offlineOperations struct {
 	mu      sync.Mutex
 	entries map[string]*offlineOperation

@@ -1,0 +1,60 @@
+package offline
+
+import (
+	"context"
+
+	"github.com/ppxb/miyabi/internal/domain"
+	"github.com/ppxb/miyabi/internal/drive"
+	"github.com/ppxb/miyabi/internal/ent"
+	"github.com/ppxb/miyabi/internal/syncx"
+	"github.com/ppxb/miyabi/internal/tasks"
+)
+
+// ErrMagnetNotFound is returned when attempting to add a magnet hash that does not belong to the movie.
+var ErrMagnetNotFound = domain.E(domain.KindInvalid, "磁力链不属于当前影片，请刷新后重试", nil)
+
+// Catalogue supplies movie metadata and magnet availability verification.
+type Catalogue interface {
+	HasMagnet(ctx context.Context, movieID, hash string) (bool, error)
+	MovieCode(ctx context.Context, movieID string) (string, error)
+}
+
+// TargetedScanner schedules a scan for a specific target directory or file within an active transaction.
+type TargetedScanner interface {
+	EnqueueTargetedScan(ctx context.Context, tx *ent.Tx, source domain.LibrarySource, targetID string, offlineTaskID int, code, javdbID string) (int, error)
+}
+
+type offlinePayload struct {
+	Code             string   `json:"code"`
+	JavDBID          string   `json:"javdb_id"`
+	Hash             string   `json:"hash"`
+	InfoHash         string   `json:"info_hash"`
+	AccountID        string   `json:"account_id"`
+	DirectoryID      string   `json:"directory_id"`
+	FileID           string   `json:"file_id,omitempty"`
+	FileIDs          []string `json:"file_ids,omitempty"`
+	ScanTaskID       int      `json:"scan_task_id,omitempty"`
+	AwaitingLocation bool     `json:"awaiting_location,omitempty"`
+}
+
+// Service coordinates 115 offline download submissions, remote polling, and indexing transitions.
+type Service struct {
+	database   *ent.Client
+	catalogue  Catalogue
+	drive      *drive.Drive
+	tasks      *tasks.Service
+	library    TargetedScanner
+	operations offlineOperations
+	syncing    syncx.ContextLock
+}
+
+// New creates a new offline download management service.
+func New(database *ent.Client, catalogue Catalogue, drive *drive.Drive, tasks *tasks.Service, library TargetedScanner) *Service {
+	return &Service{
+		database:  database,
+		catalogue: catalogue,
+		drive:     drive,
+		tasks:     tasks,
+		library:   library,
+	}
+}

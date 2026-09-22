@@ -1,4 +1,4 @@
-package service
+package offline
 
 import (
 	"context"
@@ -37,12 +37,12 @@ func TestOfflineHistoryLoadsOnlyLatestTasksAndRetainsOldDownloads(t *testing.T) 
 			return value, err
 		})
 	}))
-	for _, read := range []func() ([]OfflineSubmission, error){
-		func() ([]OfflineSubmission, error) {
+	for _, read := range []func() ([]Submission, error){
+		func() ([]Submission, error) {
 			activity, err := service.Activity(ctx)
 			return activity.Tasks, err
 		},
-		func() ([]OfflineSubmission, error) { return service.Tasks(ctx, input.JavDBID, input.AccountID) },
+		func() ([]Submission, error) { return service.Tasks(ctx, input.JavDBID, input.AccountID) },
 	} {
 		rowsRead = 0
 		records, err := read()

@@ -242,6 +242,28 @@ func (service *DiscoverService) Magnets(ctx context.Context, movieID string) ([]
 	return projectMagnets(magnets), nil
 }
 
+func (service *DiscoverService) HasMagnet(ctx context.Context, movieID, hash string) (bool, error) {
+	magnets, err := service.Magnets(ctx, movieID)
+	if err != nil {
+		return false, err
+	}
+	hash = strings.ToLower(hash)
+	for _, m := range magnets {
+		if strings.EqualFold(m.Hash, hash) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (service *DiscoverService) MovieCode(ctx context.Context, movieID string) (string, error) {
+	movie, err := service.CatalogueDetail(ctx, movieID)
+	if err != nil {
+		return "", err
+	}
+	return movie.Code, nil
+}
+
 func projectMagnets(source []domain.Magnet) []DiscoverMagnet {
 	result := make([]DiscoverMagnet, len(source))
 	for index, item := range source {

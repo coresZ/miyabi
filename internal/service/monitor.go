@@ -12,6 +12,7 @@ import (
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/monitor"
+	"github.com/ppxb/miyabi/internal/offline"
 	"github.com/ppxb/miyabi/internal/syncx"
 )
 
@@ -49,13 +50,13 @@ type MonitorItem struct {
 type MonitorService struct {
 	database *ent.Client
 	discover *DiscoverService
-	offline  *OfflineService
+	offline  *offline.Service
 	tasks    *tasks.Service
 	checking syncx.ContextLock
 	wake     chan struct{}
 }
 
-func NewMonitorService(database *ent.Client, discover *DiscoverService, offline *OfflineService, tasks *tasks.Service) *MonitorService {
+func NewMonitorService(database *ent.Client, discover *DiscoverService, offline *offline.Service, tasks *tasks.Service) *MonitorService {
 	return &MonitorService{
 		database: database, discover: discover, offline: offline, tasks: tasks,
 		wake: make(chan struct{}, 1),

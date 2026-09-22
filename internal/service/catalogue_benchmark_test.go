@@ -21,7 +21,7 @@ func BenchmarkOfflineActivityHistory(b *testing.B) {
 		for batch := range 10 {
 			var jobs []*ent.TaskCreate
 			for i := range 500 {
-				input, err := tasks.EncodePayload(offlinePayload{
+				input, err := tasks.EncodePayload(offlineTaskPayload{
 					Code: "ABP-001", JavDBID: "movie", Hash: fmt.Sprintf("%040d", i%50),
 					InfoHash: fmt.Sprintf("%040d", i%50), AccountID: payload.AccountID,
 					DirectoryID: payload.Directory.ID,

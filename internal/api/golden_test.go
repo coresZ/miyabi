@@ -22,6 +22,7 @@ import (
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/javdb"
 	"github.com/ppxb/miyabi/internal/library"
+	"github.com/ppxb/miyabi/internal/offline"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/service"
 	"github.com/ppxb/miyabi/internal/tasks"
@@ -170,10 +171,10 @@ type goldenOffline struct {
 	OfflineManager
 }
 
-func (goldenOffline) Activity(context.Context) (service.OfflineActivity, error) {
+func (goldenOffline) Activity(context.Context) (offline.Activity, error) {
 	source := goldenSource()
 	failure := "115 离线任务失败"
-	return service.OfflineActivity{Source: &source, Tasks: []service.OfflineSubmission{
+	return offline.Activity{Source: &source, Tasks: []offline.Submission{
 		{TaskID: 9, Code: "ABP-123", JavDBID: "movie-exact", LibraryID: 7, AccountID: "100", DirectoryID: "10", ScanTaskID: 2,
 			Hash: "0000000000000000000000000000000000000003", Status: task.StatusDone, Phase: "in_library", Progress: 100},
 		{TaskID: 10, Code: "SONE-001", JavDBID: "related-movie-1", AccountID: "100", DirectoryID: "10",

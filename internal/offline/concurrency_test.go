@@ -1,52 +1,26 @@
-package service
+package offline
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ppxb/miyabi/internal/tasks"
 	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/pan"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
-
-const (
-	offlineHashA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	offlineHashB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-)
-
-func offlineAddFixture(t *testing.T) (*OfflineService, *panStub) {
-	t.Helper()
-	library, client := panConcurrencyFixture(t)
-	discover := &DiscoverService{
-		database: library.Database(), details: newResponseCache[domain.MovieDetail](2, time.Hour),
-		magnets: newResponseCache[[]domain.Magnet](2, time.Hour),
-	}
-	if _, err := discover.details.get(t.Context(), "fixture-movie", func(context.Context) (domain.MovieDetail, error) {
-		return domain.MovieDetail{Movie: domain.Movie{ID: "fixture-movie", Code: "ABP-001"}}, nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := discover.magnets.get(t.Context(), "fixture-movie", func(context.Context) ([]domain.Magnet, error) {
-		return []domain.Magnet{{Hash: offlineHashA}, {Hash: offlineHashB}}, nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	return NewOfflineService(library.Database(), discover, library.Drive(), library.Tasks()), client
-}
 
 type offlineAddResult struct {
-	submission OfflineSubmission
+	submission Submission
 	err        error
 }
 
-func asyncOfflineAdd(ctx context.Context, service *OfflineService, hash string) <-chan offlineAddResult {
+func asyncOfflineAdd(ctx context.Context, service *Service, hash string) <-chan offlineAddResult {
 	result := make(chan offlineAddResult, 1)
 	go func() {
 		submission, err := service.Add(ctx, "fixture-movie", hash)
@@ -215,7 +189,7 @@ func TestOfflineStaleResultsPreserveCompletionAndNewerPayload(t *testing.T) {
 	completed := pan.OfflineTask{Status: 2, FileID: "download-folder"}
 	finished := make(chan error, 2)
 	for range 2 {
-		go func() { finished <- service.updateTask(t.Context(), sess, record, completed) }()
+		go func() { finished <- service.UpdateTask(t.Context(), sess, record, completed) }()
 	}
 	for range 2 {
 		if err := awaitPan(t, finished); err != nil {
@@ -234,7 +208,7 @@ func TestOfflineStaleResultsPreserveCompletionAndNewerPayload(t *testing.T) {
 	}
 	service.database.Task.UpdateOneID(record.ID).SetPayload(encoded).ExecX(t.Context())
 	for _, remote := range []pan.OfflineTask{{Status: 1, Progress: 20}, {Status: -1}, {Status: 2, FileID: "old-download-folder"}} {
-		if err := service.updateTask(t.Context(), sess, record, remote); err != nil {
+		if err := service.UpdateTask(t.Context(), sess, record, remote); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -304,7 +278,7 @@ func TestOfflinePlayableProcessingStillDeduplicatesUntilWorkflowFinishes(t *test
 		t.Fatal(err)
 	}
 	record := service.database.Task.Create().SetType("offline").SetStatus(task.StatusRunning).SetPayload(encoded).SaveX(ctx)
-	if err := service.updateTask(ctx, sess, record, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
+	if err := service.UpdateTask(ctx, sess, record, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
 		t.Fatal(err)
 	}
 	record = service.database.Task.GetX(ctx, record.ID)

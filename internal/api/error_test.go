@@ -20,6 +20,7 @@ import (
 	"github.com/ppxb/miyabi/internal/javdb"
 	"github.com/ppxb/miyabi/internal/library"
 	"github.com/ppxb/miyabi/internal/netx"
+	"github.com/ppxb/miyabi/internal/offline"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/service"
 )
@@ -53,7 +54,7 @@ func TestErrorMiddlewareMapsDomainErrorsToStatusAndMessage(t *testing.T) {
 	}{
 		{name: "bad request wrapper", err: BadRequest(errors.New("page must be positive")), status: http.StatusBadRequest, message: "page must be positive"},
 		{name: "media directory required", err: drive.ErrMediaDirectoryRequired, status: http.StatusBadRequest, message: drive.ErrMediaDirectoryRequired.PublicMessage()},
-		{name: "magnet not found", err: fmt.Errorf("add: %w", service.ErrMagnetNotFound), status: http.StatusBadRequest, message: service.ErrMagnetNotFound.PublicMessage()},
+		{name: "magnet not found", err: fmt.Errorf("add: %w", offline.ErrMagnetNotFound), status: http.StatusBadRequest, message: offline.ErrMagnetNotFound.PublicMessage()},
 		{name: "invalid progress", err: library.ErrInvalidWatchProgress, status: http.StatusBadRequest, message: library.ErrInvalidWatchProgress.PublicMessage()},
 		{name: "invalid proxy", err: proxyValidationError(), status: http.StatusBadRequest, message: "代理配置无效: 代理地址必须包含协议（如 http://）与主机地址"},
 		{name: "history source changed", err: library.ErrWatchHistorySourceChanged, status: http.StatusConflict, message: library.ErrWatchHistorySourceChanged.PublicMessage()},

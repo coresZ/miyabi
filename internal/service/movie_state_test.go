@@ -2,16 +2,57 @@ package service
 
 import (
 	"errors"
-	"github.com/ppxb/miyabi/internal/domain"
-	"github.com/ppxb/miyabi/internal/tasks"
 	"testing"
 
+	"github.com/ppxb/miyabi/internal/domain"
+	"github.com/ppxb/miyabi/internal/drive"
+	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/library/scan"
 	"github.com/ppxb/miyabi/internal/library/scrape"
+	"github.com/ppxb/miyabi/internal/offline"
 	"github.com/ppxb/miyabi/internal/pan"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
+
+type offlineTaskPayload struct {
+	AccountID   string   `json:"account_id"`
+	DirectoryID string   `json:"directory_id"`
+	Code        string   `json:"code"`
+	JavDBID     string   `json:"javdb_id"`
+	Hash        string   `json:"hash"`
+	InfoHash    string   `json:"info_hash"`
+	FileID      string   `json:"file_id,omitempty"`
+	FileIDs     []string `json:"file_ids,omitempty"`
+	ScanTaskID  int      `json:"scan_task_id,omitempty"`
+}
+
+type offlineTestHelper struct {
+	*offline.Service
+	database *ent.Client
+	drive    *drive.Drive
+	tasks    *tasks.Service
+}
+
+func offlineFixture(t testing.TB) (*offlineTestHelper, *ent.Task, offlineTaskPayload, domain.LibrarySource) {
+	t.Helper()
+	library, _, scan := libraryFixture(t)
+	svc := offline.New(library.Database(), nil, library.Drive(), library.Tasks(), library)
+	input := offlineTaskPayload{
+		AccountID: scan.Source.AccountID, DirectoryID: scan.Source.Directory.ID,
+		Code: "ABP-001", JavDBID: "fixture-movie", Hash: "fixture-hash", InfoHash: "fixture-hash",
+	}
+	encoded, err := tasks.EncodePayload(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := library.Database().Task.Create().SetType("offline").SetStatus(task.StatusRunning).SetPayload(encoded).Save(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &offlineTestHelper{Service: svc, database: library.Database(), drive: library.Drive(), tasks: library.Tasks()}, record, input, scan.Source
+}
 
 func TestMovieStatesFollowDownloadThroughIndexingWithoutCatalogueRequests(t *testing.T) {
 	offline, record, input, source := offlineFixture(t)
@@ -32,16 +73,16 @@ func TestMovieStatesFollowDownloadThroughIndexingWithoutCatalogueRequests(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := offline.updateTask(ctx, sess, record, pan.OfflineTask{Status: 2}); err != nil {
+	if err := offline.UpdateTask(ctx, sess, record, pan.OfflineTask{Status: 2}); err != nil {
 		t.Fatal(err)
 	}
 	assertState(MovieProcessing, 0)
-	if err := offline.updateTask(ctx, sess, record, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
+	if err := offline.UpdateTask(ctx, sess, record, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
 		t.Fatal(err)
 	}
 	assertState(MovieProcessing, 0)
 	download := offline.database.Task.GetX(ctx, record.ID)
-	saved, err := tasks.DecodePayload[offlinePayload](download.Payload)
+	saved, err := tasks.DecodePayload[offlineTaskPayload](download.Payload)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +104,7 @@ func TestMovieStatesFollowDownloadThroughIndexingWithoutCatalogueRequests(t *tes
 		!activity.Tasks[0].Processing || activity.Tasks[0].LibraryID != *indexed.MovieID {
 		t.Fatalf("indexed download is not playable during the scan: %+v err=%v", activity, err)
 	}
-	saved, err = tasks.DecodePayload[offlinePayload](offline.database.Task.GetX(ctx, record.ID).Payload)
+	saved, err = tasks.DecodePayload[offlineTaskPayload](offline.database.Task.GetX(ctx, record.ID).Payload)
 	if err != nil || len(saved.FileIDs) != 1 || saved.FileIDs[0] != video.ID {
 		t.Fatalf("committed files are missing or duplicated: %+v err=%v", saved, err)
 	}
@@ -142,7 +183,7 @@ func TestOfflinePageFileTrackingRollsBackWithTheIndex(t *testing.T) {
 	if offline.database.File.Query().CountX(ctx) != 0 {
 		t.Fatal("file index escaped rollback")
 	}
-	saved, err := tasks.DecodePayload[offlinePayload](offline.database.Task.GetX(ctx, record.ID).Payload)
+	saved, err := tasks.DecodePayload[offlineTaskPayload](offline.database.Task.GetX(ctx, record.ID).Payload)
 	if err != nil || len(saved.FileIDs) != 0 {
 		t.Fatalf("download file tracking escaped rollback: %+v err=%v", saved, err)
 	}
