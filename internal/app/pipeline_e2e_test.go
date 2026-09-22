@@ -556,3 +556,58 @@ func TestPipelineMarksMovieFailedWhenCatalogueLacksIt(t *testing.T) {
 		t.Fatalf("scan workflow = %+v, %v", infos, err)
 	}
 }
+
+func TestPipelineRemovesMovieWhenDeletedFrom115(t *testing.T) {
+	fixture := newPipelineFixture(t)
+	ctx := t.Context()
+	fixture.drive.addDirectory("11", "10", "ABP-123")
+	fixture.drive.addFile("101", "11", "ABP-123.mp4", 2<<30, []byte("video"))
+
+	// 1. Initial scan: movie gets indexed and scraped
+	if _, err := fixture.library.StartScan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fixture.runQueue(t)
+
+	page, err := fixture.library.Movies(ctx, 1, 20)
+	if err != nil || page.Total != 1 || len(page.Movies) != 1 {
+		t.Fatalf("initial library page = %+v, %v", page, err)
+	}
+
+	states, err := fixture.discover.MovieStates(ctx, []catalogue.MovieIdentity{{ID: "movie-exact", Code: "ABP-123"}})
+	if err != nil || len(states) != 1 || states[0].State != catalogue.MovieInLibrary {
+		t.Fatalf("initial movie states = %+v", states)
+	}
+
+	// 2. User deletes the file directly from 115
+	fixture.drive.mu.Lock()
+	delete(fixture.drive.files, "101")
+	delete(fixture.drive.contents, "101")
+	fixture.drive.mu.Unlock()
+
+	// 3. User clicks "Scan Media Library"
+	if _, err := fixture.library.StartScan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fixture.runQueue(t)
+
+	// 4. Verify library movies page
+	page, err = fixture.library.Movies(ctx, 1, 20)
+	if err != nil || page.Total != 0 || len(page.Movies) != 0 {
+		t.Fatalf("after delete library page = %+v, %v", page, err)
+	}
+
+	// 5. Verify movie state (card badge)
+	states, err = fixture.discover.MovieStates(ctx, []catalogue.MovieIdentity{{ID: "movie-exact", Code: "ABP-123"}})
+	if err != nil || len(states) != 1 || states[0].State != catalogue.MovieNotInLibrary || states[0].LibraryID != 0 {
+		t.Fatalf("after delete movie states = %+v", states)
+	}
+
+	// 6. Verify database records
+	if fileCount, err := fixture.store.Client.File.Query().Count(ctx); err != nil || fileCount != 0 {
+		t.Fatalf("files in db = %d, error = %v", fileCount, err)
+	}
+	if movieCount, err := fixture.store.Client.Movie.Query().Count(ctx); err != nil || movieCount != 0 {
+		t.Fatalf("movies in db = %d, error = %v", movieCount, err)
+	}
+}
