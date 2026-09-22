@@ -2,11 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
 
 import { apiGet, apiPost, apiPut } from './client'
-import {
-  createMovieDetailLoader,
-  discoverKeys,
-  findCachedMovieCard
-} from './movie-detail-cache'
+import { createMovieDetailLoader, discoverKeys, findCachedMovieCard } from './movie-detail-cache'
 
 export { discoverKeys }
 
@@ -130,8 +126,6 @@ export type SearchMoviesParams = {
   page?: number
   limit?: number
 }
-
-
 
 const discoverQueryDefaults = {
   retry: false,

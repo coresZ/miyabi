@@ -7,6 +7,7 @@ import (
 
 	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
+	"github.com/ppxb/miyabi/internal/netx"
 )
 
 type countingSource struct{ calls atomic.Int32 }
@@ -64,5 +65,44 @@ func TestUpdateJavBusPersistsAndClearsMagnetCache(t *testing.T) {
 	}
 	if len(service.magnets.entries) != 0 {
 		t.Fatal("toggling JavBus must drop cached magnet lists")
+	}
+}
+
+func TestUpdateJavBusRequiresProxy(t *testing.T) {
+	store, err := database.Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	proxyManager, err := netx.NewProxyManager(netx.ProxyConfig{Enabled: false, URL: ""})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	provider := &stubProviderWithMagnets{magnets: nil}
+	service, err := NewWithProvider(t.Context(), store.Client, provider, &stubLocalState{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.proxy = proxyManager
+
+	// Enabling JavBus without active proxy must fail.
+	err = service.UpdateJavBus(t.Context(), JavBusConfig{Enabled: true})
+	if err == nil {
+		t.Fatal("expected error when enabling JavBus without proxy, got nil")
+	}
+
+	// Disabling JavBus is always permitted.
+	if err := service.UpdateJavBus(t.Context(), JavBusConfig{Enabled: false}); err != nil {
+		t.Fatalf("expected nil when disabling JavBus, got %v", err)
+	}
+
+	// With proxy enabled, enabling JavBus must succeed.
+	if err := proxyManager.Update(netx.ProxyConfig{Enabled: true, URL: "http://127.0.0.1:7890"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UpdateJavBus(t.Context(), JavBusConfig{Enabled: true}); err != nil {
+		t.Fatalf("expected success with proxy enabled, got %v", err)
 	}
 }

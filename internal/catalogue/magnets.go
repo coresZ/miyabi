@@ -44,6 +44,9 @@ func (service *Service) JavBus(context.Context) (JavBusConfig, error) {
 // UpdateJavBus persists the switch and drops cached magnet lists so the next
 // lookup reflects it.
 func (service *Service) UpdateJavBus(ctx context.Context, config JavBusConfig) error {
+	if config.Enabled && service.proxy != nil && service.proxy.Resolve() == nil {
+		return domain.E(domain.KindInvalid, "请先开启网络代理以启用 JavBus 数据源", nil)
+	}
 	if err := database.SaveSetting(ctx, service.database, javbusEnabledSetting, config.Enabled); err != nil {
 		return err
 	}

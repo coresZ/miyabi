@@ -39,6 +39,7 @@ type Service struct {
 
 	// javbusEnabled gates the JavBus source at query time; see UpdateJavBus.
 	javbusEnabled atomic.Bool
+	proxy         *netx.ProxyManager
 	lists         *responseCache[[]domain.Movie]
 	details       *responseCache[domain.MovieDetail]
 	tags          *responseCache[[]domain.TagCategory]
@@ -102,6 +103,7 @@ func New(
 	}
 
 	service := newService(db, client, local, route)
+	service.proxy = proxy
 	service.javbus = javbusClient
 	service.javbusEnabled.Store(javbusEnabled)
 	service.aggregator = magnet.NewAggregator([]magnet.Source{
