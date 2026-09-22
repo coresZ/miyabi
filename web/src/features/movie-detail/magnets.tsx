@@ -150,12 +150,9 @@ function MagnetCard({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1 space-y-2">
             <h3 className="text-base leading-6 font-semibold wrap-break-word">{magnet.name}</h3>
-            <a
-              href={magnet.uri}
-              className="block font-mono text-xs break-all text-muted-foreground outline-ring select-all hover:text-foreground"
-            >
+            <p className="w-fit max-w-full font-mono text-xs break-all text-muted-foreground select-all">
               {magnet.uri}
-            </a>
+            </p>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm leading-6 text-muted-foreground">
               <span className="text-xs">{formatSize(magnet.size)}</span>
               {magnet.has_subtitle ? <Badge variant="outline">字幕</Badge> : null}
