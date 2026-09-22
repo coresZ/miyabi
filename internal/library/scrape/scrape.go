@@ -15,7 +15,6 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/predicate"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
-	"github.com/ppxb/miyabi/internal/javdb"
 	"github.com/ppxb/miyabi/internal/syncx"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
@@ -33,7 +32,7 @@ type MetadataPayload struct {
 type Discoverer interface {
 	ResolveMovieID(ctx context.Context, code string) (string, error)
 	CatalogueDetail(ctx context.Context, id string) (domain.MovieDetail, error)
-	Media(ctx context.Context, url string) (javdb.Media, error)
+	Media(ctx context.Context, url string) (domain.Media, error)
 }
 
 // Notifier notifies subscribers that library contents changed.

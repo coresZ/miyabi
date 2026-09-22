@@ -9,14 +9,9 @@ import (
 	"strings"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/netx"
 )
-
-// Media is a decoded image served by JavDB's CDN.
-type Media struct {
-	ContentType string
-	Body        []byte
-}
 
 func newMediaClient(options Options) *resty.Client {
 	restyOptions := netx.RestyOptions{Timeout: options.Timeout}
@@ -31,31 +26,31 @@ func newMediaClient(options Options) *resty.Client {
 
 // FetchMedia downloads and decodes a CDN image independently of API route
 // selection and API rate limiting.
-func (c *Client) FetchMedia(ctx context.Context, rawURL string) (Media, error) {
+func (c *Client) FetchMedia(ctx context.Context, rawURL string) (domain.Media, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
-		return Media{}, errors.New("JavDB media URL must be an absolute https URL")
+		return domain.Media{}, errors.New("JavDB media URL must be an absolute https URL")
 	}
 
 	response, err := c.media.R().SetContext(ctx).Get(rawURL)
 	if err != nil {
-		return Media{}, fmt.Errorf("download JavDB image: %w", err)
+		return domain.Media{}, fmt.Errorf("download JavDB image: %w", err)
 	}
 	if response.StatusCode() < 200 || response.StatusCode() >= 300 {
-		return Media{}, &HTTPError{StatusCode: response.StatusCode()}
+		return domain.Media{}, &HTTPError{StatusCode: response.StatusCode()}
 	}
 	return decodeImagePayload(response.Body())
 }
 
 // The CDN serves either a standard image or a one-byte XOR key followed by the
 // encoded image. Detect the decoded MIME type instead of forwarding octet-stream.
-func decodeImagePayload(raw []byte) (Media, error) {
+func decodeImagePayload(raw []byte) (domain.Media, error) {
 	contentType := http.DetectContentType(raw)
 	if strings.HasPrefix(contentType, "image/") {
-		return Media{ContentType: contentType, Body: raw}, nil
+		return domain.Media{ContentType: contentType, Body: raw}, nil
 	}
 	if len(raw) < 2 {
-		return Media{}, errors.New("JavDB media response is not a recognized image")
+		return domain.Media{}, errors.New("JavDB media response is not a recognized image")
 	}
 
 	key := raw[0]
@@ -65,7 +60,7 @@ func decodeImagePayload(raw []byte) (Media, error) {
 	}
 	contentType = http.DetectContentType(decoded)
 	if !strings.HasPrefix(contentType, "image/") {
-		return Media{}, errors.New("JavDB media response is not a recognized image")
+		return domain.Media{}, errors.New("JavDB media response is not a recognized image")
 	}
-	return Media{ContentType: contentType, Body: decoded}, nil
+	return domain.Media{ContentType: contentType, Body: decoded}, nil
 }

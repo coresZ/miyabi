@@ -8,12 +8,12 @@ import (
 	"github.com/ppxb/miyabi/internal/maintenance"
 )
 
-type DataManager interface {
+type MaintenanceManager interface {
 	Info(context.Context) (maintenance.Info, error)
 	ClearCache(context.Context) (maintenance.Info, error)
 }
 
-func dataInfoHandler(data DataManager) gin.HandlerFunc {
+func dataInfoHandler(data MaintenanceManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		info, err := data.Info(c.Request.Context())
 		if err != nil {
@@ -24,7 +24,7 @@ func dataInfoHandler(data DataManager) gin.HandlerFunc {
 	}
 }
 
-func dataClearCacheHandler(data DataManager) gin.HandlerFunc {
+func dataClearCacheHandler(data MaintenanceManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		info, err := data.ClearCache(c.Request.Context())
 		if err != nil {

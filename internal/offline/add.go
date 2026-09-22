@@ -16,15 +16,15 @@ import (
 )
 
 // Add validates and records a new offline download for the given movie ID and magnet hash.
-func (service *Service) Add(ctx context.Context, movieID, hash string) (Submission, error) {
+func (service *Service) Add(ctx context.Context, movieID, hash string) (domain.OfflineSubmission, error) {
 	hash = strings.ToLower(hash)
 	if service.catalogue != nil {
 		has, err := service.catalogue.HasMagnet(ctx, movieID, hash)
 		if err != nil {
-			return Submission{}, err
+			return domain.OfflineSubmission{}, err
 		}
 		if !has {
-			return Submission{}, ErrMagnetNotFound
+			return domain.OfflineSubmission{}, ErrMagnetNotFound
 		}
 	}
 	var rawCode string
@@ -32,21 +32,21 @@ func (service *Service) Add(ctx context.Context, movieID, hash string) (Submissi
 		var err error
 		rawCode, err = service.catalogue.MovieCode(ctx, movieID)
 		if err != nil {
-			return Submission{}, err
+			return domain.OfflineSubmission{}, err
 		}
 	}
 	code := codeid.Normalize(rawCode)
 
 	sess, err := service.drive.Open(ctx)
 	if err != nil {
-		return Submission{}, fmt.Errorf("get 115 account for offline download: %w", err)
+		return domain.OfflineSubmission{}, fmt.Errorf("get 115 account for offline download: %w", err)
 	}
 	source := sess.Source()
 	directory := source.Directory
 
 	unlock, err := service.operations.Lock(ctx, source.AccountID, hash)
 	if err != nil {
-		return Submission{}, err
+		return domain.OfflineSubmission{}, err
 	}
 	defer unlock()
 
@@ -60,15 +60,15 @@ func (service *Service) Add(ctx context.Context, movieID, hash string) (Submissi
 	if err == nil {
 		input, err := tasks.DecodePayload[offlinePayload](existing.Payload)
 		if err != nil {
-			return Submission{}, err
+			return domain.OfflineSubmission{}, err
 		}
 		if input.DirectoryID != directory.ID {
-			return Submission{}, domain.E(domain.KindConflict, "该磁力正在下载到另一个目录，请先在 115 中处理该任务", nil)
+			return domain.OfflineSubmission{}, domain.E(domain.KindConflict, "该磁力正在下载到另一个目录，请先在 115 中处理该任务", nil)
 		}
 		return service.submission(ctx, existing, &source)
 	}
 	if !ent.IsNotFound(err) {
-		return Submission{}, fmt.Errorf("find active offline task: %w", err)
+		return domain.OfflineSubmission{}, fmt.Errorf("find active offline task: %w", err)
 	}
 
 	previous, err := service.database.Task.Query().Where(task.TypeEQ(tasks.KindOffline.String()), task.StatusEQ(task.StatusDone), func(s *sql.Selector) {
@@ -81,21 +81,21 @@ func (service *Service) Add(ctx context.Context, movieID, hash string) (Submissi
 	if err == nil {
 		state, err := service.submission(ctx, previous, &source)
 		if err != nil {
-			return Submission{}, err
+			return domain.OfflineSubmission{}, err
 		}
 		if state.Processing {
 			return state, nil
 		}
 	} else if !ent.IsNotFound(err) {
-		return Submission{}, fmt.Errorf("find download workflow: %w", err)
+		return domain.OfflineSubmission{}, fmt.Errorf("find download workflow: %w", err)
 	}
 
 	if err := ctx.Err(); err != nil {
-		return Submission{}, err
+		return domain.OfflineSubmission{}, err
 	}
 	done, ok := service.drive.StartWork()
 	if !ok {
-		return Submission{}, context.Canceled
+		return domain.OfflineSubmission{}, context.Canceled
 	}
 	defer done()
 
@@ -104,7 +104,7 @@ func (service *Service) Add(ctx context.Context, movieID, hash string) (Submissi
 	defer cancel()
 	remote, err := service.submit(submitContext, sess, hash)
 	if err != nil {
-		return Submission{}, fmt.Errorf("submit 115 offline download: %w", err)
+		return domain.OfflineSubmission{}, fmt.Errorf("submit 115 offline download: %w", err)
 	}
 	input := offlinePayload{
 		Code:        code,
@@ -116,7 +116,7 @@ func (service *Service) Add(ctx context.Context, movieID, hash string) (Submissi
 	}
 	encoded, err := tasks.EncodePayload(input)
 	if err != nil {
-		return Submission{}, err
+		return domain.OfflineSubmission{}, err
 	}
 
 	var created *ent.Task
@@ -135,13 +135,13 @@ func (service *Service) Add(ctx context.Context, movieID, hash string) (Submissi
 		}
 		return nil
 	}); err != nil {
-		return Submission{}, fmt.Errorf("record 115 offline download: %w", err)
+		return domain.OfflineSubmission{}, fmt.Errorf("record 115 offline download: %w", err)
 	}
 
 	service.tasks.NotifyOfflineChanged()
 	created, err = service.database.Task.Get(submitContext, created.ID)
 	if err != nil {
-		return Submission{}, err
+		return domain.OfflineSubmission{}, err
 	}
 	return service.submission(submitContext, created, &source)
 }

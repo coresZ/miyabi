@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ppxb/miyabi/internal/domain"
 	lib "github.com/ppxb/miyabi/internal/library"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
@@ -12,11 +13,11 @@ import (
 type LibraryManager interface {
 	ViewedManager
 	Movies(context.Context, int, int) (lib.Page, error)
-	MarkWatched(context.Context, int, lib.WatchHistoryScope) (lib.WatchSession, error)
+	MarkWatched(context.Context, int, domain.WatchHistoryScope) (lib.WatchSession, error)
 	WatchHistory(context.Context, int) (lib.WatchHistoryPage, error)
 	SaveWatchProgress(context.Context, int, lib.WatchProgress) error
-	RemoveWatchHistory(context.Context, lib.WatchHistoryScope, []int) (int, error)
-	ClearWatchHistory(context.Context, lib.WatchHistoryScope) (int, error)
+	RemoveWatchHistory(context.Context, domain.WatchHistoryScope, []int) (int, error)
+	ClearWatchHistory(context.Context, domain.WatchHistoryScope) (int, error)
 	StartScan(context.Context) (tasks.TaskInfo, error)
 }
 
@@ -73,7 +74,7 @@ func libraryWatchedHandler(library LibraryManager) gin.HandlerFunc {
 			c.Error(BadRequest(err))
 			return
 		}
-		var scope lib.WatchHistoryScope
+		var scope domain.WatchHistoryScope
 		if err := c.ShouldBindJSON(&scope); err != nil {
 			c.Error(BadRequest(err))
 			return

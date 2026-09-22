@@ -1,10 +1,10 @@
 # Miyabi 重构方案
 
 - 日期：2026-09-19；最近更新 2026-09-22
-- 基线：`master / 85228f7`；当前进度基线 `b105941`
+- 基线：`master / 85228f7`；当前进度基线 `9b4d21f`
 - 范围：五条工作线。① 全局代理；② 整体结构重构（含冗余清理）；③ 磁力聚合（JavDB + JavBus）；④ javdb-cli 接口补齐评估；⑤ 字幕自动化与播放集成。
 - 约束：前端所有样式与动效原样沿用，前端只做结构性调整（已记录两次例外，见第 9 节）；预览视频、DMM、第三方图库不在本轮范围。
-- 进度：A、B0 到 B4 已完成；B5 到 B9、C、D、E 未开始；前端 3.9 与主线并行，已完成分页收敛。
+- 进度：A、B0 到 B8（M0 到 M4）已完成并收口，`internal/service` 已删除，业务包依赖方向由测试锁定；B9、C、D、E 未开始；前端 3.9 与主线并行，已完成分页收敛。
 
 ---
 
@@ -24,36 +24,39 @@
 
 ## 1. 目标架构
 
-### 1.1 包布局（✅ 已就位，⏳ 待迁）
+### 1.1 包布局（✅ 已就位，⏳ 待做）
 
 ```
-cmd/miyabi/                 ⏳ main.go 仍是组合根，B8 迁入 internal/app
+cmd/miyabi/                 ✅ main.go 只解析参数、日志与信号，装配在 internal/app（B8）
 internal/
-  app/                      ⏳ B8：配置 → 存储 → 网络 → 服务 → 任务注册 → 路由
+  app/                      ✅ 组合根 New / Run / Close / CheckHealth；network、setting 两个 settings 读写也在这里（B8）
   config/                   ✅ 环境变量；config.Runtime 待 B9
   domain/                   ✅ 纯模型与错误（B1）
-  netx/                     ✅ 代理管理器、HTTP 客户端工厂（A）
-  database/                 ✅ ent 客户端、迁移、原生索引（方案原名 storage，沿用现名不改）
-  syncx/                    ✅ ContextLock（B3 顺带收敛）
-  tasks/                    ✅ 队列、pool、处理器注册表、SSE 总线、typed payload（B2）
+  netx/                     ✅ 代理管理器、HTTP 客户端工厂、探测类型（A、B8）
+  database/                 ✅ ent 客户端、迁移、原生索引、monitors → subscriptions 数据迁移（方案原名 storage，沿用现名）
+  syncx/                    ✅ ContextLock（B3）
+  tasks/                    ✅ 队列、pool、注册表、SSE 总线、typed payload、RunPeriodic（B2、B5）
   drive/                    ✅ 115 账号、挂载目录、Session（B3）
   pan/ javdb/               ✅ 现有客户端
   javbus/                   仅 probe.go；完整客户端属工作线 C
-  library/                  ✅ 影片索引、观看记录、已浏览（B4）
-  library/scan/             ✅ walker / identity / persist / reconcile（B4）
+  library/                  ✅ 索引、观看记录、已浏览、EnqueueTargetedScan、LocalState 实现（B4）
+  library/scan/             ✅ Scanner：walker / identity / persist / reconcile（B4）
   library/scrape/           ✅ scrape / nfo_source / mapping / cover / snapshot（B4）
-  catalogue/                ✅ B7（已完成，2026-09-22）
+  catalogue/                ✅ Provider / LocalState 接口、缓存、标签、本地状态投影、Facets（B7）
+  offline/                  ✅ add / submit / sync / projection / locks（B5）
+  monitor/                  ✅ 订阅检查（B6，表已更名 subscriptions）
+  playback/                 ✅ session / files / proxy / playlist（B6）
+  maintenance/              ✅ 数据目录统计与缓存清理（B6）
   magnet/                   ⏳ 工作线 C
-  offline/                  ✅ B5（已完成，2026-09-22）
-  monitor/ playback/ maintenance/   ✅ B6（已完成，2026-09-22）
-  worker/                   ✅ 随 B5/B6 并入 tasks.RunPeriodic，目录已删除
-  service/                  过渡目录，B8 删除；现余 access_gate、network、setting
-
-  api/                      gin 路由、错误映射、DTO；bind/respond 助手待 B9
+  api/                      ✅ gin 路由、错误映射、DTO、访问密码门；bind/respond 助手待 B9
   image/ nfo/ codeid/ logging/   不动（codeid 新增 IsEquivalent）
 ```
 
+`internal/service` 与 `internal/worker` 已删除。
+
 依赖方向自上而下单向：`api → 业务包 → drive/tasks/catalogue → pan/javdb/javbus/netx → domain`。业务包之间不得互相 import 具体类型，只能通过在 `domain` 或调用方定义的接口交互。`library/scan → library/scrape` 是同一限界上下文内的子包共享，允许；反向不得出现。
+
+依赖方向由 `internal/app/deps_test.go` 锁定：解析每个业务包与 `drive / tasks / database` 的非测试文件 import，业务包之间、内核包对业务包出现 import 即失败。跨包共享的 DTO（`LibraryFile / WatchHistoryScope / WatchResume / MovieSummary / Media / OfflineSubmission`）放 `domain/library.go`；跨包共享的查询范围（`LibraryFiles / WatchHistory` 谓词）放 `database/scope.go`。
 
 ### 1.2 三个核心接口
 
@@ -122,7 +125,7 @@ type Source interface {
 
 ### 3.2 步骤 B0：安全网（已完成）
 
-- 端到端测试 `internal/service/pipeline_e2e_test.go`：内存假 115 + 固件 JavDB，跑"选目录 → 扫描 → 刮削 → 封面 → 上传"。未按原计划放 `internal/app`，B8 建包时随迁。
+- 端到端测试 `internal/app/pipeline_e2e_test.go`（B8 前在 `internal/service`）：内存假 115 + 固件 JavDB，跑"选目录 → 扫描 → 刮削 → 封面 → 上传"。
 - 黄金测试 `internal/api/testdata/golden`：`/api/discover/movies/:id`、`/magnets`、`/api/library/movies`、`/api/tasks`、`/api/offline/tasks`、`/api/monitors`。
 - `errorMiddleware` 映射测试、SSE 三类事件测试。
 - 审计文档已删（`badcfa5`），`.gitattributes` 已加（`* text=auto eol=lf`）。
@@ -178,39 +181,35 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 - `PlayService`、`scrape.Service`、`OfflineService` 直接持有 `*drive.Drive`，`library.drive.*` 穿透归零；`DiscoverService` 通过构造参数注入 `SourceProvider` 窄接口（B7 `catalogue.LocalState` 前身）。
 - `drive` 不导出测试钩子；原 `pan_*_test.go` 的 24 个并发用例迁入 `internal/drive`（`login_test / mount_test / token_test / pagination_test`），另补挂载回滚、会话失效矩阵、`ValidateSource`、离线分页用例。
 
-### 3.6 步骤 B4 到 B8：业务包迁移
+### 3.6 步骤 B4 到 B8：业务包迁移（已完成，2026-09-22）
 
-按顺序，每迁一个包提交一次。
+每迁一个包一个提交：B4 `a128ff6`、`b105941`；B5 `3408cfc`；B6 `ccf1750`；B7 `118c8a7`；B8 `9b4d21f`。
 
-**B4 `library` + `library/scan` + `library/scrape`（已完成，2026-09-21，提交 `a128ff6`、`b105941`）**
+| 步骤 | 落地内容 |
+| --- | --- |
+| B4 `library` | `library_scan.go` 拆为 `scan/walker.go`（`Scanner` 调度骨架）、`identity.go`（`ResolveSingleNFO`）、`persist.go`、`reconcile.go`、`types.go`；`scrape.go` 拆为 `scrape/scrape.go`、`nfo_source.go`（`FindNFO / ReadNFO / DirectoryNFO`，吸收扫描侧重复读取）、`mapping.go`（双向映射一份）、`cover.go`、`snapshot.go`。`codeid.IsEquivalent` 三级容差（规范化全等；数字核心一致且前缀互为后缀；否则拦截），不维护字典，扫描与刮削共用，独占单片目录以 NFO 标准番号入库。`browse.viewed_movies` blob 迁 `viewed_movie` 表，启动时 `library.MigrateViewedMovies` 一次性迁移；同批 upsert 的 `viewed_at` 取 `max(now, 表内最大值 + 1µs)` 防撞。`drive.DirectoryPath` 合并两处路径拼接 |
+| B5 `offline` | `add.go`（入口与锁）、`submit.go`（115 去重启发式）、`sync.go`（轮询与状态转换）、`projection.go`（phase 计算）、`locks.go`。只依赖自定义接口 `Catalogue`（`HasMagnet / MovieCode`）与 `TargetedScanner`（`library.Service.EnqueueTargetedScan`，事务内建任务）。`worker/offline.go` 并入 `tasks.RunPeriodic(ctx, logger, name, interval, wake, fn)` |
+| B6 `playback` `monitor` `maintenance` | `playback` 拆为 `service / session / files / proxy / playlist`，自持 ent 客户端。`monitor` 表兼容更名 `subscriptions`，字段按 4.5 扩展（`kind / target_id / origin_id / auto_download / zone / cursor`，`status` 枚举扩到六值）；`database.migrateSubscriptions` 在 ent 建表后 `INSERT OR IGNORE … SELECT … FROM monitors; DROP TABLE monitors`，可重入；`/api/monitors*` 路径与响应不变，换路径留给工作线 C。`maintenance` 自持数据目录。`worker/monitor.go` 并入 `RunPeriodic`，`internal/worker` 删除。`library.Service` 四个依赖 getter 删除 |
+| B7 `catalogue` | `discover*.go、movie_state.go` 迁入。`Provider` 接口（JavDB 唯一实现）、`LocalState` 接口（`Source / MatchingMovies`，由 `library.Service` 实现，`domain.LocalMovie` 新增），`Facets()` 暴露 zones 与排序槽位（前端本轮不接） |
+| B8 `app` | `internal/app/app.go`：`New(cfg, logger) / Run(ctx) / Close() / CheckHealth(listen)`，处理器注册与 `RunPeriodic` 启动集中在此；`main.go` 收到 52 行。`access_gate` 归 `api`，`network / setting` 归 `app`，探测类型进 `netx`。e2e、drive 夹具、task 测试迁入 `app`。`internal/service` 删除 |
 
-- `library_scan.go`（649 行）拆为 `scan/walker.go`（BFS、分页、`Scan` 调度骨架）、`scan/identity.go`（`identifyScanVideos`、`ResolveSingleNFO`）、`scan/persist.go`（`ProcessScanPageTx`）、`scan/reconcile.go`（`ReconcileScanTx`）、`scan/types.go`（`Payload`、`LibraryFiles`）。
-- `scrape.go`（446 行）拆为 `scrape/scrape.go`（处理器）、`scrape/nfo_source.go`（`FindNFO / FindDirectoryNFO / ReadNFO / DirectoryNFO`，吸收了扫描侧重复的 NFO 读取）、`scrape/mapping.go`（`DetailNFO / MovieNFO`，双向映射一份）；`cover.go`、`metadata_snapshot.go → snapshot.go` 迁入。
-- **番号容差校验**：`codeid.IsEquivalent(a, b)` 三级规则：规范化全等；数字核心一致且一方前缀是另一方前缀的后缀（`200GANA` ⊇ `GANA`，`CARIB` 与纯日期）；否则拦截。不维护任何静态字典。`scan/identity.go` 与 `scrape/nfo_source.go` 共用；独占单片目录下以 NFO 标准番号入库。
-- **已浏览迁表**：`browse.viewed_movies` settings blob 迁为 `viewed_movie(javdb_id UNIQUE, viewed_at)`，`library.New` 时一次性迁移并删旧键，上限 5000 条按 `viewed_at` 淘汰。`DiscoverService` 不再持有用户状态，`api.ViewedManager` 由 `library.Service` 实现。
-- `watch_history.go`、`library.go` 迁入 `library/`；`library_source.go` 与 `pan_directory.go` 的路径拼接合并为 `drive.DirectoryPath`；`service/library*.go、scrape.go、cover.go、metadata_snapshot.go、discover_viewed.go、scan_observations.go` 删除。
+**M4 收口（2026-09-22）**：以下八条已清，不再有业务包之间的具体类型依赖，仓库内不再有 `type X = Y` 别名。
 
-B4 与原计划的偏差与遗留（后续里程碑处理）：
+1. `catalogue.MovieSummary` 改返回 `domain.MovieSummary`，`catalogue` 不再 import `monitor`。
+2. `offline.Submission` 迁为 `domain.OfflineSubmission`（`Status` 由 ent 枚举改为 `string`，JSON 不变），`monitor.OfflineAdder` 与 `api.OfflineManager` 都引用 `domain`。
+3. `library.File / WatchHistoryScope / WatchResume` 迁 `domain`；`scan.LibraryFiles` 与两份重复的 `historyScope` 合并为 `database.LibraryFiles / WatchHistory`；`playback` 只 import `database / drive`。
+4. `maintenance.New` 改收 `ArtworkLocker` 接口（`TryLockArtwork / UnlockArtwork`）。
+5. `catalogue`、`library`、`offline`、`maintenance`、`playback` 共 17 个兼容别名删除。
+6. `scan.Scan` 并入 `Scanner.Run`；`library.EnqueueTargetedScan` 只留方法。
+7. `app.Run` 统一退出路径：任一 goroutine 出错或 ctx 取消，都 `cancel → Shutdown(10s) → 等 pool 与两个周期任务退出`，`Shutdown` 错误随 `errors.Join` 返回，与原 `main.go` 等价。
+8. `javdb.Media` 迁 `domain.Media`；`api.Dependencies` 字段与接口改名 `Catalogue / CatalogueManager`、`Drive / DriveManager`、`Maintenance / MaintenanceManager`。`catalogue.Provider` 仍暴露 `javdb.RouteStatus`：路由是 JavDB 客户端的运维概念（B1 决定），不迁 `domain`。
 
-1. `GET /api/discover/viewed` 仍整表下发（最多 5000 条），未做 `since` 增量或分页；前端 `browse-history-store.ts` 未改。留到 M8 与前端一起做。
-2. `library.Service` 暴露 `Database / Drive / Tasks / Images` 四个 getter，仅 `service/play.go` 用 `Database()` 三处。B6 迁 `playback` 时 play 自持 ent 客户端，四个 getter 删除。
-3. `library.New` 在构造函数内用 `context.Background()` 跑 `migrateViewedMovies` 且吞掉错误。B8 建组合根时移到启动迁移阶段，错误上抛。
-4. `viewed_movie` 同批 upsert 共用一个 `now`，Windows 时钟粒度下相邻两次调用可撞同一时间戳，`TestViewedMovies_CRUDAndOrdering` 间歇失败（约 1/5）。修法：upsert 时取 `max(now, 表内最大 viewed_at + 1µs)`。**下一个提交先修。**
-5. `scan.Scan(ctx, job, drive, db, images, tasks)` 六参数入口；`library.Service` 已持有全部依赖，B8 前改为 `scan.New(deps).Run(ctx, job)`。
-
-**B5 `offline`（已完成，2026-09-22，提交 `3408cfc`）**：拆为 `add.go`（入口与锁）、`submit.go`（115 去重启发式）、`sync.go`（轮询与状态转换 `updateTask / markMissing / completeTask`）、`projection.go`（phase 计算）、`locks.go`。`offline.go:693` 对 `scan.Payload` 的直接构造改为调用 `library.EnqueueTargetedScan(...)`。`worker/offline.go` 并入 `tasks.RunPeriodic`。
-
-**B6 `monitor`、`playback`、`maintenance`（已完成，2026-09-22）**：`playback` 拆为 `service.go / session.go / files.go / proxy.go / playlist.go`，自持 ent 客户端，不再经 `library.Database()`；`maintenance` 抽出自持数据目录；`monitor` 表兼容更名为 `subscription` 并扩展字段（见 4.5），自动迁移旧表数据；`library.Service` 四个依赖 getter 删除；`worker/monitor.go` 并入 `tasks.RunPeriodic`，`internal/worker` 目录彻底删除。
-
-**B7 `catalogue`（已完成，2026-09-22）**：`discover.go、discover_cache.go、discover_tags.go、movie_state.go` 迁入 `internal/catalogue`。`MovieStates` 所需本地库状态通过 `catalogue.LocalState` 接口由 `library` 实现注入（`MatchingMovies`）。`DiscoverService.javdb` 改为 `catalogue.Provider` 接口，JavDB 是唯一实现；`Facets()` 暴露 zones、排序槽位供前端后续数据驱动（本轮前端不接）。
-
-
-**B8 `app` 组合根（已完成，2026-09-22）**：`cmd/miyabi/main.go` 的 `run()` 拆为 `internal/app/app.go`，`New(cfg, logger) (*App, error)`、`Run(ctx)`、`Close()`、`CheckHealth(listen)`；任务处理器统一在此组装与注册；`pipeline_e2e_test.go`、`drive_fixture_test.go`、`task_test.go`、`task_payload_test.go` 迁入 `internal/app`；`access_gate` 归 `api`，`network` 与 `setting` 归 `app`，网络探测类型抽取至 `netx`；`internal/service` 目录彻底删除。M4 重构阶段全部完成。
+仍待做：`GET /api/discover/viewed` 整表下发（最多 5000 条），`since` 增量留 M8 与前端一起做。
 
 ### 3.7 步骤 B9：API 层与配置
 
 - `api/helpers.go`：`bindJSON / bindQuery / bindURI` 与 `respond(c, value, err)`、`accepted(c, value, err)`；保留流式与 SSE 特殊路径。约 60 处样板收敛。
-- `Cache-Control: no-store` 现散在 `router.go`、`discover.go`、`offline.go` 五处，收敛为一个中间件。
+- `Cache-Control: no-store` 现散在 `router.go` 五处、`discover.go`、`offline.go` 各两处，收敛为一个中间件。
 - `config.Runtime`：收纳 pool 大小、离线轮询 30s、监控 5m、115 限速 2 req/s、超时 35s/45s/2m、播放会话 8h、缓存尺寸与 TTL、`minVideoSize`、视频后缀、sidecar 大小上限、JavBus 域名。环境变量 `MIYABI_*` 可覆盖，未设置用现值。
 - 日志级别校验只留 `logging` 一处。
 
@@ -461,15 +460,14 @@ func (a *Aggregator) Find(ctx, ref domain.MovieRef) ([]domain.Magnet, error)
 | M1 | 全局代理 | 工作线 A | ✅ 2026-09-20 | 无 |
 | M2 | 模型与错误 | B1 | ✅ 2026-09-21 | M0 |
 | M3 | 任务与会话 | B2、B3 | ✅ 2026-09-21 | M2 |
-| M4 | 业务包迁移 | B4（2026-09-21）、B5、B6、B7、B8（2026-09-22）全部完成 | ✅ 2026-09-22 | M3 |
+| M4 | 业务包迁移 | B4 到 B8 | ✅ 2026-09-22 | M3 |
 | M5 | API 与配置收口 | B9、3.8 后端清单 | 待做，约 4 天 | M4 |
 | M6 | 磁力聚合 | 工作线 C | 待做，1 到 1.5 周 | M1、M2 |
 | M7 | JavDB 接口补齐 | 工作线 D | 待做，3 到 5 天 | M2 |
-| M8 | 前端结构清理 | 3.9 清单、`/api/discover/viewed` 增量 | 分页已收敛，其余待做，约 1 周 | 可与 M4 到 M5 并行 |
+| M8 | 前端结构清理 | 3.9 清单、`/api/discover/viewed` 增量 | 分页已收敛，其余待做，约 1 周 | 可与 M5 并行 |
 | M9 | 字幕自动化与播放集成 | 工作线 E | 待做，4 到 5 天 | M2、M5 |
 
-剩余约 6 周单人工作量。串行顺序 M4（B5 → B8 已完成）→ M5（B9）→ M6 → M7 → M9；M8 并行。下一步：M4 审查（fabel 审查）后进入 M5（B9 API 层与配置收敛）。
-
+剩余约 5 到 6 周单人工作量。串行顺序 M5 → M6 → M7 → M9，M8 并行。下一步：B9。
 
 ---
 
@@ -479,7 +477,8 @@ func (a *Aggregator) Find(ctx, ref domain.MovieRef) ([]domain.Magnet, error)
 - `-race` 需要 cgo；Windows 开发机默认 `CGO_ENABLED=0` 跑不了，在 Linux（Docker 构建镜像或 WSL）上跑 `go test ./... -race`，至少每个里程碑收口时跑一次。
 - M2 起：黄金 JSON 测试证明所列端点响应逐字节一致。
 - M3：`drive` 并发测试覆盖登出、换目录、令牌刷新中途发生三类场景（已迁入 `internal/drive`）。
-- M4：e2e 测试在每个包迁出后重跑；`internal/service` 删除时 e2e 必须仍然通过。
+- M4：e2e 测试在每个包迁出后重跑；`internal/service` 删除时 e2e 仍通过（已验证，`9b4d21f`）。
+- M4 起：`internal/app/deps_test.go` 锁定依赖方向，业务包之间、`drive / tasks / database` 对业务包不得出现 import。
 - M6：JavBus 固件测试；聚合器测试覆盖单源超时、单源失败、重复 infohash 合并、`Inferred` 标记、排序稳定性。
 - 浏览器行为按项目约定由你验证：设置页网络分区、磁力卡片徽章、排行标签页、评论折叠区、分页器。
 
@@ -498,6 +497,10 @@ func (a *Aggregator) Find(ctx, ref domain.MovieRef) ([]domain.Magnet, error)
 - 番号识别（2026-09-20 决定，`498bc3c` 落地）：不引入静态前缀字典；`codeid.IsEquivalent` 核心数字一致且前缀包含时放行并收敛为 NFO 标准番号。
 - 已浏览（2026-09-21）：只存 JavDB ID 不存番号；`browse.viewed_movies` 迁 `viewed_movie` 表，启动时一次性迁移并删旧键；API 路径与 JSON 形状不变，增量拉取留 M8。
 - `cover` 任务 payload 的 `artworkOrigin` json 标签保持 B1 之前形状（`9ba78b9` 还原了 `326f63e` 的误删）。
+- 订阅表（2026-09-22，`ccf1750`）：`monitors` 在 B6 更名 `subscriptions` 并按 4.5 扩字段，旧行以 `kind=movie、auto_download=1` 迁入后删表；`/api/monitors*` 路径与响应暂不变，前端零改动，换 `/api/subscriptions` 随工作线 C。
+- 周期任务（2026-09-22）：离线同步与订阅检查两个循环统一为 `tasks.RunPeriodic`，由 `app.Run` 启动；`monitor` 通过 `Pending()` 通道提前唤醒。
+- 业务包边界（2026-09-22）：业务包只通过 `domain` 类型或调用方定义的接口交互（`offline.Catalogue / TargetedScanner`、`monitor.Discoverer / OfflineAdder`、`maintenance.ArtworkLocker`、`catalogue.Provider / LocalState`）。跨包 DTO 进 `domain`，跨包 ent 查询范围进 `database`，不在业务包之间 import。规则由 `app/deps_test.go` 强制。
+- 别名（2026-09-22）：迁包时留下的 17 个 `type X = Y` 兼容别名全部删除，后续迁移一律直接改引用，不留别名。
 
 **网络与代理**
 

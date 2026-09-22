@@ -5,12 +5,13 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/offline"
 )
 
 type OfflineManager interface {
-	Add(context.Context, string, string) (offline.Submission, error)
-	Tasks(context.Context, string, string) ([]offline.Submission, error)
+	Add(context.Context, string, string) (domain.OfflineSubmission, error)
+	Tasks(context.Context, string, string) ([]domain.OfflineSubmission, error)
 	Activity(context.Context) (offline.Activity, error)
 }
 

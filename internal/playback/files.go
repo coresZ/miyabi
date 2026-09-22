@@ -5,26 +5,21 @@ import (
 	"fmt"
 	"io/fs"
 
+	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
-	"github.com/ppxb/miyabi/internal/ent/predicate"
 	"github.com/ppxb/miyabi/internal/ent/watchhistory"
-	"github.com/ppxb/miyabi/internal/library/scan"
 )
-
-func historyScope(source domain.LibrarySource) predicate.WatchHistory {
-	return watchhistory.And(watchhistory.AccountIDEQ(source.AccountID), watchhistory.RootIDEQ(source.Directory.ID))
-}
 
 func (service *Service) Files(ctx context.Context, movieID int) (PlayFiles, error) {
 	source := service.drive.Source()
 	if source == nil {
 		return PlayFiles{}, drive.ErrMediaDirectoryRequired
 	}
-	scope := scan.LibraryFiles(*source)
+	scope := database.LibraryFiles(*source)
 	record, err := service.database.Movie.Query().
 		Where(movie.IDEQ(movieID), movie.HasFilesWith(scope)).
 		WithFiles(func(query *ent.FileQuery) {
@@ -33,19 +28,19 @@ func (service *Service) Files(ctx context.Context, movieID int) (PlayFiles, erro
 	if err != nil {
 		return PlayFiles{}, fmt.Errorf("read playable movie: %w", err)
 	}
-	result := PlayFiles{Code: record.Code, Title: record.Title, Files: make([]LibraryFile, 0, len(record.Edges.Files))}
+	result := PlayFiles{Code: record.Code, Title: record.Title, Files: make([]domain.LibraryFile, 0, len(record.Edges.Files))}
 	for _, entry := range record.Edges.Files {
-		result.Files = append(result.Files, LibraryFile{ID: entry.FileID, Name: entry.Name, Path: entry.Path, Size: entry.Size})
+		result.Files = append(result.Files, domain.LibraryFile{ID: entry.FileID, Name: entry.Name, Path: entry.Path, Size: entry.Size})
 	}
-	result.Source = WatchHistoryScope{AccountID: source.AccountID, DirectoryID: source.Directory.ID}
+	result.Source = domain.WatchHistoryScope{AccountID: source.AccountID, DirectoryID: source.Directory.ID}
 	history, err := service.database.WatchHistory.Query().
-		Where(historyScope(*source), watchhistory.MovieIDEQ(movieID)).
+		Where(database.WatchHistory(*source), watchhistory.MovieIDEQ(movieID)).
 		Select(watchhistory.FieldID, watchhistory.FieldFileID, watchhistory.FieldPosition, watchhistory.FieldDuration).Only(ctx)
 	if err != nil && !ent.IsNotFound(err) {
 		return PlayFiles{}, fmt.Errorf("read playback resume: %w", err)
 	}
 	if history != nil {
-		result.Resume = &WatchResume{ID: history.ID, FileID: history.FileID, Position: history.Position, Duration: history.Duration}
+		result.Resume = &domain.WatchResume{ID: history.ID, FileID: history.FileID, Position: history.Position, Duration: history.Duration}
 	}
 	return result, nil
 }
@@ -56,7 +51,7 @@ func (service *Service) Start(ctx context.Context, fileID string) (Playback, err
 		return Playback{}, err
 	}
 	source := sess.Source()
-	_, err = service.database.File.Query().Where(scan.LibraryFiles(source), file.FileIDEQ(fileID)).Only(ctx)
+	_, err = service.database.File.Query().Where(database.LibraryFiles(source), file.FileIDEQ(fileID)).Only(ctx)
 	if err != nil {
 		return Playback{}, fmt.Errorf("read indexed video: %w", err)
 	}

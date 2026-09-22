@@ -14,7 +14,6 @@ import (
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
-
 func TestOfflineSyncContinuesPastIndividualFailures(t *testing.T) {
 	service, first, input, _ := offlineFixture(t)
 	ctx := t.Context()
@@ -200,7 +199,7 @@ func TestOfflineMissingLocationStopsPendingWorkflow(t *testing.T) {
 		t.Fatalf("read activity: %+v, %v", activity, err)
 	}
 	state := activity.Tasks[0]
-	if state.Status != task.StatusDone || state.Processing || state.Error == nil {
+	if state.Status != string(task.StatusDone) || state.Processing || state.Error == nil {
 		t.Fatalf("removed remote history kept an endless pending workflow: %+v", state)
 	}
 	service = New(service.database, nil, service.drive, tasks.NewService(service.database, tasks.NewRegistry()), service.library)
@@ -260,4 +259,3 @@ func TestOfflinePageFileTrackingRollsBackWithTheIndex(t *testing.T) {
 		t.Fatalf("download file tracking escaped rollback: %+v err=%v", saved, err)
 	}
 }
-

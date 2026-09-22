@@ -20,8 +20,8 @@ import (
 	"github.com/ppxb/miyabi/internal/pan"
 )
 
-func testWatchScope(source domain.LibrarySource) WatchHistoryScope {
-	return WatchHistoryScope{AccountID: source.AccountID, DirectoryID: source.Directory.ID}
+func testWatchScope(source domain.LibrarySource) domain.WatchHistoryScope {
+	return domain.WatchHistoryScope{AccountID: source.AccountID, DirectoryID: source.Directory.ID}
 }
 
 func TestPlayFilesUsesOnlyCurrentLibrarySource(t *testing.T) {

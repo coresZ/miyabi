@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
+	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
@@ -57,20 +58,6 @@ type Page struct {
 	HasMore bool                  `json:"has_more"`
 }
 
-type File struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Path string `json:"path"`
-	Size int64  `json:"size"`
-}
-
-// Aliases for compatibility
-type LibraryEntity = Entity
-type LibraryTag = Tag
-type LibraryMovie = Movie
-type LibraryPage = Page
-type LibraryFile = File
-
 type Service struct {
 	images   *mediaimage.Cache
 	database *ent.Client
@@ -101,7 +88,6 @@ func New(database *ent.Client, d *drive.Drive, tasks *tasks.Service, images *med
 	return svc
 }
 
-
 func (s *Service) StartScan(ctx context.Context) (tasks.TaskInfo, error) {
 	sess, err := s.drive.Open(ctx)
 	if err != nil {
@@ -127,7 +113,7 @@ func (s *Service) MatchingMovies(ctx context.Context, javdbIDs []string, codes [
 	}
 	records, err := s.database.Movie.Query().Where(
 		movie.Or(movie.JavdbIDIn(javdbIDs...), movie.And(movie.JavdbIDIsNil(), movie.CodeIn(codes...))),
-		movie.HasFilesWith(scan.LibraryFiles(*source)),
+		movie.HasFilesWith(database.LibraryFiles(*source)),
 	).Select(movie.FieldID, movie.FieldCode, movie.FieldJavdbID).All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("query matching movies: %w", err)
@@ -147,19 +133,12 @@ func (s *Service) Scan(ctx context.Context, job tasks.Job) error {
 	return s.scanner.Run(ctx, job)
 }
 
-
-
 func (s *Service) Finished(context.Context, *ent.Tx, tasks.Job, error) (tasks.Change, error) {
 	return tasks.ChangeOffline, nil
 }
 
-// EnqueueTargetedScan enqueues a targeted library scan task within the provided transaction.
+// EnqueueTargetedScan creates a targeted scan task inside the caller's transaction.
 func (s *Service) EnqueueTargetedScan(ctx context.Context, tx *ent.Tx, source domain.LibrarySource, targetID string, offlineTaskID int, code, javdbID string) (int, error) {
-	return EnqueueTargetedScan(ctx, tx, source, targetID, offlineTaskID, code, javdbID)
-}
-
-// EnqueueTargetedScan enqueues a targeted library scan task within the provided transaction.
-func EnqueueTargetedScan(ctx context.Context, tx *ent.Tx, source domain.LibrarySource, targetID string, offlineTaskID int, code, javdbID string) (int, error) {
 	encoded, err := tasks.EncodePayload(scan.Payload{
 		Source:        source,
 		Scan:          domain.ScanProgress{Stage: "queued", CurrentPath: source.Directory.Path},
@@ -188,7 +167,7 @@ func (s *Service) Movies(ctx context.Context, page, limit int) (Page, error) {
 		return result, nil
 	}
 	result.Source = source
-	scope := scan.LibraryFiles(*source)
+	scope := database.LibraryFiles(*source)
 	var err error
 	result.Total, err = s.database.File.Query().Where(scope).Aggregate(func(selector *sql.Selector) string {
 		return sql.As("COUNT(DISTINCT "+selector.C(file.FieldMovieID)+")", "total")

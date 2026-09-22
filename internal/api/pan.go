@@ -10,7 +10,7 @@ import (
 	"github.com/ppxb/miyabi/internal/pan"
 )
 
-type PanManager interface {
+type DriveManager interface {
 	Account(context.Context) (drive.AccountStatus, error)
 	BeginLogin(context.Context) (drive.LoginSession, error)
 	LoginStatus(context.Context, string) (drive.LoginStatus, error)
@@ -33,7 +33,7 @@ type panDirectoryInput struct {
 	ID string `json:"id" binding:"required,number"`
 }
 
-func panAccountHandler(pan PanManager) gin.HandlerFunc {
+func panAccountHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		account, err := pan.Account(c.Request.Context())
 		if err != nil {
@@ -44,7 +44,7 @@ func panAccountHandler(pan PanManager) gin.HandlerFunc {
 	}
 }
 
-func panBeginLoginHandler(pan PanManager) gin.HandlerFunc {
+func panBeginLoginHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session, err := pan.BeginLogin(c.Request.Context())
 		if err != nil {
@@ -55,7 +55,7 @@ func panBeginLoginHandler(pan PanManager) gin.HandlerFunc {
 	}
 }
 
-func panLoginStatusHandler(pan PanManager) gin.HandlerFunc {
+func panLoginStatusHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var uri panLoginURI
 		if err := c.ShouldBindUri(&uri); err != nil {
@@ -71,7 +71,7 @@ func panLoginStatusHandler(pan PanManager) gin.HandlerFunc {
 	}
 }
 
-func panDisconnectHandler(pan PanManager) gin.HandlerFunc {
+func panDisconnectHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status, err := pan.Disconnect(c.Request.Context())
 		if err != nil {
@@ -82,7 +82,7 @@ func panDisconnectHandler(pan PanManager) gin.HandlerFunc {
 	}
 }
 
-func panFilesHandler(pan PanManager) gin.HandlerFunc {
+func panFilesHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var query panFilesQuery
 		if err := c.ShouldBindQuery(&query); err != nil {
@@ -98,7 +98,7 @@ func panFilesHandler(pan PanManager) gin.HandlerFunc {
 	}
 }
 
-func panSelectDirectoryHandler(pan PanManager) gin.HandlerFunc {
+func panSelectDirectoryHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input panDirectoryInput
 		if err := c.ShouldBindJSON(&input); err != nil {
@@ -114,7 +114,7 @@ func panSelectDirectoryHandler(pan PanManager) gin.HandlerFunc {
 	}
 }
 
-func panClearDirectoryHandler(pan PanManager) gin.HandlerFunc {
+func panClearDirectoryHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := pan.ClearDirectory(c.Request.Context()); err != nil {
 			c.Error(err)

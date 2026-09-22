@@ -13,7 +13,6 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
-	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
@@ -25,17 +24,20 @@ type Info struct {
 	Cache             mediaimage.CacheStats `json:"cache"`
 }
 
-// DataInfo is kept as an alias for compatibility.
-type DataInfo = Info
+// ArtworkLocker serializes cache pruning against cover downloads.
+type ArtworkLocker interface {
+	TryLockArtwork() bool
+	UnlockArtwork()
+}
 
 type Service struct {
 	directory string
 	db        *ent.Client
 	images    *mediaimage.Cache
-	scrape    *scrape.Service
+	scrape    ArtworkLocker
 }
 
-func New(directory string, db *ent.Client, images *mediaimage.Cache, scrapeSvc *scrape.Service) (*Service, error) {
+func New(directory string, db *ent.Client, images *mediaimage.Cache, scrapeSvc ArtworkLocker) (*Service, error) {
 	absolute, err := filepath.Abs(directory)
 	if err != nil {
 		return nil, fmt.Errorf("resolve data directory: %w", err)

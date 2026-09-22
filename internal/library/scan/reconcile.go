@@ -6,20 +6,14 @@ import (
 	"strings"
 
 	"entgo.io/ent/dialect/sql"
-	"github.com/ppxb/miyabi/internal/domain"
+	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
-	"github.com/ppxb/miyabi/internal/ent/predicate"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
-
-// LibraryFiles constructs a predicate matching files belonging to the given source mount.
-func LibraryFiles(source domain.LibrarySource) predicate.File {
-	return file.And(file.AccountIDEQ(source.AccountID), file.RootIDEQ(source.Directory.ID))
-}
 
 // ReconcileScan executes reconciliation within a fresh transaction.
 func ReconcileScan(ctx context.Context, db *ent.Client, taskID int, scanID string, payload *Payload, observed scrape.DirectoryObservations, images *mediaimage.Cache, tasksSvc *tasks.Service) error {
@@ -30,7 +24,7 @@ func ReconcileScan(ctx context.Context, db *ent.Client, taskID int, scanID strin
 
 // ReconcileScanTx cleans up missing files, updates offline workflows, and schedules metadata scrape tasks.
 func ReconcileScanTx(ctx context.Context, tx *ent.Tx, taskID int, scanID string, payload *Payload, observed scrape.DirectoryObservations, images *mediaimage.Cache, tasksSvc *tasks.Service) error {
-	stale := file.And(LibraryFiles(payload.Source), file.ScanIDNEQ(scanID))
+	stale := file.And(database.LibraryFiles(payload.Source), file.ScanIDNEQ(scanID))
 	if payload.TargetID != "" {
 		if payload.TargetFile {
 			stale = file.And(stale, file.FileIDEQ(payload.TargetID))
@@ -55,7 +49,7 @@ func ReconcileScanTx(ctx context.Context, tx *ent.Tx, taskID int, scanID string,
 		return err
 	}
 	payload.Scan.RemovedMovies += removed
-	indexed := file.And(LibraryFiles(payload.Source), file.ScanIDEQ(scanID))
+	indexed := file.And(database.LibraryFiles(payload.Source), file.ScanIDEQ(scanID))
 	if payload.OfflineTaskID != 0 {
 		files, err := tx.File.Query().Where(indexed).Select(file.FieldFileID).All(ctx)
 		if err != nil {
@@ -78,7 +72,7 @@ func ReconcileScanTx(ctx context.Context, tx *ent.Tx, taskID int, scanID string,
 		}
 	}
 	moviesToScrape, err := tx.File.Query().Where(indexed).QueryMovie().
-		WithFiles(func(q *ent.FileQuery) { q.Where(LibraryFiles(payload.Source)) }).All(ctx)
+		WithFiles(func(q *ent.FileQuery) { q.Where(database.LibraryFiles(payload.Source)) }).All(ctx)
 	if err != nil {
 		return fmt.Errorf("find scanned metadata jobs: %w", err)
 	}

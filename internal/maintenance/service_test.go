@@ -179,7 +179,7 @@ func TestDataCleanupPreservesAllLibraryAndUnfinishedTaskReferences(t *testing.T)
 func TestDataCleanupAndCoverWorkShareAnExclusiveGate(t *testing.T) {
 	service := dataFixture(t)
 	unused := dataArtwork(t, service, 70)
-	if err := service.scrape.LockArtwork(t.Context()); err != nil {
+	if err := service.scrape.(*scrape.Service).LockArtwork(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.ClearCache(t.Context()); !errors.Is(err, ErrCacheBusy) {
@@ -193,7 +193,7 @@ func TestDataCleanupAndCoverWorkShareAnExclusiveGate(t *testing.T) {
 	}
 	// No drive is installed in the fixture. Cover must honor cancellation while
 	// waiting for the gate, before attempting upstream access or creating files.
-	if err := service.scrape.Cover(ctx, tasks.Job{Payload: payload}); !errors.Is(err, context.Canceled) {
+	if err := service.scrape.(*scrape.Service).Cover(ctx, tasks.Job{Payload: payload}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cover did not wait on the cleanup gate: %v", err)
 	}
 	service.scrape.UnlockArtwork()

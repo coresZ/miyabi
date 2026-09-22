@@ -86,14 +86,6 @@ type Facets struct {
 	Sorts []FacetItem `json:"sorts"`
 }
 
-// Compatibility type aliases
-type DiscoverMovie = Movie
-type DiscoverMovieDetail = MovieDetail
-type DiscoverMagnet = Magnet
-type DiscoverMovieState = MovieStateItem
-type JavDBRouteStatus = RouteStatus
-type JavDBRouteCandidate = RouteCandidate
-
 // Provider represents the upstream catalogue data source (e.g. JavDB).
 type Provider interface {
 	Close()
@@ -101,7 +93,7 @@ type Provider interface {
 	Browse(context.Context, domain.BrowseOptions) ([]domain.Movie, error)
 	MovieDetail(context.Context, string) (domain.MovieDetail, error)
 	Magnets(context.Context, string) ([]domain.Magnet, error)
-	FetchMedia(context.Context, string) (javdb.Media, error)
+	FetchMedia(context.Context, string) (domain.Media, error)
 	Tags(context.Context, domain.Zone) ([]domain.TagCategory, error)
 	ResolveMovieID(context.Context, string) (string, error)
 	Route() (javdb.RouteStatus, bool)

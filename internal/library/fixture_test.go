@@ -278,8 +278,8 @@ func reconcileScan(ctx context.Context, lib *Service, taskID int, scanID string,
 	return scan.ReconcileScan(ctx, lib.database, taskID, scanID, payload, observed, lib.images, lib.tasks)
 }
 
-func testWatchScope(source domain.LibrarySource) WatchHistoryScope {
-	return WatchHistoryScope{AccountID: source.AccountID, DirectoryID: source.Directory.ID}
+func testWatchScope(source domain.LibrarySource) domain.WatchHistoryScope {
+	return domain.WatchHistoryScope{AccountID: source.AccountID, DirectoryID: source.Directory.ID}
 }
 
 func panTestGate(t *testing.T) (<-chan struct{}, func()) {
@@ -369,4 +369,3 @@ func mountSource(t testing.TB, d *drive.Drive, client *panStub, source domain.Li
 		t.Fatal(err)
 	}
 }
-

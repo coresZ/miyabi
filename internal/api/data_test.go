@@ -50,7 +50,7 @@ func TestDataEndpointsReturnUncachedStatsAndCleanupErrors(t *testing.T) {
 				DataDirectory: "/app/data", DatabaseSizeBytes: 1024,
 				Cache: mediaimage.CacheStats{SizeBytes: 4096, EntryCount: 2},
 			}}
-			router := NewRouter(Dependencies{Data: stub, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+			router := NewRouter(Dependencies{Maintenance: stub, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, httptest.NewRequest(scenario.method, scenario.path, nil))
 			if response.Code != scenario.status || response.Header().Get("Cache-Control") != "no-store" {

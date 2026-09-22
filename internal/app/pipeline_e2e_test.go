@@ -222,12 +222,12 @@ func (catalogue *fakeCatalogue) Magnets(context.Context, string) ([]domain.Magne
 	return []domain.Magnet{}, nil
 }
 
-func (catalogue *fakeCatalogue) FetchMedia(_ context.Context, rawURL string) (javdb.Media, error) {
+func (catalogue *fakeCatalogue) FetchMedia(_ context.Context, rawURL string) (domain.Media, error) {
 	catalogue.count("media")
 	if !strings.HasPrefix(rawURL, "https://media.example/") {
-		return javdb.Media{}, fmt.Errorf("unexpected media URL %q", rawURL)
+		return domain.Media{}, fmt.Errorf("unexpected media URL %q", rawURL)
 	}
-	return javdb.Media{ContentType: "image/jpeg", Body: catalogue.cover}, nil
+	return domain.Media{ContentType: "image/jpeg", Body: catalogue.cover}, nil
 }
 
 func (catalogue *fakeCatalogue) Tags(context.Context, domain.Zone) ([]domain.TagCategory, error) {
@@ -315,7 +315,6 @@ func newPipelineFixture(t *testing.T) *pipelineFixture {
 		library: library, discover: discover, scrape: scrape, images: images, source: source,
 	}
 }
-
 
 func (fixture *pipelineFixture) addCatalogueMovie(detail domain.MovieDetail) {
 	fixture.catalogue.ids[detail.Code] = detail.ID

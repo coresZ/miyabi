@@ -16,20 +16,20 @@ type HealthChecker interface {
 }
 
 type Dependencies struct {
-	Logger   *slog.Logger
-	Health   HealthChecker
-	Access   AccessGate
-	Discover Discoverer
-	Pan      PanManager
-	Offline  OfflineManager
-	Monitor  MonitorManager
-	Library  LibraryManager
-	Play     PlayManager
-	Tasks    TaskManager
-	Artwork  ArtworkReader
-	Data     DataManager
-	Network  NetworkManager
-	Frontend fs.FS
+	Logger      *slog.Logger
+	Health      HealthChecker
+	Access      AccessGate
+	Catalogue   CatalogueManager
+	Drive       DriveManager
+	Offline     OfflineManager
+	Monitor     MonitorManager
+	Library     LibraryManager
+	Play        PlayManager
+	Tasks       TaskManager
+	Artwork     ArtworkReader
+	Maintenance MaintenanceManager
+	Network     NetworkManager
+	Frontend    fs.FS
 }
 
 func NewRouter(deps Dependencies) *gin.Engine {
@@ -53,8 +53,8 @@ func NewRouter(deps Dependencies) *gin.Engine {
 		c.Header("Cache-Control", "no-store")
 		c.Next()
 	})
-	settingsAPI.GET("/system", dataInfoHandler(deps.Data))
-	settingsAPI.DELETE("/cache", dataClearCacheHandler(deps.Data))
+	settingsAPI.GET("/system", dataInfoHandler(deps.Maintenance))
+	settingsAPI.DELETE("/cache", dataClearCacheHandler(deps.Maintenance))
 	settingsAPI.GET("/network", networkHandler(deps.Network))
 	settingsAPI.PUT("/network", networkUpdateHandler(deps.Network))
 	settingsAPI.POST("/network/test", networkTestHandler(deps.Network))
@@ -86,31 +86,31 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	monitorAPI.POST("", monitorAddHandler(deps.Monitor))
 	monitorAPI.DELETE("/:id", monitorRemoveHandler(deps.Monitor))
 	monitorAPI.POST("/:id/retry", monitorRetryHandler(deps.Monitor))
-	api.GET("/discover/movies", discoverBrowseHandler(deps.Discover))
-	api.POST("/discover/movie-states", discoverMovieStatesHandler(deps.Discover))
+	api.GET("/discover/movies", discoverBrowseHandler(deps.Catalogue))
+	api.POST("/discover/movie-states", discoverMovieStatesHandler(deps.Catalogue))
 	api.GET("/discover/viewed", discoverViewedHandler(deps.Library))
 	api.POST("/discover/viewed", discoverAddViewedHandler(deps.Library))
-	api.GET("/discover/search", discoverSearchHandler(deps.Discover))
-	api.GET("/discover/tags", discoverTagsHandler(deps.Discover))
-	api.GET("/discover/movies/:id", discoverMovieHandler(deps.Discover))
-	api.GET("/discover/movies/:id/magnets", discoverMagnetsHandler(deps.Discover))
+	api.GET("/discover/search", discoverSearchHandler(deps.Catalogue))
+	api.GET("/discover/tags", discoverTagsHandler(deps.Catalogue))
+	api.GET("/discover/movies/:id", discoverMovieHandler(deps.Catalogue))
+	api.GET("/discover/movies/:id/magnets", discoverMagnetsHandler(deps.Catalogue))
 	api.POST("/discover/movies/:id/offline", offlineAddHandler(deps.Offline))
 	api.GET("/discover/movies/:id/offline", offlineTasksHandler(deps.Offline))
-	api.GET("/image", imageHandler(deps.Discover))
-	api.GET("/javdb/route", javdbRouteHandler(deps.Discover))
-	api.PUT("/javdb/route", javdbSelectRouteHandler(deps.Discover))
-	api.POST("/javdb/reselect", javdbReselectHandler(deps.Discover))
+	api.GET("/image", imageHandler(deps.Catalogue))
+	api.GET("/javdb/route", javdbRouteHandler(deps.Catalogue))
+	api.PUT("/javdb/route", javdbSelectRouteHandler(deps.Catalogue))
+	api.POST("/javdb/reselect", javdbReselectHandler(deps.Catalogue))
 	panAPI := api.Group("/pan", func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		c.Next()
 	})
-	panAPI.GET("/account", panAccountHandler(deps.Pan))
-	panAPI.DELETE("/account", panDisconnectHandler(deps.Pan))
-	panAPI.POST("/login", panBeginLoginHandler(deps.Pan))
-	panAPI.GET("/login/:id", panLoginStatusHandler(deps.Pan))
-	panAPI.GET("/files", panFilesHandler(deps.Pan))
-	panAPI.PUT("/directory", panSelectDirectoryHandler(deps.Pan))
-	panAPI.DELETE("/directory", panClearDirectoryHandler(deps.Pan))
+	panAPI.GET("/account", panAccountHandler(deps.Drive))
+	panAPI.DELETE("/account", panDisconnectHandler(deps.Drive))
+	panAPI.POST("/login", panBeginLoginHandler(deps.Drive))
+	panAPI.GET("/login/:id", panLoginStatusHandler(deps.Drive))
+	panAPI.GET("/files", panFilesHandler(deps.Drive))
+	panAPI.PUT("/directory", panSelectDirectoryHandler(deps.Drive))
+	panAPI.DELETE("/directory", panClearDirectoryHandler(deps.Drive))
 
 	if deps.Frontend != nil {
 		installFrontend(router, deps.Frontend)

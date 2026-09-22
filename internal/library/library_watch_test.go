@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/movie"
@@ -93,7 +94,7 @@ func TestMarkWatchedRejectsTheSourceOfAnOlderOpening(t *testing.T) {
 	}
 	film := lib.database.Movie.Query().OnlyX(ctx)
 	before := lib.tasks.Revisions()
-	for _, scope := range []WatchHistoryScope{
+	for _, scope := range []domain.WatchHistoryScope{
 		{AccountID: "old-account", DirectoryID: payload.Source.Directory.ID},
 		{AccountID: payload.Source.AccountID, DirectoryID: "old-directory"},
 	} {

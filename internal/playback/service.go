@@ -3,21 +3,17 @@ package playback
 import (
 	"sync"
 
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
-	"github.com/ppxb/miyabi/internal/library"
 )
 
-type LibraryFile = library.File
-type WatchHistoryScope = library.WatchHistoryScope
-type WatchResume = library.WatchResume
-
 type PlayFiles struct {
-	Code   string            `json:"code"`
-	Title  string            `json:"title"`
-	Files  []LibraryFile     `json:"files"`
-	Source WatchHistoryScope `json:"source"`
-	Resume *WatchResume      `json:"resume,omitempty"`
+	Code   string                   `json:"code"`
+	Title  string                   `json:"title"`
+	Files  []domain.LibraryFile     `json:"files"`
+	Source domain.WatchHistoryScope `json:"source"`
+	Resume *domain.WatchResume      `json:"resume,omitempty"`
 }
 
 type MediaSource struct {

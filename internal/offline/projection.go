@@ -15,37 +15,16 @@ import (
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
-// Submission represents a projected view of an offline download task.
-type Submission struct {
-	TaskID      int         `json:"task_id"`
-	Code        string      `json:"code"`
-	JavDBID     string      `json:"javdb_id"`
-	LibraryID   int         `json:"library_id,omitempty"`
-	AccountID   string      `json:"account_id"`
-	DirectoryID string      `json:"directory_id"`
-	ScanTaskID  int         `json:"scan_task_id,omitempty"`
-	Hash        string      `json:"hash"`
-	Status      task.Status `json:"status"`
-	Phase       string      `json:"phase"`
-	Processing  bool        `json:"processing"`
-	Progress    int         `json:"progress"`
-	Error       *string     `json:"error,omitempty"`
-}
-
 // Activity summarizes current offline download tasks alongside the active library source.
 type Activity struct {
-	Source *domain.LibrarySource `json:"source,omitempty"`
-	Tasks  []Submission          `json:"tasks"`
+	Source *domain.LibrarySource      `json:"source,omitempty"`
+	Tasks  []domain.OfflineSubmission `json:"tasks"`
 }
-
-// Aliases for compatibility
-type OfflineSubmission = Submission
-type OfflineActivity = Activity
 
 // Activity only reads local tasks and the mounted file index. Keeping each
 // magnet's latest workflow also retains long downloads until their final state.
 func (service *Service) Activity(ctx context.Context) (Activity, error) {
-	result := Activity{Tasks: []Submission{}}
+	result := Activity{Tasks: []domain.OfflineSubmission{}}
 	source := service.drive.Source()
 	result.Source = source
 	if source == nil {
@@ -66,7 +45,7 @@ func (service *Service) Activity(ctx context.Context) (Activity, error) {
 
 // Tasks projects history through the current file index and workflow. A
 // finished remote task alone never means the resource still exists.
-func (service *Service) Tasks(ctx context.Context, movieID, accountID string) ([]Submission, error) {
+func (service *Service) Tasks(ctx context.Context, movieID, accountID string) ([]domain.OfflineSubmission, error) {
 	records, err := latestOfflineTasks(ctx, service.database.Task.Query().Where(task.TypeEQ(tasks.KindOffline.String()), func(s *sql.Selector) {
 		s.Where(sql.And(
 			sqljson.ValueEQ(task.FieldPayload, movieID, sqljson.Path(tasks.PathJavDBID)),
@@ -80,17 +59,17 @@ func (service *Service) Tasks(ctx context.Context, movieID, accountID string) ([
 	return service.submissions(ctx, records, source)
 }
 
-func (service *Service) submission(ctx context.Context, record *ent.Task, source *domain.LibrarySource) (Submission, error) {
+func (service *Service) submission(ctx context.Context, record *ent.Task, source *domain.LibrarySource) (domain.OfflineSubmission, error) {
 	items, err := service.submissions(ctx, []*ent.Task{record}, source)
 	if err != nil {
-		return Submission{}, err
+		return domain.OfflineSubmission{}, err
 	}
 	return items[0], nil
 }
 
 // Project task workflows and file presence in batches. The global observer and
 // movie buttons share this view without a database query for every download.
-func (service *Service) submissions(ctx context.Context, records []*ent.Task, source *domain.LibrarySource) ([]Submission, error) {
+func (service *Service) submissions(ctx context.Context, records []*ent.Task, source *domain.LibrarySource) ([]domain.OfflineSubmission, error) {
 	inputs := make([]offlinePayload, len(records))
 	var scanIDs []int
 	var fileIDs []string
@@ -143,11 +122,11 @@ func (service *Service) submissions(ctx context.Context, records []*ent.Task, so
 			indexed[entry.FileID] = entry.Edges.Movie
 		}
 	}
-	result := make([]Submission, len(records))
+	result := make([]domain.OfflineSubmission, len(records))
 	for index, record := range records {
 		input := inputs[index]
 		item := &result[index]
-		*item = Submission{
+		*item = domain.OfflineSubmission{
 			TaskID:      record.ID,
 			Code:        input.Code,
 			JavDBID:     input.JavDBID,
@@ -155,7 +134,7 @@ func (service *Service) submissions(ctx context.Context, records []*ent.Task, so
 			DirectoryID: input.DirectoryID,
 			ScanTaskID:  input.ScanTaskID,
 			Hash:        input.Hash,
-			Status:      record.Status,
+			Status:      string(record.Status),
 			Progress:    record.Progress,
 			Error:       record.Error,
 			Phase:       "available",

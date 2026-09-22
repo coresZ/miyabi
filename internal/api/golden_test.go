@@ -30,13 +30,12 @@ import (
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
-
 // Golden files freeze the JSON contract the frontend depends on. Run with
 // -update after an intentional wire change and review the diff.
 var updateGolden = flag.Bool("update", false, "rewrite golden response files")
 
 type goldenDiscover struct {
-	Discoverer
+	CatalogueManager
 }
 
 func goldenMovie() domain.Movie {
@@ -111,7 +110,6 @@ func (goldenDiscover) Route() catalogue.RouteStatus {
 		}}
 }
 
-
 type goldenLibrary struct {
 	LibraryManager
 }
@@ -178,13 +176,13 @@ type goldenOffline struct {
 func (goldenOffline) Activity(context.Context) (offline.Activity, error) {
 	source := goldenSource()
 	failure := "115 离线任务失败"
-	return offline.Activity{Source: &source, Tasks: []offline.Submission{
+	return offline.Activity{Source: &source, Tasks: []domain.OfflineSubmission{
 		{TaskID: 9, Code: "ABP-123", JavDBID: "movie-exact", LibraryID: 7, AccountID: "100", DirectoryID: "10", ScanTaskID: 2,
-			Hash: "0000000000000000000000000000000000000003", Status: task.StatusDone, Phase: "in_library", Progress: 100},
+			Hash: "0000000000000000000000000000000000000003", Status: string(task.StatusDone), Phase: "in_library", Progress: 100},
 		{TaskID: 10, Code: "SONE-001", JavDBID: "related-movie-1", AccountID: "100", DirectoryID: "10",
-			Hash: "0000000000000000000000000000000000000002", Status: task.StatusRunning, Phase: "downloading", Processing: true, Progress: 42},
+			Hash: "0000000000000000000000000000000000000002", Status: string(task.StatusRunning), Phase: "downloading", Processing: true, Progress: 42},
 		{TaskID: 11, Code: "ZZZ-999", JavDBID: "movie-missing", AccountID: "100", DirectoryID: "10",
-			Hash: "0000000000000000000000000000000000000001", Status: task.StatusFailed, Phase: "available", Error: &failure},
+			Hash: "0000000000000000000000000000000000000001", Status: string(task.StatusFailed), Phase: "available", Error: &failure},
 	}}, nil
 }
 
@@ -204,7 +202,7 @@ func (goldenMonitor) List(context.Context) ([]monitor.Item, error) {
 }
 
 type goldenPan struct {
-	PanManager
+	DriveManager
 }
 
 func (goldenPan) Account(context.Context) (drive.AccountStatus, error) {
@@ -221,9 +219,9 @@ type goldenPlay struct {
 
 func (goldenPlay) Files(context.Context, int) (playback.PlayFiles, error) {
 	return playback.PlayFiles{Code: "ABP-123", Title: "Localized title",
-		Files:  []library.File{{ID: "101", Name: "ABP-123.mp4", Path: "/Movies/ABP-123/ABP-123.mp4", Size: 2 << 30}},
-		Source: library.WatchHistoryScope{AccountID: "100", DirectoryID: "10"},
-		Resume: &library.WatchResume{ID: 1, FileID: "101", Position: 61.5, Duration: 7200}}, nil
+		Files:  []domain.LibraryFile{{ID: "101", Name: "ABP-123.mp4", Path: "/Movies/ABP-123/ABP-123.mp4", Size: 2 << 30}},
+		Source: domain.WatchHistoryScope{AccountID: "100", DirectoryID: "10"},
+		Resume: &domain.WatchResume{ID: 1, FileID: "101", Position: 61.5, Duration: 7200}}, nil
 }
 
 func (goldenPlay) Start(context.Context, string) (playback.Playback, error) {
@@ -234,7 +232,7 @@ func (goldenPlay) Start(context.Context, string) (playback.Playback, error) {
 }
 
 type goldenData struct {
-	DataManager
+	MaintenanceManager
 }
 
 func (goldenData) Info(context.Context) (maintenance.Info, error) {
@@ -244,8 +242,8 @@ func (goldenData) Info(context.Context) (maintenance.Info, error) {
 
 func goldenRouter() http.Handler {
 	return NewRouter(Dependencies{
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Discover: goldenDiscover{}, Library: goldenLibrary{},
-		Tasks: goldenTasks{}, Offline: goldenOffline{}, Monitor: goldenMonitor{}, Pan: goldenPan{}, Play: goldenPlay{}, Data: goldenData{},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Catalogue: goldenDiscover{}, Library: goldenLibrary{},
+		Tasks: goldenTasks{}, Offline: goldenOffline{}, Monitor: goldenMonitor{}, Drive: goldenPan{}, Play: goldenPlay{}, Maintenance: goldenData{},
 	})
 }
 

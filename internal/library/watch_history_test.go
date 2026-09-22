@@ -182,11 +182,11 @@ func TestClearingHistoryPreservesMoviesAndCannotBeUndoneByLateProgress(t *testin
 	}
 	other := lib.database.WatchHistory.Create().SetAccountID("other").SetRootID("10").SetMovie(first).
 		SetSessionID(uuid.NewString()).SaveX(ctx)
-	scope := WatchHistoryScope{AccountID: payload.Source.AccountID, DirectoryID: payload.Source.Directory.ID}
+	scope := domain.WatchHistoryScope{AccountID: payload.Source.AccountID, DirectoryID: payload.Source.Directory.ID}
 	if count, err := lib.RemoveWatchHistory(ctx, scope, nil); err != nil || count != 0 {
 		t.Fatalf("empty selection must not clear history: %d, %v", count, err)
 	}
-	if _, err := lib.ClearWatchHistory(ctx, WatchHistoryScope{AccountID: "other", DirectoryID: "10"}); !errors.Is(err, ErrWatchHistorySourceChanged) {
+	if _, err := lib.ClearWatchHistory(ctx, domain.WatchHistoryScope{AccountID: "other", DirectoryID: "10"}); !errors.Is(err, ErrWatchHistorySourceChanged) {
 		t.Fatalf("a stale clear operation was accepted: %v", err)
 	}
 	if count, err := lib.RemoveWatchHistory(ctx, scope, []int{firstSession.ID, other.ID}); err != nil || count != 1 {

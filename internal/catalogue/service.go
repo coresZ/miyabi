@@ -14,7 +14,6 @@ import (
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/javdb"
-	"github.com/ppxb/miyabi/internal/monitor"
 	"github.com/ppxb/miyabi/internal/netx"
 )
 
@@ -42,9 +41,6 @@ type Service struct {
 	routeMu sync.RWMutex
 	route   RouteStatus
 }
-
-// DiscoverService is an alias for Service.
-type DiscoverService = Service
 
 // New creates the lazy JavDB client and restores/persists device UUID and route settings.
 func New(
@@ -221,12 +217,12 @@ func (service *Service) MovieCode(ctx context.Context, movieID string) (string, 
 	return movie.Code, nil
 }
 
-func (service *Service) MovieSummary(ctx context.Context, movieID string) (monitor.MovieSummary, error) {
+func (service *Service) MovieSummary(ctx context.Context, movieID string) (domain.MovieSummary, error) {
 	detail, err := service.MovieDetail(ctx, movieID)
 	if err != nil {
-		return monitor.MovieSummary{}, err
+		return domain.MovieSummary{}, err
 	}
-	return monitor.MovieSummary{
+	return domain.MovieSummary{
 		ID:          detail.ID,
 		Code:        detail.Code,
 		Title:       detail.Title,
@@ -246,10 +242,10 @@ func (service *Service) FirstMagnetHash(ctx context.Context, movieID string) (st
 	return strings.ToLower(magnets[0].Hash), nil
 }
 
-func (service *Service) Media(ctx context.Context, rawURL string) (javdb.Media, error) {
+func (service *Service) Media(ctx context.Context, rawURL string) (domain.Media, error) {
 	media, err := service.javdb.FetchMedia(ctx, rawURL)
 	if err != nil {
-		return javdb.Media{}, fmt.Errorf("fetch JavDB media: %w", err)
+		return domain.Media{}, fmt.Errorf("fetch JavDB media: %w", err)
 	}
 	return media, nil
 }

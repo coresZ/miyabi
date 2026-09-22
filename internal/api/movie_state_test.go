@@ -13,7 +13,7 @@ import (
 )
 
 type movieStateStub struct {
-	Discoverer
+	CatalogueManager
 	movies []catalogue.MovieIdentity
 }
 
@@ -21,7 +21,6 @@ func (stub *movieStateStub) MovieStates(_ context.Context, movies []catalogue.Mo
 	stub.movies = movies
 	return []catalogue.MovieStateItem{{ID: movies[0].ID, State: catalogue.MovieInLibrary, LibraryID: 42}}, nil
 }
-
 
 func TestMovieStatesHandlerValidatesBatchesAndDisablesHTTPCaching(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -70,4 +69,3 @@ func TestMovieStatesHandlerValidatesBatchesAndDisablesHTTPCaching(t *testing.T) 
 		})
 	}
 }
-

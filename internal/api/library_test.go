@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/library"
 )
@@ -20,7 +21,7 @@ type libraryWatchStub struct {
 	LibraryManager
 	id    int
 	err   error
-	scope library.WatchHistoryScope
+	scope domain.WatchHistoryScope
 }
 
 type libraryPageStub struct {
@@ -53,7 +54,7 @@ func TestLibraryMoviesDefaultToTwentyPerPage(t *testing.T) {
 	}
 }
 
-func (stub *libraryWatchStub) MarkWatched(_ context.Context, id int, scope library.WatchHistoryScope) (library.WatchSession, error) {
+func (stub *libraryWatchStub) MarkWatched(_ context.Context, id int, scope domain.WatchHistoryScope) (library.WatchSession, error) {
 	stub.id = id
 	stub.scope = scope
 	return library.WatchSession{ID: 7, SessionID: "session", FileID: "video", Position: 60, Duration: 600}, stub.err

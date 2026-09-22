@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/task"
 )
@@ -37,12 +38,12 @@ func TestOfflineHistoryLoadsOnlyLatestTasksAndRetainsOldDownloads(t *testing.T) 
 			return value, err
 		})
 	}))
-	for _, read := range []func() ([]Submission, error){
-		func() ([]Submission, error) {
+	for _, read := range []func() ([]domain.OfflineSubmission, error){
+		func() ([]domain.OfflineSubmission, error) {
 			activity, err := service.Activity(ctx)
 			return activity.Tasks, err
 		},
-		func() ([]Submission, error) { return service.Tasks(ctx, input.JavDBID, input.AccountID) },
+		func() ([]domain.OfflineSubmission, error) { return service.Tasks(ctx, input.JavDBID, input.AccountID) },
 	} {
 		rowsRead = 0
 		records, err := read()
@@ -50,7 +51,7 @@ func TestOfflineHistoryLoadsOnlyLatestTasksAndRetainsOldDownloads(t *testing.T) 
 			t.Fatalf("history was hydrated or limited before grouping: %d records, %d rows, %v", len(records), rowsRead, err)
 		}
 		old := records[len(records)-1]
-		if old.TaskID != pending.ID || old.Status != task.StatusRunning || old.Progress != 17 || old.Phase != "downloading" {
+		if old.TaskID != pending.ID || old.Status != string(task.StatusRunning) || old.Progress != 17 || old.Phase != "downloading" {
 			t.Fatalf("old download disappeared behind completed history: %#v", old)
 		}
 	}

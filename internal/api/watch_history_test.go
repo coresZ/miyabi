@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/library"
 )
 
@@ -17,7 +18,7 @@ type watchHistoryStub struct {
 	called   string
 	page     int
 	ids      []int
-	scope    library.WatchHistoryScope
+	scope    domain.WatchHistoryScope
 	progress library.WatchProgress
 	err      error
 }
@@ -32,12 +33,12 @@ func (stub *watchHistoryStub) SaveWatchProgress(_ context.Context, id int, progr
 	return stub.err
 }
 
-func (stub *watchHistoryStub) RemoveWatchHistory(_ context.Context, scope library.WatchHistoryScope, ids []int) (int, error) {
+func (stub *watchHistoryStub) RemoveWatchHistory(_ context.Context, scope domain.WatchHistoryScope, ids []int) (int, error) {
 	stub.called, stub.scope, stub.ids = "remove", scope, ids
 	return len(ids), stub.err
 }
 
-func (stub *watchHistoryStub) ClearWatchHistory(_ context.Context, scope library.WatchHistoryScope) (int, error) {
+func (stub *watchHistoryStub) ClearWatchHistory(_ context.Context, scope domain.WatchHistoryScope) (int, error) {
 	stub.called, stub.scope = "clear", scope
 	return 2, stub.err
 }

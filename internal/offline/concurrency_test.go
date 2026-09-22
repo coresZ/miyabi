@@ -10,13 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
 type offlineAddResult struct {
-	submission Submission
+	submission domain.OfflineSubmission
 	err        error
 }
 
@@ -253,10 +254,10 @@ func TestOfflineDuplicateHistoryPreservesRedownloadBehavior(t *testing.T) {
 				t.Fatal(err)
 			}
 			if present {
-				if adds != 1 || removes != 0 || result.Status != task.StatusDone || result.ScanTaskID == 0 {
+				if adds != 1 || removes != 0 || result.Status != string(task.StatusDone) || result.ScanTaskID == 0 {
 					t.Fatalf("existing video was resubmitted: adds=%d removes=%d result=%+v", adds, removes, result)
 				}
-			} else if adds != 2 || removes != 1 || result.Status != task.StatusRunning || result.ScanTaskID != 0 {
+			} else if adds != 2 || removes != 1 || result.Status != string(task.StatusRunning) || result.ScanTaskID != 0 {
 				t.Fatalf("missing video was not resubmitted: adds=%d removes=%d result=%+v", adds, removes, result)
 			}
 		})

@@ -35,14 +35,10 @@ func New(driveSvc *drive.Drive, db *ent.Client, images *mediaimage.Cache, tasksS
 	}
 }
 
-// Run executes a library scan job.
+// Run executes a library scan job: it walks the media directories, matches NFOs
+// and videos, indexes movies and files, and enqueues metadata scraping.
 func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
-	return Scan(ctx, job, s.driveSvc, s.db, s.images, s.tasksSvc)
-}
-
-// Scan executes a library scan job, traversing media directories, matching NFOs and videos,
-// indexing movies and files, and triggering metadata scraping.
-func Scan(ctx context.Context, job tasks.Job, driveSvc *drive.Drive, db *ent.Client, images *mediaimage.Cache, tasksSvc *tasks.Service) error {
+	driveSvc, db, images, tasksSvc := s.driveSvc, s.db, s.images, s.tasksSvc
 
 	payload, err := tasks.DecodePayload[Payload](job.Payload)
 	if err != nil {

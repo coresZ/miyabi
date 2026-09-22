@@ -7,22 +7,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/ppxb/miyabi/internal/catalogue"
 	"github.com/ppxb/miyabi/internal/domain"
-	"github.com/ppxb/miyabi/internal/javdb"
 )
 
-type Discoverer interface {
+type CatalogueManager interface {
 	Search(context.Context, string, domain.SearchOptions) ([]catalogue.Movie, error)
 	Browse(context.Context, domain.BrowseOptions) ([]catalogue.Movie, error)
 	MovieDetail(context.Context, string) (catalogue.MovieDetail, error)
 	MovieStates(context.Context, []catalogue.MovieIdentity) ([]catalogue.MovieStateItem, error)
 	Magnets(context.Context, string) ([]catalogue.Magnet, error)
 	Tags(context.Context, domain.Zone) ([]domain.TagCategory, error)
-	Media(context.Context, string) (javdb.Media, error)
+	Media(context.Context, string) (domain.Media, error)
 	Route() catalogue.RouteStatus
 	Reselect(context.Context) (catalogue.RouteStatus, error)
 	SelectRoute(context.Context, string) (catalogue.RouteStatus, error)
 }
-
 
 type ViewedManager interface {
 	ViewedMovieIDs(context.Context, ...int) ([]string, error)
@@ -61,8 +59,7 @@ type movieStatesInput struct {
 	Movies []catalogue.MovieIdentity `json:"movies" binding:"required,min=1,max=100,dive"`
 }
 
-
-func discoverMovieStatesHandler(discover Discoverer) gin.HandlerFunc {
+func discoverMovieStatesHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input movieStatesInput
 		if err := c.ShouldBindJSON(&input); err != nil {
@@ -87,7 +84,7 @@ type javdbRouteInput struct {
 	Host string `json:"host" binding:"omitempty,url"`
 }
 
-func discoverSearchHandler(discover Discoverer) gin.HandlerFunc {
+func discoverSearchHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var query discoverSearchQuery
 		if err := c.ShouldBindQuery(&query); err != nil {
@@ -106,7 +103,7 @@ func discoverSearchHandler(discover Discoverer) gin.HandlerFunc {
 	}
 }
 
-func discoverBrowseHandler(discover Discoverer) gin.HandlerFunc {
+func discoverBrowseHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var query discoverBrowseQuery
 		if err := c.ShouldBindQuery(&query); err != nil {
@@ -134,7 +131,7 @@ func discoverBrowseHandler(discover Discoverer) gin.HandlerFunc {
 	}
 }
 
-func discoverMovieHandler(discover Discoverer) gin.HandlerFunc {
+func discoverMovieHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var uri movieURI
 		if err := c.ShouldBindUri(&uri); err != nil {
@@ -150,7 +147,7 @@ func discoverMovieHandler(discover Discoverer) gin.HandlerFunc {
 	}
 }
 
-func discoverTagsHandler(discover Discoverer) gin.HandlerFunc {
+func discoverTagsHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var query discoverTagsQuery
 		if err := c.ShouldBindQuery(&query); err != nil {
@@ -166,7 +163,7 @@ func discoverTagsHandler(discover Discoverer) gin.HandlerFunc {
 	}
 }
 
-func discoverMagnetsHandler(discover Discoverer) gin.HandlerFunc {
+func discoverMagnetsHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var uri movieURI
 		if err := c.ShouldBindUri(&uri); err != nil {
@@ -182,7 +179,7 @@ func discoverMagnetsHandler(discover Discoverer) gin.HandlerFunc {
 	}
 }
 
-func imageHandler(discover Discoverer) gin.HandlerFunc {
+func imageHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var query imageQuery
 		if err := c.ShouldBindQuery(&query); err != nil {
@@ -199,13 +196,13 @@ func imageHandler(discover Discoverer) gin.HandlerFunc {
 	}
 }
 
-func javdbRouteHandler(discover Discoverer) gin.HandlerFunc {
+func javdbRouteHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(http.StatusOK, discover.Route())
 	}
 }
 
-func javdbReselectHandler(discover Discoverer) gin.HandlerFunc {
+func javdbReselectHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status, err := discover.Reselect(c.Request.Context())
 		if err != nil {
@@ -216,7 +213,7 @@ func javdbReselectHandler(discover Discoverer) gin.HandlerFunc {
 	}
 }
 
-func javdbSelectRouteHandler(discover Discoverer) gin.HandlerFunc {
+func javdbSelectRouteHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input javdbRouteInput
 		if err := c.ShouldBindJSON(&input); err != nil {

@@ -11,7 +11,6 @@ import (
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/subscription"
-	"github.com/ppxb/miyabi/internal/offline"
 	"github.com/ppxb/miyabi/internal/syncx"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
@@ -53,21 +52,13 @@ type Item struct {
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
-type MovieSummary struct {
-	ID          string
-	Code        string
-	Title       string
-	Cover       string
-	ReleaseDate string
-}
-
 type Discoverer interface {
-	MovieSummary(ctx context.Context, movieID string) (MovieSummary, error)
+	MovieSummary(ctx context.Context, movieID string) (domain.MovieSummary, error)
 	FirstMagnetHash(ctx context.Context, movieID string) (string, error)
 }
 
 type OfflineAdder interface {
-	Add(ctx context.Context, movieID string, hash string) (offline.Submission, error)
+	Add(ctx context.Context, movieID string, hash string) (domain.OfflineSubmission, error)
 }
 
 // Service keeps a watch list of unreleased movies and submits the
