@@ -278,19 +278,19 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 
 ### 4.2 `internal/javbus` 客户端
 
-**传输**：`netx.NewFingerprintClient(TargetJavBus)`（Chrome 指纹，JavBus 前面有 Cloudflare，普通 Go client 容易被拦），cookie jar，限速 1 req/s，超时 15s。基础域名可配置，默认 `https://www.javbus.com`，备选镜像列表由用户填写。
+**传输**：`netx.NewFingerprintClient(TargetJavBus)`（Chrome 指纹，JavBus 前面有 Cloudflare，普通 Go client 容易被拦），cookie jar，限速 1 req/s，超时 15s。基础域名默认常量 `https://www.javbus.com`，设置项可由用户自定义。
 
 **协议**（2026-09-19 已通过本机代理 `127.0.0.1:10777` 实测，固件已存入 `internal/javbus/testdata/`）：
 
 1. 详情页 `GET {base}/{CODE}`。**必须带 `Cookie: dv=1`**，否则无论番号是否存在都 302 到 `/doc/driver-verify` 的问卷页；`existmag=all` 另外附上以显示全部条目。`age=verified` 无效。
 2. 从页内脚本提取三个变量：`var gid = 45622804531; var uc = 0; var img = '/pics/cover/83ie_b.jpg';`。
 3. 磁力片段 `GET {base}/ajax/uncledatoolsbyajax.php?gid={gid}&lang=zh&img={img}&uc={uc}&floor={1..1000 随机}`，请求头带 `Referer: {base}/{CODE}` 与同一 cookie。实测返回 200，SSIS-001 得到 86 条。
-4. 响应是 HTML 片段，若干 `<tr>`：第 1 列 `a[href^=magnet:]` 的 href 含 `xt=urn:btih:<hash>&dn=<名称>`（hash 大小写混杂，需小写归一），同列内 `a.btn-primary` 文本"高清"、`a.btn-warning` 文本"字幕"；第 2 列体积 `2.02GB`（1024 进制）；第 3 列日期 `2025-10-28`。
+4. 响应是 HTML 片段，若干 `<tr>`：第 1 列 `a[href^=magnet:]` 的 href 含 `xt=urn:btih:<hash>&dn=<名称>`（hash 大小写混杂，需小写归一），同列内 `a.btn-primary` 文本"高清"、`a.btn-warning` 文本"字幕"；第 2 列体积 `2.02GB`（1024 进制）；第 3 列日期 `2025-10-28` 解析后存入模型供排序备用（当前界面不展示发布时间，以精简卡片空间）。
 5. 番号不存在时（带 `dv=1`）返回真实 404，页面标题 `404 Page Not Found! - JavBus`，视为"无结果"而非错误。
-6. 无码番号（如 `070125_001`）同一路径可用；FC2、western、anime 直接跳过不请求。
+6. 分类策略：JavBus 专注日本商业有码与无码 AV；站内无欧美（Western）与动漫（Anime）专区，且对 FC2 收录零散、格式不一。为避免无意义请求与保护 Cloudflare 频率预算，对 `ZoneWestern`、`ZoneAnime`、`ZoneFC2` 实行静默跳过（由 JavDB 单独覆盖），无码番号（如 `070125_001`）与标准有码正常并发查询。
 7. 详情页还含 `識別碼 / 發行日期 / 長度 / 導演 / 製作商 / 發行商`、演员 `a.avatar-box[href*=/star/]`、样品图 `.sample-box`，后续做详情补缺时可复用同一份 HTML。
 
-**镜像管理**：JavBus 没有可选镜像，只有 `www.javbus.com` 一个域名，不做端点管理。域名放在 `config.Runtime` 里可被环境变量覆盖即可。
+**域名与设置**：JavBus 默认域名作为包内常量 `DefaultBaseURL`（遵循 M5 收口原则，不新增无用环境变量）；用户可在设置页通过 `magnet.javbus.base_url` 自定义。
 
 **解析**：用 `golang.org/x/net/html`（已在 go.sum，是间接依赖，需要提升为直接依赖，属于既有模块不算新装；若你希望用 goquery 需要你来安装）。
 
@@ -308,14 +308,18 @@ func (a *Aggregator) Find(ctx, ref domain.MovieRef) ([]domain.Magnet, error)
 ```
 
 - errgroup 并发，每源独立 `context.WithTimeout`（默认 8s）；单源失败只记 `WarnContext`，全部失败才返回错误。
-- 去重：infohash 小写；同 hash 合并 `Sources`（保持 javdb 在前）、`HasSubtitle/HD` 取 OR、`Size` 取非零最大、`Name` 取 JavDB 的、`CreatedAt` 取最早。
-- 标签：`Tags` 由站方标注生成（`高清`、`字幕`），外加 `quality.Infer(name)` 补充 `4K`、`无码`、`破解`。推断规则移植 JHS 的 `classifyQuality`：
-  - 中字：`(?:[^A-Za-z]|^)FHDC(?:[^A-Za-z]|$)`、`[-_](?:UC|CH?)(?:[^A-Za-z]|$)`、中文关键词表（中字/中文/字幕/繁中/汉化/内嵌/内封/双语…）、含汉字且不含假名。
-  - 4K：`(?:[^A-Za-z0-9]|^)(?:4K(?:UHD)?|2160P)(?:[^A-Za-z0-9]|$)`。
-  - 无码/破解：`破解|破坏|破壞|无码|無碼`、`\b(?:uncensored|mosaic)\b`、后缀 `-U`、`-UC`。
-  - 先剥掉广告括号 `【…APP…】【…夸克…】【…域名…】`。
-  - 推断得到而站方未标注的字段标记 `Inferred=true`。
-- 排序不变：字幕 > 高清 > 体积 > 文件数；同分时 `Sources` 含 javdb 者在前。
+- 去重与合并：
+  - 去重指“同一 infohash 种子合并”，绝不丢弃任何站点的独有资源；
+  - 同 hash 记录合并：`Sources` 数组追加来源（保持 javdb 在前）、`HasSubtitle/HD` 取 OR、`Size` 取非零最大、`Name` 取 JavDB 清洗后的名称、`CreatedAt` 取最早。
+- 标签与 Badge 驱动：
+  - 来源 Badge：通过统一样式 Badge 展示来源（`JavDB`、`JavBus`；若两站共有则双 Badge 并列）；
+  - 属性 Badge：站方标注生成（`高清`、`字幕`），外加 `quality.Infer(name)` 补充 `4K`、`无码`、`破解`。推断规则移植 JHS 的 `classifyQuality`：
+    - 中字：`(?:[^A-Za-z]|^)FHDC(?:[^A-Za-z]|$)`、`[-_](?:UC|CH?)(?:[^A-Za-z]|$)`、中文关键词表（中字/中文/字幕/繁中/汉化/内嵌/内封/双语…）、含汉字且不含假名。
+    - 4K：`(?:[^A-Za-z0-9]|^)(?:4K(?:UHD)?|2160P)(?:[^A-Za-z0-9]|$)`。
+    - 无码/破解：`破解|破坏|破壞|无码|無碼`、`\b(?:uncensored|mosaic)\b`、后缀 `-U`、`-UC`。
+    - 先剥掉广告括号 `【…APP…】【…夸克…】【…域名…】`。
+    - 推断得到而站方未标注的字段标记 `Inferred=true`。
+- 排序：字幕 > 高清 > 体积 > 文件数；同分时 `Sources` 含 javdb 者在前。
 - `catalogue` 现有 `magnets` 缓存（64 条 / 1 分钟）改缓存聚合结果。
 
 ### 4.4 接入点
@@ -324,7 +328,7 @@ func (a *Aggregator) Find(ctx, ref domain.MovieRef) ([]domain.Magnet, error)
 - `POST /api/discover/movies/:id/offline {hash}`：`OfflineService.Add` 校验 hash 时对聚合结果校验，JavBus 独有磁力也能推送。
 - `monitor.checkOne`：使用聚合结果；首选含 javdb 的条目，其次含 javbus 的；策略在设置中可调（仅 JavDB / 两者）。
 - 设置：`magnet.javbus.enabled`、`magnet.javbus.base_url`、`magnet.javbus.mirrors[]`、`monitor.sources`。
-- 前端 `MagnetCard`：现有两个布尔徽章改为遍历 `tags` 渲染，同样式的 `Badge` 组件；每条磁力显示来源徽章（`JavDB`、`JavBus`，两者都有时并列），沿用 `variant="outline"`。卡片布局、间距、动效不变。
+- 前端 `MagnetCard`：卡片移除发布日期展示，信息更加聚焦；现有两个布尔徽章改为遍历 `tags` 渲染（`字幕`、`高清`、`4K`、`无码`），并挂载来源徽章（`JavDB`、`JavBus`，并存时双徽章并列），沿用 `variant="outline"`。卡片布局、间距、动效不变。
 
 工作量约 1 到 1.5 周，依赖工作线 A 与 B1 的 `domain`。
 
