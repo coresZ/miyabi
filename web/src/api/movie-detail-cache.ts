@@ -1,53 +1,97 @@
 import { queryOptions, type QueryClient } from '@tanstack/react-query'
 
-import type {
-  BrowseMoviesParams,
-  DiscoverMovie,
-  DiscoverMovieDetail,
-  JavDBZone,
-  SearchMoviesParams
-} from '@/api/discover'
+import { discoverKeys, type DiscoverMovie, type DiscoverMovieDetail } from './discover'
 
-export const discoverKeys = {
-  all: ['discover'] as const,
-  movies: (params: BrowseMoviesParams) => ['discover', 'movies', params] as const,
-  movie: (id: string) => ['discover', 'movie', id] as const,
-  magnets: (id: string) => ['discover', 'movie', id, 'magnets'] as const,
-  search: (params: SearchMoviesParams) => ['discover', 'search', params] as const,
-  tags: (zone: JavDBZone) => ['discover', 'tags', zone] as const,
-  route: ['javdb', 'route'] as const
-}
+export { discoverKeys }
 
 const detailStaleTime = 5 * 60_000
+
+type CardEntry = {
+  card: DiscoverMovie
+  updatedAt: number
+  isInvalidated: boolean
+}
+
+type ClientIndex = {
+  cards: Map<string, CardEntry>
+}
+
+const clientIndexes = new WeakMap<QueryClient, ClientIndex>()
+
+function getClientIndex(client: QueryClient): ClientIndex {
+  let index = clientIndexes.get(client)
+  if (!index) {
+    const activeIndex: ClientIndex = { cards: new Map() }
+    index = activeIndex
+    clientIndexes.set(client, index)
+
+    const cache = client.getQueryCache()
+    const updateFromQuery = (query: ReturnType<typeof cache.findAll>[number]) => {
+      const key = query.queryKey
+      if (!Array.isArray(key) || key[0] !== 'discover') return
+      const kind = key[1]
+      const { data, dataUpdatedAt, isInvalidated } = query.state
+      if (!data) return
+
+      if (kind === 'movie' && key.length === 3 && typeof key[2] === 'string') {
+        const id = key[2]
+        const card = data as DiscoverMovieDetail
+        const existing = activeIndex.cards.get(id)
+        if (!existing || dataUpdatedAt >= existing.updatedAt) {
+          activeIndex.cards.set(id, { card, updatedAt: dataUpdatedAt, isInvalidated })
+        }
+      } else if (kind === 'movies' || kind === 'search') {
+        if (Array.isArray(data)) {
+          for (const item of data as DiscoverMovie[]) {
+            if (item && item.id) {
+              const existing = activeIndex.cards.get(item.id)
+              if (!existing || dataUpdatedAt >= existing.updatedAt) {
+                activeIndex.cards.set(item.id, {
+                  card: item,
+                  updatedAt: dataUpdatedAt,
+                  isInvalidated
+                })
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const rebuild = () => {
+      activeIndex.cards.clear()
+      for (const query of cache.findAll({ queryKey: discoverKeys.all })) {
+        updateFromQuery(query)
+      }
+    }
+
+    rebuild()
+
+    cache.subscribe(event => {
+      if (event.type === 'updated' || event.type === 'added') {
+        updateFromQuery(event.query)
+      } else if (event.type === 'removed') {
+        rebuild()
+      }
+    })
+  }
+  return index
+}
 
 // List results already contain everything a card needs. Read them in place;
 // never seed an incomplete list item into the full-detail query.
 export function findCachedMovieCard(client: QueryClient, id: string, freshOnly = false) {
-  let movie: DiscoverMovie | undefined
-  let updatedAt = -1
-  const oldest = freshOnly ? Date.now() - detailStaleTime : 0
-  for (const query of client.getQueryCache().findAll({ queryKey: discoverKeys.all })) {
-    const { data, dataUpdatedAt, isInvalidated } = query.state
-    if (
-      !data ||
-      dataUpdatedAt < oldest ||
-      dataUpdatedAt < updatedAt ||
-      (freshOnly && isInvalidated)
-    )
-      continue
-    const [, kind, key] = query.queryKey
-    let candidate: DiscoverMovie | undefined
-    if (kind === 'movie' && query.queryKey.length === 3 && key === id) {
-      candidate = data as DiscoverMovieDetail
-    } else if (kind === 'movies' || kind === 'search') {
-      candidate = (data as DiscoverMovie[]).find(item => item.id === id)
-    }
-    if (candidate) {
-      movie = candidate
-      updatedAt = dataUpdatedAt
+  const index = getClientIndex(client)
+  const entry = index.cards.get(id)
+  if (!entry) return undefined
+
+  if (freshOnly) {
+    const oldest = Date.now() - detailStaleTime
+    if (entry.updatedAt < oldest || entry.isInvalidated) {
+      return undefined
     }
   }
-  return movie
+  return entry.card
 }
 
 type DetailRequest = { id: string; consumers: number; started: boolean }

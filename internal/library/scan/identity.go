@@ -84,7 +84,8 @@ func ResolveSingleNFO(ctx context.Context, sess drive.Session, sidecars []pan.Fi
 	if canonicalCode == "" || hasUnidentifiedEligible {
 		doc, err := scrape.ReadNFO(ctx, sess, nfoFile)
 		if err != nil {
-			return err
+			// A damaged or inaccessible NFO should not abort the entire scan.
+			return nil
 		}
 		if doc.Code != "" {
 			canonicalCode = doc.Code

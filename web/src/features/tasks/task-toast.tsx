@@ -8,15 +8,14 @@ import { useUIStore } from '@/stores/ui'
 import { scanStage } from './scan-status'
 import { TaskProgress } from './task-progress'
 import { TaskToastActions } from './task-toast-actions'
+import { batchToastID, offlineToastID, scanToastID } from './task-notification-diff'
 
 type TaskToastOptions = {
   waiting?: boolean
   onDismiss?: () => void
 }
 
-export const scanToastID = (id: number) => `scan:${id}`
-export const offlineToastID = (id: number) => `offline:${id}`
-export const batchToastID = (id: number) => `batch:${id}`
+export { batchToastID, offlineToastID, scanToastID }
 
 function taskToastOptions(id: string, active: boolean, options: TaskToastOptions = {}) {
   return {

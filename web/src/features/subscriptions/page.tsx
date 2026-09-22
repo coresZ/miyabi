@@ -154,7 +154,7 @@ export function SubscriptionsPage() {
               }}
             >
               <CloudDownloadIcon />
-              一键入库{pendingCount > 0 ? ` (${pendingCount})` : ''}
+              一键入库
             </Button>
           </>
         )}

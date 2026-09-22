@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { setImmediate } from 'node:timers/promises'
 
-import { createWatchProgressWriter } from '../src/features/player/watch-progress.ts'
+import { createWatchProgressWriter } from '../src/features/player/watch-progress-writer.ts'
 import {
   formatWatchTime,
   watchProgressPercent,

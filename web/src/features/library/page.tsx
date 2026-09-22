@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { LoaderCircleIcon, RefreshCwIcon, ScanLineIcon } from 'lucide-react'
 
+import { ApiError } from '@/api/client'
 import { LIBRARY_PAGE_SIZE, useLibraryMovies, useStartLibraryScan } from '@/api/library'
 import { isScanTask, isTaskActive, useTasks } from '@/api/tasks'
 import { AppPage } from '@/components/app-page'
@@ -15,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { LibraryMovieCard } from '@/features/library/movie-card'
 import { useTaskConnection } from '@/features/tasks/task-events'
+import { notifyScanTask, notifyTaskError } from '@/features/tasks/task-toast'
 
 export function LibraryPage({
   page,
@@ -57,7 +59,25 @@ export function LibraryPage({
               <Button
                 className="w-9 px-0 sm:w-auto sm:px-3"
                 disabled={scanning || startScan.isPending}
-                onClick={() => startScan.mutate(undefined, { onSuccess: () => onPageChange(1) })}
+                onClick={() =>
+                  startScan.mutate(undefined, {
+                    onSuccess: task => {
+                      notifyScanTask(task)
+                      onPageChange(1)
+                    },
+                    onError: error => {
+                      notifyTaskError(
+                        'scan:submit-error',
+                        '无法创建扫描任务',
+                        error instanceof ApiError
+                          ? error.status === 401
+                            ? '115 登录已失效，请前往设置重新登录。'
+                            : error.message
+                          : '请检查后端服务和 115 连接后重试。'
+                      )
+                    }
+                  })
+                }
               >
                 {processing || startScan.isPending ? (
                   <LoaderCircleIcon className="size-4 animate-spin" />

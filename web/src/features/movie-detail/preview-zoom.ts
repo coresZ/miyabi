@@ -1,3 +1,5 @@
+import { clamp } from '@/lib/math'
+
 export type Size = { width: number; height: number }
 
 /** A point measured from the center of the stage. */
@@ -28,12 +30,6 @@ export const PINCH_ZOOM_STEP = 100
 
 const LINE_DELTA = 16
 const PAGE_DELTA = 100
-
-function clamp(value: number, min: number, max: number) {
-  const clamped = Math.min(Math.max(value, min), max)
-  // Never hand back -0: it compares equal to 0 but reads as a surprise in state and tests.
-  return clamped === 0 ? 0 : clamped
-}
 
 export function clampScale(scale: number) {
   return clamp(scale, MIN_SCALE, MAX_SCALE)

@@ -27,15 +27,33 @@ const (
 	// requestTimeout bounds one API call; media transfers only bound the
 	// wait for response headers because video bodies stream for hours.
 	requestTimeout = 35 * time.Second
-	// requestGap keeps the client under the 2 req/s that 115 tolerates.
-	requestGap = 500 * time.Millisecond
+	// requestGap keeps the client under the 4 req/s that 115 tolerates safely.
+	requestGap = 250 * time.Millisecond
 )
 
 // New creates a 115 client. 115 is always reached directly: routing it through
 // the upstream proxy is slower and trips risk control.
 func New() *Client {
+	httpClient := netx.NewDirectRestyClient(netx.RestyOptions{Timeout: requestTimeout})
+	httpClient.SetRetryCount(3)
+	httpClient.SetRetryWaitTime(1 * time.Second)
+	httpClient.SetRetryMaxWaitTime(5 * time.Second)
+	httpClient.AddRetryCondition(func(r *resty.Response, err error) bool {
+		if err != nil {
+			return true
+		}
+		if r != nil {
+			status := r.StatusCode()
+			return status == http.StatusBadGateway ||
+				status == http.StatusServiceUnavailable ||
+				status == http.StatusGatewayTimeout ||
+				status == http.StatusTooManyRequests
+		}
+		return false
+	})
+
 	return &Client{
-		http:    netx.NewDirectRestyClient(netx.RestyOptions{Timeout: requestTimeout}),
+		http:    httpClient,
 		media:   netx.NewDirectRestyClient(netx.RestyOptions{ResponseHeaderTimeout: requestTimeout}),
 		limiter: rate.NewLimiter(rate.Every(requestGap), 1),
 	}

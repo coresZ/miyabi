@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { setImmediate } from 'node:timers/promises'
 
-import { createWatchSessionQueue } from '../src/features/player/watch-progress.ts'
+import { createWatchSessionQueue } from '../src/features/player/watch-progress-writer.ts'
 import { watchResumePosition } from '../src/lib/watch-progress.ts'
 
 const source = { account_id: 'account', directory_id: 'directory' }

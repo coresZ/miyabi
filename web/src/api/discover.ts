@@ -1,12 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
 
-import { apiGet, apiPost, apiPut } from '@/api/client'
-import {
-  createMovieDetailLoader,
-  discoverKeys,
-  findCachedMovieCard
-} from '@/api/movie-detail-cache'
+import { apiGet, apiPost, apiPut } from './client'
+import { createMovieDetailLoader, findCachedMovieCard } from './movie-detail-cache'
 
 export type MovieState = 'not_in_library' | 'saving' | 'processing' | 'in_library'
 export type ReleaseStatus = 'unknown' | 'released' | 'upcoming'
@@ -127,6 +123,16 @@ export type SearchMoviesParams = {
   query: string
   page?: number
   limit?: number
+}
+
+export const discoverKeys = {
+  all: ['discover'] as const,
+  movies: (params: BrowseMoviesParams) => ['discover', 'movies', params] as const,
+  movie: (id: string) => ['discover', 'movie', id] as const,
+  magnets: (id: string) => ['discover', 'movie', id, 'magnets'] as const,
+  search: (params: SearchMoviesParams) => ['discover', 'search', params] as const,
+  tags: (zone: JavDBZone) => ['discover', 'tags', zone] as const,
+  route: ['javdb', 'route'] as const
 }
 
 const discoverQueryDefaults = {

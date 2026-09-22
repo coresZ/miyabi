@@ -4,7 +4,6 @@ import { ApiError, apiGet, apiPost } from '@/api/client'
 import { invalidateMovieStates } from '@/api/movie-state-cache'
 import { panKeys, type PanAccountStatus } from '@/api/pan'
 import type { LibrarySource } from '@/api/tasks'
-import { notifyOfflineTask, notifyTaskError } from '@/features/tasks/task-toast'
 import { isOfflineTaskActive } from '@/lib/offline-state'
 
 export { isOfflineTaskActive } from '@/lib/offline-state'
@@ -88,20 +87,10 @@ export function useAddOffline(movieID: string) {
             }
           : activity
       )
-      notifyOfflineTask(submission)
       void invalidateMovieStates(queryClient)
       void queryClient.invalidateQueries({ queryKey: offlineKeys.all })
     },
     onError: error => {
-      notifyTaskError(
-        `offline:submit-error:${movieID}`,
-        '加入 115 失败',
-        error instanceof ApiError
-          ? error.status === 401
-            ? '115 授权已失效，请到设置页重新登录。'
-            : error.message
-          : '请检查后端服务和网络后重试。'
-      )
       if (error instanceof ApiError && (error.status === 401 || error.status === 400)) {
         void queryClient.invalidateQueries({ queryKey: panKeys.account })
       }

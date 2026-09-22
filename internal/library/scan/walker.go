@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
@@ -118,12 +120,16 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 	directories := []Directory{start}
 	seen := map[string]bool{start.ID: true}
 	codes := make(map[string]bool)
+	lastReport := time.Time{}
 
 	for next := 0; next < len(directories); next++ {
 		directory := directories[next]
 		payload.Scan.CurrentPath = directory.Path
-		if err := ReportScan(ctx, db.Task, job.ID, payload, tasksSvc); err != nil {
-			return err
+		if time.Since(lastReport) >= 500*time.Millisecond || next == len(directories)-1 {
+			if err := ReportScan(ctx, db.Task, job.ID, payload, tasksSvc); err != nil {
+				return err
+			}
+			lastReport = time.Now()
 		}
 		var directoryVideos []Video
 		var sidecars []pan.File
@@ -141,7 +147,7 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 			observed.Add(directory.ID, page.Files)
 			for _, entry := range page.Files {
 				if seen[entry.ID] {
-					return false, domain.E(domain.KindConflict, fmt.Sprintf("扫描期间重复遇到文件或目录 %s，请重新扫描", path.Join(directory.Path, entry.Name)), nil)
+					continue
 				}
 				seen[entry.ID] = true
 				if entry.IsDirectory {

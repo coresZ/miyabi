@@ -3,14 +3,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import { AppPage } from '@/components/app-page'
 import { ErrorState } from '@/components/error-state'
 import { WatchHistoryPage } from '@/features/history/page'
+import { parseSearchPage } from '@/lib/search-schema'
 
 export const Route = createFileRoute('/history')({
   validateSearch: (search: Record<string, unknown>): { page?: number } => {
-    const page = Number(search.page ?? 1)
-    if (!Number.isInteger(page) || page < 1 || page > 100_000_000) {
-      throw new Error('观看历史页码无效')
-    }
-    return page > 1 ? { page } : {}
+    const page = parseSearchPage(search.page, '观看历史页码无效')
+    return page ? { page } : {}
   },
   component: HistoryRoute,
   errorComponent: () => (

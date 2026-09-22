@@ -1,11 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
 
 import { ApiError, apiGet, apiPost, apiPut } from '@/api/client'
 import { panKeys, type PanAccountStatus } from '@/api/pan'
 import { taskKeys, type LibrarySource, type ScanTask, type Task } from '@/api/tasks'
 import type { WatchHistoryScope, WatchSession } from '@/api/watch-history'
-import { notifyScanTask, notifyTaskError } from '@/features/tasks/task-toast'
 
 export const LIBRARY_PAGE_SIZE = 20
 
@@ -81,12 +79,6 @@ export function useMarkMovieWatched() {
       )
       // Refresh lists in the background so playback can start with the watch session.
       void queryClient.invalidateQueries({ queryKey: libraryKeys.all })
-    },
-    onError: () => {
-      toast.error('观看记录保存失败', {
-        id: 'library:watched-error',
-        description: '播放仍可继续。请检查后端连接，稍后重新打开影片重试。'
-      })
     }
   })
 }
@@ -104,7 +96,6 @@ export function useStartLibraryScan() {
           account.directory?.id !== task.source.directory.id)
       )
         return queryClient.invalidateQueries({ queryKey: taskKeys.all })
-      notifyScanTask(task)
       queryClient.setQueryData<Task[]>(taskKeys.all, tasks => [
         task,
         ...(tasks ?? []).filter(item => item.id !== task.id)
@@ -112,15 +103,6 @@ export function useStartLibraryScan() {
       return queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
     onError: error => {
-      notifyTaskError(
-        'scan:submit-error',
-        '无法创建扫描任务',
-        error instanceof ApiError
-          ? error.status === 401
-            ? '115 登录已失效，请前往设置重新登录。'
-            : error.message
-          : '请检查后端服务和 115 连接后重试。'
-      )
       if (error instanceof ApiError && (error.status === 401 || error.status === 400)) {
         void queryClient.invalidateQueries({ queryKey: panKeys.account })
         void queryClient.invalidateQueries({ queryKey: libraryKeys.all })

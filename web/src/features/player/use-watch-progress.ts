@@ -9,7 +9,7 @@ import {
   type WatchResume,
   type WatchSession
 } from '@/api/watch-history'
-import { watchSessions } from './watch-progress'
+import { watchSessions } from './watch-progress-writer'
 
 export function useWatchProgress(
   movieID: number,
@@ -20,13 +20,17 @@ export function useWatchProgress(
   const { mutateAsync: markWatched } = useMarkMovieWatched()
   const writer = useMemo(
     () =>
-      createPlayerProgressWriter(
-        movieID,
-        source,
-        fileID,
-        resume,
-        async () => (await markWatched({ movieID, source })).history
-      ),
+      createPlayerProgressWriter(movieID, source, fileID, resume, async () => {
+        try {
+          return (await markWatched({ movieID, source })).history
+        } catch (error) {
+          toast.error('观看记录保存失败', {
+            id: 'library:watched-error',
+            description: '播放仍可继续。请检查后端连接，稍后重新打开影片重试。'
+          })
+          throw error
+        }
+      }),
     [movieID, source, fileID, resume, markWatched]
   )
 

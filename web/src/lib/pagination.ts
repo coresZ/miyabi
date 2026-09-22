@@ -1,3 +1,5 @@
+import { clamp } from './math'
+
 export type PageItem = number | 'ellipsis-left' | 'ellipsis-right'
 
 const WINDOW = 3
@@ -8,9 +10,9 @@ export function getPageNumbers(page: number, totalPages: number): PageItem[] {
   const total = Math.max(1, Math.floor(totalPages))
   if (total <= MAX_SLOTS) return Array.from({ length: total }, (_, i) => i + 1)
 
-  const current = Math.min(Math.max(1, Math.floor(page)), total)
+  const current = clamp(Math.floor(page), 1, total)
 
-  const start = Math.min(Math.max(current - 1, 1), Math.max(1, total - WINDOW + 1))
+  const start = clamp(current - 1, 1, Math.max(1, total - WINDOW + 1))
   const end = Math.min(total, start + WINDOW - 1)
 
   const items: PageItem[] = []

@@ -3,18 +3,19 @@ import { createFileRoute } from '@tanstack/react-router'
 import { AppPage } from '@/components/app-page'
 import { ErrorState } from '@/components/error-state'
 import { SearchPage } from '@/features/search/page'
+import { parseSearchPage } from '@/lib/search-schema'
 
 type SearchParams = { q?: string; page?: number }
 
 export const Route = createFileRoute('/search')({
   validateSearch: (search: Record<string, unknown>): SearchParams => {
     const q = search.q ?? ''
-    const page = Number(search.page ?? 1)
-    if (typeof q !== 'string' || !Number.isInteger(page) || page < 1) {
+    if (typeof q !== 'string') {
       throw new Error('搜索条件无效')
     }
+    const page = parseSearchPage(search.page, '搜索条件无效')
     const keyword = q.trim()
-    return keyword ? { q: keyword, ...(page > 1 ? { page } : {}) } : {}
+    return keyword ? { q: keyword, ...(page ? { page } : {}) } : {}
   },
   component: SearchRoute,
   errorComponent: () => (

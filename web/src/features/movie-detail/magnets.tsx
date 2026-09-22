@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatSize } from '@/lib/format'
+import { notifyOfflineTask, notifyTaskError } from '@/features/tasks/task-toast'
 import { MovieSubscriptionAction } from './subscription-action'
 
 const sourceLabels: Record<string, string> = { javdb: 'JavDB', javbus: 'JavBus' }
@@ -179,7 +180,24 @@ function MagnetCard({
                 type="button"
                 size="sm"
                 disabled={!hasDirectory || busy || statusError || submitted}
-                onClick={() => add.mutate(magnet.hash)}
+                onClick={() =>
+                  add.mutate(magnet.hash, {
+                    onSuccess: submission => {
+                      notifyOfflineTask(submission)
+                    },
+                    onError: error => {
+                      notifyTaskError(
+                        `offline:submit-error:${movieID}`,
+                        '加入 115 失败',
+                        error instanceof ApiError
+                          ? error.status === 401
+                            ? '115 登录已失效，请前往设置重新登录。'
+                            : error.message
+                          : '请检查后端服务和 115 连接后重试。'
+                      )
+                    }
+                  })
+                }
               >
                 {busy || (task && isOfflineTaskActive(task)) ? (
                   <LoaderCircleIcon className="animate-spin" />

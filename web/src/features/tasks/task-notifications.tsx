@@ -1,32 +1,18 @@
 import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 
-import { isOfflineTaskActive, useOfflineActivity } from '@/api/offline'
-import {
-  isBatchTask,
-  isScanTask,
-  isTaskActive,
-  useTasks,
-  type BatchTask,
-  type ScanTask
-} from '@/api/tasks'
+import { useOfflineActivity } from '@/api/offline'
+import { useTasks } from '@/api/tasks'
+import { sourceKey } from '@/lib/source'
 import { useTaskConnection } from './task-events'
-import {
-  batchToastID,
-  notifyBatchTask,
-  notifyOfflineTask,
-  notifyScanTask,
-  offlineToastID,
-  scanToastID
-} from './task-toast'
-
-type NotificationState = { version: string; active: boolean; playable?: boolean }
+import { diffTaskNotifications, type NotificationEntry } from './task-notification-diff'
+import { notifyBatchTask, notifyOfflineTask, notifyScanTask } from './task-toast'
 
 export function TaskNotifications() {
   const tasks = useTasks()
   const activity = useOfflineActivity()
   const connection = useTaskConnection()
-  const previous = useRef(new Map<string, NotificationState>())
+  const previous = useRef(new Map<string, NotificationEntry>())
   const dismissed = useRef(new Set<string>())
   const scope = useRef<string | undefined>(undefined)
   const initialized = useRef(false)
@@ -34,7 +20,7 @@ export function TaskNotifications() {
   useEffect(() => {
     if (!tasks.data || !activity.data) return
     const source = activity.data.source
-    const nextScope = source ? `${source.account_id}:${source.directory.id}` : ''
+    const nextScope = sourceKey(source)
     if (scope.current !== nextScope) {
       for (const id of previous.current.keys()) toast.dismiss(id)
       previous.current.clear()
@@ -43,121 +29,46 @@ export function TaskNotifications() {
       scope.current = nextScope
     }
 
-    const current = new Map<string, NotificationState>()
-    const announced = new Set(toast.getToasts().map(item => item.id))
-    function update(id: string, state: NotificationState, notify: () => void) {
-      current.set(id, state)
-      const old = previous.current.get(id)
-      if (old?.version === state.version) return
-      // Restore active work on load, but only announce newly observed completions.
-      if (
-        state.active
-          ? !dismissed.current.has(id)
-          : old?.active || (!old && (initialized.current || announced.has(id)))
-      ) {
-        notify()
-      }
+    const announced = new Set(toast.getToasts().map(item => String(item.id)))
+    const result = diffTaskNotifications({
+      tasks: tasks.data,
+      activity: activity.data,
+      waiting: connection.status !== 'connected',
+      isTasksError: tasks.isError,
+      isActivityError: activity.isError,
+      previous: previous.current,
+      dismissed: dismissed.current,
+      announced,
+      initialized: initialized.current
+    })
+
+    for (const dismissID of result.dismissIDs) {
+      toast.dismiss(dismissID)
+      dismissed.current.delete(dismissID)
     }
-    function callbacks(id: string) {
-      return {
+
+    for (const action of result.actions) {
+      const callbacks = {
         onDismiss: () => {
-          dismissed.current.add(id)
+          dismissed.current.add(action.id)
         }
       }
-    }
-
-    const waiting = connection.status !== 'connected'
-    const scans = tasks.data.filter(isScanTask)
-    for (const task of scans) {
-      if (
-        !source ||
-        task.offline_task_id ||
-        task.source.account_id !== source.account_id ||
-        task.source.directory.id !== source.directory.id
-      )
-        continue
-      const id = scanToastID(task.id)
-      update(
-        id,
-        {
-          active: isTaskActive(task),
-          version: JSON.stringify([scanVersion(task), waiting, tasks.isError])
-        },
-        () => notifyScanTask(task, { ...callbacks(id), waiting: waiting || tasks.isError })
-      )
-    }
-
-    for (const task of tasks.data.filter(isBatchTask)) {
-      const id = batchToastID(task.id)
-      update(
-        id,
-        {
-          active: isTaskActive(task),
-          version: JSON.stringify([batchVersion(task), waiting, tasks.isError])
-        },
-        () => notifyBatchTask(task, { ...callbacks(id), waiting: waiting || tasks.isError })
-      )
-    }
-
-    const scansByID = new Map(scans.map(task => [task.id, task]))
-    for (const task of activity.data.tasks) {
-      const id = offlineToastID(task.task_id)
-      const scan = task.scan_task_id ? scansByID.get(task.scan_task_id) : undefined
-      const active = isOfflineTaskActive(task)
-      update(
-        id,
-        {
-          active,
-          playable: task.phase === 'in_library',
-          version: JSON.stringify([
-            task.status,
-            task.phase,
-            task.processing,
-            task.library_id,
-            task.progress,
-            task.error,
-            active && scan ? scanVersion(scan) : undefined,
-            waiting,
-            activity.isError
-          ])
-        },
-        () =>
-          notifyOfflineTask(task, {
-            ...callbacks(id),
-            scan,
-            waiting: waiting || activity.isError
-          })
-      )
-      // A later scan can remove a file; its old toast must no longer offer playback.
-      if (!active && task.phase !== 'in_library' && previous.current.get(id)?.playable) {
-        toast.dismiss(id)
+      if (action.type === 'notify_scan') {
+        notifyScanTask(action.task, { ...callbacks, waiting: action.waiting })
+      } else if (action.type === 'notify_batch') {
+        notifyBatchTask(action.task, { ...callbacks, waiting: action.waiting })
+      } else if (action.type === 'notify_offline') {
+        notifyOfflineTask(action.task, {
+          ...callbacks,
+          scan: action.scan,
+          waiting: action.waiting
+        })
       }
     }
-    for (const id of previous.current.keys()) {
-      if (!current.has(id)) {
-        toast.dismiss(id)
-        dismissed.current.delete(id)
-      }
-    }
-    previous.current = current
+
+    previous.current = result.nextEntries
     initialized.current = true
   }, [tasks.data, tasks.isError, activity.data, activity.isError, connection.status])
 
   return null
-}
-
-function scanVersion(task: ScanTask) {
-  return [
-    task.status,
-    task.progress,
-    task.error,
-    task.scan.stage,
-    task.scan.movies,
-    task.scan.metadata_total,
-    task.scan.metadata_completed
-  ]
-}
-
-function batchVersion(task: BatchTask) {
-  return [task.status, task.progress, task.error, task.batch.processed, task.batch.failed]
 }

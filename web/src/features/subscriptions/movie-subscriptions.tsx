@@ -36,7 +36,7 @@ export function MovieSubscriptions({
     return <ErrorState message="订阅列表加载失败" onRetry={onRetry} retrying={isFetching} />
   }
   if (items.length === 0) {
-    return <EmptyState className="min-h-0 flex-1" title={emptyTitle} />
+    return <EmptyState title={emptyTitle} />
   }
   return (
     <MovieGridLayout>

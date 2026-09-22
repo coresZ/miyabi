@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { LoaderCircleIcon, Trash2Icon, XIcon } from 'lucide-react'
+import { Trash2Icon, XIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -10,33 +10,24 @@ import {
 } from '@/api/watch-history'
 import { AppPage } from '@/components/app-page'
 import { EmptyState } from '@/components/empty-state'
-import { ErrorState, InlineError } from '@/components/error-state'
+import { ErrorState } from '@/components/error-state'
 import { ListPagination } from '@/components/list-pagination'
 import { MovieGridLayout, MovieGridSkeleton } from '@/components/movie'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog'
+import { watchSessions } from '@/features/player/watch-progress-writer'
 import { HistoryCard } from './history-card'
+import { HistoryClearDialog } from './history-clear-dialog'
+import { useHistorySelection } from './use-history-selection'
+
+import { sourceKey } from '@/lib/source'
 
 type HistoryPageProps = { page: number; onPageChange: (page: number) => void }
 
 export function WatchHistoryPage(props: HistoryPageProps) {
   const history = useWatchHistory(props.page)
   const source = history.data?.source
-  return (
-    <HistoryContent
-      key={JSON.stringify([props.page, source?.account_id, source?.directory.id])}
-      {...props}
-      history={history}
-    />
-  )
+  return <HistoryContent key={`${props.page}:${sourceKey(source)}`} {...props} history={history} />
 }
 
 function HistoryContent({
@@ -47,24 +38,26 @@ function HistoryContent({
   history: ReturnType<typeof useWatchHistory>
 }) {
   const remove = useRemoveWatchHistory()
-  const [selecting, setSelecting] = useState(false)
-  const [selected, setSelected] = useState<Set<number>>(() => new Set())
   const [clearMode, setClearMode] = useState<'all' | 'selected' | null>(null)
   const items = history.data?.items ?? []
   const source = history.data?.source
   const total = history.data?.total ?? 0
   const pageCount = Math.max(1, Math.ceil(total / WATCH_HISTORY_PAGE_SIZE))
-  const selectedIDs = items.filter(item => selected.has(item.id)).map(item => item.id)
-  const allSelected = items.length > 0 && selectedIDs.length === items.length
+
+  const {
+    selecting,
+    setSelecting,
+    selected,
+    selectedIDs,
+    allSelected,
+    leaveSelection,
+    toggleSelect,
+    toggleSelectAll
+  } = useHistorySelection(items)
 
   useEffect(() => {
     if (history.isSuccess && !history.isFetching && page > pageCount) onPageChange(pageCount)
   }, [history.isSuccess, history.isFetching, page, pageCount, onPageChange])
-
-  function leaveSelection() {
-    setSelecting(false)
-    setSelected(new Set())
-  }
 
   function openClearDialog(mode: 'all' | 'selected') {
     remove.reset()
@@ -79,6 +72,10 @@ function HistoryContent({
         : { type: 'selected', source, ids: selectedIDs },
       {
         onSuccess: () => {
+          watchSessions.clear(
+            { account_id: source.account_id, directory_id: source.directory.id },
+            clearMode === 'selected' ? selectedIDs : undefined
+          )
           setClearMode(null)
           leaveSelection()
           toast.success(clearMode === 'all' ? '观看历史已清除' : '已清除选中的观看记录')
@@ -97,9 +94,7 @@ function HistoryContent({
               variant="outline"
               size="sm"
               disabled={items.length === 0 || remove.isPending}
-              onClick={() =>
-                setSelected(allSelected ? new Set() : new Set(items.map(item => item.id)))
-              }
+              onClick={toggleSelectAll}
             >
               {allSelected ? '取消全选' : '全选本页'}
             </Button>
@@ -178,14 +173,7 @@ function HistoryContent({
               selecting={selecting}
               selected={selecting && selected.has(item.id)}
               disabled={remove.isPending}
-              onSelect={() =>
-                setSelected(current => {
-                  const next = new Set(current)
-                  if (next.has(item.id)) next.delete(item.id)
-                  else next.add(item.id)
-                  return next
-                })
-              }
+              onSelect={() => toggleSelect(item.id)}
             />
           ))}
         </MovieGridLayout>
@@ -201,48 +189,14 @@ function HistoryContent({
         />
       ) : null}
 
-      <Dialog
-        open={clearMode !== null}
-        onOpenChange={open => {
-          if (!open && !remove.isPending) setClearMode(null)
-        }}
-      >
-        <DialogContent showCloseButton={!remove.isPending}>
-          <DialogHeader>
-            <DialogTitle>清除观看历史</DialogTitle>
-            <DialogDescription>
-              {clearMode === 'all'
-                ? '清除当前媒体目录的全部观看记录和播放进度？'
-                : `清除选中的 ${selectedIDs.length} 条观看记录和播放进度？`}
-              影片文件和已观看状态会保留。
-            </DialogDescription>
-          </DialogHeader>
-          {remove.error ? <InlineError>{remove.error.message}</InlineError> : null}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={remove.isPending}
-              onClick={() => setClearMode(null)}
-            >
-              取消
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={
-                remove.isPending ||
-                !source ||
-                (clearMode === 'selected' && selectedIDs.length === 0)
-              }
-              onClick={clearHistory}
-            >
-              {remove.isPending ? <LoaderCircleIcon className="animate-spin" /> : <Trash2Icon />}
-              确认清除
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <HistoryClearDialog
+        clearMode={clearMode}
+        selectedCount={selectedIDs.length}
+        isPending={remove.isPending}
+        error={remove.error}
+        onClose={() => setClearMode(null)}
+        onConfirm={clearHistory}
+      />
     </AppPage>
   )
 }

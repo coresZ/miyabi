@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/client'
 import type { LibrarySource } from '@/api/tasks'
-import { watchSessions } from '@/features/player/watch-progress'
 
 export const WATCH_HISTORY_PAGE_SIZE = 20
 
@@ -45,6 +44,8 @@ export type WatchHistoryPage = {
   has_more: boolean
 }
 
+// Nested under 'library' namespace so that global library cache invalidation
+// (such as directory mount changes or library scans) also clears watch history pages.
 export const watchHistoryKeys = {
   all: ['library', 'history'] as const,
   page: (page: number) => ['library', 'history', page] as const
@@ -87,11 +88,7 @@ export function useRemoveWatchHistory() {
           })
         : apiDelete<{ removed: number }>(`/api/library/history?${new URLSearchParams(scope)}`)
     },
-    onSuccess: async (_, removal) => {
-      watchSessions.clear(
-        { account_id: removal.source.account_id, directory_id: removal.source.directory.id },
-        removal.type === 'selected' ? removal.ids : undefined
-      )
+    onSuccess: async () => {
       await queryClient.cancelQueries({ queryKey: watchHistoryKeys.all })
       return queryClient.invalidateQueries({ queryKey: watchHistoryKeys.all })
     }

@@ -1,22 +1,8 @@
-import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  FileIcon,
-  FolderIcon,
-  LoaderCircleIcon
-} from 'lucide-react'
-import { Fragment, useState, type ReactNode } from 'react'
+import { ChevronLeftIcon, ChevronRightIcon, FolderIcon, LoaderCircleIcon } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 
 import { usePanFiles, useSelectPanDirectory, type PanDirectory } from '@/api/pan'
 import { InlineError } from '@/components/error-state'
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator
-} from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -26,6 +12,8 @@ import {
   DialogTitle,
   DialogTrigger
 } from '@/components/ui/dialog'
+import { DirectoryBreadcrumbs } from './directory-breadcrumbs'
+import { DirectoryList } from './directory-list'
 
 export function PanDirectoryDialog({
   accountID,
@@ -83,89 +71,15 @@ function DirectoryPicker({
 
   return (
     <div className="min-w-0 space-y-4">
-      <Breadcrumb className="min-w-0">
-        <BreadcrumbList className="gap-1 sm:gap-1">
-          <BreadcrumbItem>
-            {location.id === '0' ? (
-              <BreadcrumbPage>全部文件</BreadcrumbPage>
-            ) : (
-              <BreadcrumbLink asChild>
-                <button type="button" disabled={select.isPending} onClick={() => navigate('0')}>
-                  全部文件
-                </button>
-              </BreadcrumbLink>
-            )}
-          </BreadcrumbItem>
-          {files.data?.path
-            .filter(directory => directory.id !== '0')
-            .map(directory => (
-              <Fragment key={directory.id}>
-                <BreadcrumbSeparator className="shrink-0" />
-                <BreadcrumbItem className="max-w-full min-w-0">
-                  {location.id === directory.id ? (
-                    <BreadcrumbPage className="max-w-40 min-w-0 truncate">
-                      {directory.name}
-                    </BreadcrumbPage>
-                  ) : (
-                    <BreadcrumbLink asChild>
-                      <button
-                        type="button"
-                        className="max-w-40 min-w-0 truncate"
-                        disabled={select.isPending}
-                        onClick={() => navigate(directory.id)}
-                      >
-                        {directory.name}
-                      </button>
-                    </BreadcrumbLink>
-                  )}
-                </BreadcrumbItem>
-              </Fragment>
-            ))}
-        </BreadcrumbList>
-      </Breadcrumb>
-      <div className="h-64 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain rounded-2xl border p-1">
-        {files.isPending ? (
-          <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-            <LoaderCircleIcon className="size-4 animate-spin" />
-            正在读取目录…
-          </div>
-        ) : files.isError ? (
-          <InlineError
-            className="h-full flex-col justify-center px-4 text-center"
-            onRetry={() => void files.refetch()}
-            retrying={files.isFetching}
-          >
-            目录读取失败，请检查 115 授权和网络后重试。
-          </InlineError>
-        ) : files.data.files.length === 0 ? (
-          <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            当前目录为空
-          </p>
-        ) : (
-          <ul>
-            {files.data.files.map(file => {
-              const Icon = file.is_directory ? FolderIcon : FileIcon
-              return (
-                <li key={file.id}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="w-full max-w-full min-w-0 justify-start rounded-xl"
-                    disabled={!file.is_directory || select.isPending}
-                    onClick={() => navigate(file.id)}
-                  >
-                    <Icon className="size-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate text-left">{file.name}</span>
-                    {file.is_directory ? (
-                      <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
-                    ) : null}
-                  </Button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </div>
+      <DirectoryBreadcrumbs
+        path={files.data?.path}
+        currentID={location.id}
+        disabled={select.isPending}
+        onNavigate={id => navigate(id)}
+      />
+
+      <DirectoryList files={files} disabled={select.isPending} onNavigate={id => navigate(id)} />
+
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs text-muted-foreground">
           第 {location.page} 页{files.data ? ` · 共 ${files.data.total} 项` : ''}
@@ -175,7 +89,6 @@ function DirectoryPicker({
             type="button"
             variant="ghost"
             size="icon-sm"
-
             disabled={location.page === 1 || files.isFetching || select.isPending}
             onClick={() => navigate(location.id, location.page - 1)}
           >
@@ -185,7 +98,6 @@ function DirectoryPicker({
             type="button"
             variant="ghost"
             size="icon-sm"
-
             disabled={
               !files.data?.has_more || files.isError || files.isFetching || select.isPending
             }

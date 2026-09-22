@@ -59,9 +59,7 @@ export function ActorSubscriptions({
     )
   }
   if (actors.data.length === 0) {
-    return (
-      <EmptyState className="min-h-0 flex-1" title="还没有订阅演员，在演员作品页点击「订阅演员」" />
-    )
+    return <EmptyState title="还没有订阅演员，在演员作品页点击「订阅演员」" />
   }
 
   const counts = new Map<number, number>()
