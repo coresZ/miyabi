@@ -1,34 +1,21 @@
-package service
+package catalogue
 
 import (
 	"context"
 	"fmt"
-	"github.com/ppxb/miyabi/internal/tasks"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
 	"github.com/ppxb/miyabi/internal/codeid"
 	"github.com/ppxb/miyabi/internal/domain"
-	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
-	"github.com/ppxb/miyabi/internal/library/scan"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
-
-type MovieIdentity struct {
-	ID   string `json:"id" binding:"required,max=200"`
-	Code string `json:"code" binding:"required,max=200"`
-}
-
-type DiscoverMovieState struct {
-	ID        string     `json:"id"`
-	LibraryID int        `json:"library_id,omitempty"`
-	State     MovieState `json:"state"`
-}
 
 // MovieStates only reads the local index and tasks. Catalogue cache lifetimes
 // and upstream availability must not delay admission badges or playback.
-func (service *DiscoverService) MovieStates(ctx context.Context, identities []MovieIdentity) ([]DiscoverMovieState, error) {
-	result := make([]DiscoverMovieState, len(identities))
+func (service *Service) MovieStates(ctx context.Context, identities []MovieIdentity) ([]MovieStateItem, error) {
+	result := make([]MovieStateItem, len(identities))
 	if len(identities) == 0 {
 		return result, nil
 	}
@@ -36,7 +23,7 @@ func (service *DiscoverService) MovieStates(ctx context.Context, identities []Mo
 	codes := make([]string, len(identities))
 	for index, item := range identities {
 		ids[index], codes[index] = item.ID, codeid.Normalize(item.Code)
-		result[index] = DiscoverMovieState{ID: item.ID, State: MovieNotInLibrary}
+		result[index] = MovieStateItem{ID: item.ID, State: MovieNotInLibrary}
 	}
 	var source *domain.LibrarySource
 	if service.local != nil {
@@ -45,17 +32,14 @@ func (service *DiscoverService) MovieStates(ctx context.Context, identities []Mo
 	if source == nil {
 		return result, nil
 	}
-	localMovies, err := service.database.Movie.Query().Where(
-		movie.Or(movie.JavdbIDIn(ids...), movie.And(movie.JavdbIDIsNil(), movie.CodeIn(codes...))),
-		movie.HasFilesWith(scan.LibraryFiles(*source)),
-	).Select(movie.FieldID, movie.FieldCode, movie.FieldJavdbID).All(ctx)
+	localMovies, err := service.local.MatchingMovies(ctx, ids, codes)
 	if err != nil {
 		return nil, fmt.Errorf("query local movie states: %w", err)
 	}
 	byID, byCode := make(map[string]int), make(map[string]int)
 	for _, record := range localMovies {
-		if record.JavdbID != nil {
-			byID[*record.JavdbID] = record.ID
+		if record.JavDBID != nil {
+			byID[*record.JavDBID] = record.ID
 		} else {
 			byCode[record.Code] = record.ID
 		}
@@ -73,7 +57,7 @@ func (service *DiscoverService) MovieStates(ctx context.Context, identities []Mo
 			taskIDs = append(taskIDs, identity.ID)
 		}
 	}
-	if len(taskIDs) == 0 {
+	if len(taskIDs) == 0 || service.database == nil {
 		return result, nil
 	}
 

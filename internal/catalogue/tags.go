@@ -1,4 +1,4 @@
-package service
+package catalogue
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 
 // Catalogue tag IDs are global. Some details include unnamed tags whose
 // definitions live in another section's taxonomy; complete them before caching.
-func (service *DiscoverService) completeMovieTags(ctx context.Context, detail *domain.MovieDetail) error {
+func (service *Service) completeMovieTags(ctx context.Context, detail *domain.MovieDetail) error {
 	if detail.Zone == domain.ZoneUnknown {
 		// No supported taxonomy can be selected. Keep names supplied by the
 		// detail without making classification-dependent requests.

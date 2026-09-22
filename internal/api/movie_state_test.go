@@ -9,35 +9,36 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ppxb/miyabi/internal/service"
+	"github.com/ppxb/miyabi/internal/catalogue"
 )
 
 type movieStateStub struct {
 	Discoverer
-	movies []service.MovieIdentity
+	movies []catalogue.MovieIdentity
 }
 
-func (stub *movieStateStub) MovieStates(_ context.Context, movies []service.MovieIdentity) ([]service.DiscoverMovieState, error) {
+func (stub *movieStateStub) MovieStates(_ context.Context, movies []catalogue.MovieIdentity) ([]catalogue.MovieStateItem, error) {
 	stub.movies = movies
-	return []service.DiscoverMovieState{{ID: movies[0].ID, State: service.MovieInLibrary, LibraryID: 42}}, nil
+	return []catalogue.MovieStateItem{{ID: movies[0].ID, State: catalogue.MovieInLibrary, LibraryID: 42}}, nil
 }
+
 
 func TestMovieStatesHandlerValidatesBatchesAndDisablesHTTPCaching(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	valid := service.MovieIdentity{ID: "catalogue-id", Code: "ABP-001"}
-	tooMany := make([]service.MovieIdentity, 101)
+	valid := catalogue.MovieIdentity{ID: "catalogue-id", Code: "ABP-001"}
+	tooMany := make([]catalogue.MovieIdentity, 101)
 	for index := range tooMany {
 		tooMany[index] = valid
 	}
 	for _, scenario := range []struct {
 		name   string
-		movies []service.MovieIdentity
+		movies []catalogue.MovieIdentity
 		valid  bool
 	}{
-		{"valid batch", []service.MovieIdentity{valid}, true},
-		{"empty batch", []service.MovieIdentity{}, false},
-		{"missing id", []service.MovieIdentity{{Code: valid.Code}}, false},
-		{"missing code", []service.MovieIdentity{{ID: valid.ID}}, false},
+		{"valid batch", []catalogue.MovieIdentity{valid}, true},
+		{"empty batch", []catalogue.MovieIdentity{}, false},
+		{"missing id", []catalogue.MovieIdentity{{Code: valid.Code}}, false},
+		{"missing code", []catalogue.MovieIdentity{{ID: valid.ID}}, false},
 		{"oversized batch", tooMany, false},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
@@ -57,7 +58,7 @@ func TestMovieStatesHandlerValidatesBatchesAndDisablesHTTPCaching(t *testing.T) 
 				}
 				return
 			}
-			var states []service.DiscoverMovieState
+			var states []catalogue.MovieStateItem
 			if err := json.Unmarshal(response.Body.Bytes(), &states); err != nil {
 				t.Fatal(err)
 			}
@@ -69,3 +70,4 @@ func TestMovieStatesHandlerValidatesBatchesAndDisablesHTTPCaching(t *testing.T) 
 		})
 	}
 }
+

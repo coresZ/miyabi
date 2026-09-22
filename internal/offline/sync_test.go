@@ -9,9 +9,11 @@ import (
 
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/task"
+	"github.com/ppxb/miyabi/internal/library/scan"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
+
 
 func TestOfflineSyncContinuesPastIndividualFailures(t *testing.T) {
 	service, first, input, _ := offlineFixture(t)
@@ -238,3 +240,24 @@ func TestOfflineProgressPublishesChanges(t *testing.T) {
 		t.Fatalf("unchanged progress published another revision: %+v", after)
 	}
 }
+
+func TestOfflinePageFileTrackingRollsBackWithTheIndex(t *testing.T) {
+	service, record, input, source := offlineFixture(t)
+	ctx := t.Context()
+	payload := scan.Payload{Source: source, OfflineTaskID: record.ID, TargetID: "download-folder",
+		Code: input.Code, JavDBID: input.JavDBID}
+	video := scan.IdentifyVideo(pan.File{ID: "video", ParentID: "download-folder", Name: input.Code + ".mp4", Size: 1 << 30})
+	// The missing parent fails the final progress write after file tracking.
+	if err := scan.ProcessScanPage(ctx, service.database, -1, "rolled-back", "/Movies/download-folder",
+		[]scan.Video{video}, &payload, nil, service.tasks); err == nil {
+		t.Fatal("page with a missing scan parent unexpectedly committed")
+	}
+	if service.database.File.Query().CountX(ctx) != 0 {
+		t.Fatal("file index escaped rollback")
+	}
+	saved, err := tasks.DecodePayload[offlinePayload](service.database.Task.GetX(ctx, record.ID).Payload)
+	if err != nil || len(saved.FileIDs) != 0 {
+		t.Fatalf("download file tracking escaped rollback: %+v err=%v", saved, err)
+	}
+}
+

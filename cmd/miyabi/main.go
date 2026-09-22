@@ -14,6 +14,7 @@ import (
 
 	"github.com/ppxb/miyabi"
 	"github.com/ppxb/miyabi/internal/api"
+	"github.com/ppxb/miyabi/internal/catalogue"
 	"github.com/ppxb/miyabi/internal/config"
 	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/drive"
@@ -72,21 +73,21 @@ func run(args []string) error {
 		return fmt.Errorf("initialize drive service: %w", err)
 	}
 	defer driveSvc.Close()
-	discover, err := service.NewDiscoverService(context.Background(), store.Client, javdb.Options{}, network.ProxyManager(), driveSvc)
-	if err != nil {
-		return fmt.Errorf("initialize discovery service: %w", err)
-	}
-	defer discover.Close()
 	images, err := mediaimage.NewCache(cfg.DataDir)
 	if err != nil {
 		return err
 	}
 	library := library.New(store.Client, driveSvc, taskSvc, images)
-	offline := offline.New(store.Client, discover, driveSvc, taskSvc, library)
-	monitors := monitor.New(store.Client, discover, offline, taskSvc)
+	catalogueSvc, err := catalogue.New(context.Background(), store.Client, javdb.Options{}, network.ProxyManager(), library)
+	if err != nil {
+		return fmt.Errorf("initialize catalogue service: %w", err)
+	}
+	defer catalogueSvc.Close()
+	offline := offline.New(store.Client, catalogueSvc, driveSvc, taskSvc, library)
+	monitors := monitor.New(store.Client, catalogueSvc, offline, taskSvc)
 	play := playback.New(store.Client, driveSvc)
 	defer play.Close()
-	scrapeSvc := scrape.New(store.Client, driveSvc, discover, images, taskSvc)
+	scrapeSvc := scrape.New(store.Client, driveSvc, catalogueSvc, images, taskSvc)
 	data, err := maintenance.New(cfg.DataDir, store.Client, images, scrapeSvc)
 	if err != nil {
 		return fmt.Errorf("initialize data service: %w", err)
@@ -103,13 +104,14 @@ func run(args []string) error {
 		Logger:   logger,
 		Health:   store,
 		Access:   service.NewAccessGateService(cfg.AccessPassword),
-		Discover: discover,
+		Discover: catalogueSvc,
 		Pan:      driveSvc,
 		Offline:  offline,
 		Monitor:  monitors,
 		Library:  library,
 		Play:     play,
 		Tasks:    taskSvc,
+
 		Artwork:  scrapeSvc,
 		Data:     data,
 		Network:  network,

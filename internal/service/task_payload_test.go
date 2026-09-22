@@ -2,15 +2,19 @@ package service
 
 import (
 	"encoding/json"
-	"github.com/ppxb/miyabi/internal/tasks"
+	"fmt"
 	"math"
 	"reflect"
 	"testing"
 
+	"github.com/ppxb/miyabi/internal/domain"
+	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/nfo"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
+
 
 func taskPayloadJSON(t testing.TB, value any) json.RawMessage {
 	t.Helper()
@@ -83,3 +87,50 @@ func TestTaskPayloadRejectsMalformedValues(t *testing.T) {
 		}
 	}
 }
+
+var taskBenchmarkResult any
+
+func BenchmarkTaskPayload(b *testing.B) {
+	input := scrape.CoverPayload{
+		MetadataPayload: scrape.MetadataPayload{Source: domain.LibrarySource{AccountID: "100", Directory: domain.LibraryDirectory{ID: "10", Path: "/Movies"}},
+			ScanTaskID: 1, MovieID: 2, Code: "ABP-001", JavDBID: "movie"},
+		Document: nfo.Movie{Code: "ABP-001", Title: "Fixture title", Rating: 4.5},
+		Snapshot: &scrape.Snapshot{Videos: "fingerprint", Directories: []scrape.DirectorySnapshot{{ID: "10"}}},
+	}
+	for i := range 20 {
+		input.Document.Tags = append(input.Document.Tags, nfo.Tag{ID: fmt.Sprint(i), Name: "Fixture tag", CategoryID: "category"})
+	}
+	body, err := json.Marshal(input)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Run("encode", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			encoded, err := tasks.EncodePayload(input)
+			if err != nil {
+				b.Fatal(err)
+			}
+			stored, err := json.Marshal(encoded)
+			if err != nil {
+				b.Fatal(err)
+			}
+			taskBenchmarkResult = stored
+		}
+	})
+	b.Run("decode", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			var record ent.Task
+			if err := json.Unmarshal(body, &record.Payload); err != nil {
+				b.Fatal(err)
+			}
+			decoded, err := tasks.DecodePayload[scrape.CoverPayload](record.Payload)
+			if err != nil {
+				b.Fatal(err)
+			}
+			taskBenchmarkResult = decoded
+		}
+	})
+}
+

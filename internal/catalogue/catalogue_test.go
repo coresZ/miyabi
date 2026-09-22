@@ -1,4 +1,4 @@
-package service
+package catalogue
 
 import (
 	"context"
@@ -8,21 +8,61 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ppxb/miyabi/internal/codeid"
 	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/javdb"
+	"github.com/ppxb/miyabi/internal/tasks"
 )
 
-func TestNewDiscoverServicePersistsDeviceWithoutSelectingRoute(t *testing.T) {
+type stubLocalState struct {
+	source *domain.LibrarySource
+	movies []domain.LocalMovie
+}
+
+func (s *stubLocalState) Source() *domain.LibrarySource {
+	return s.source
+}
+
+func (s *stubLocalState) MatchingMovies(_ context.Context, ids, codes []string) ([]domain.LocalMovie, error) {
+	var matches []domain.LocalMovie
+	idSet := make(map[string]bool)
+	for _, id := range ids {
+		idSet[id] = true
+	}
+	codeSet := make(map[string]bool)
+	for _, code := range codes {
+		codeSet[code] = true
+	}
+	for _, m := range s.movies {
+		if m.JavDBID != nil && idSet[*m.JavDBID] {
+			matches = append(matches, m)
+		} else if m.JavDBID == nil && codeSet[codeid.Normalize(m.Code)] {
+			matches = append(matches, m)
+		}
+	}
+	return matches, nil
+}
+
+func taskPayloadJSON(t testing.TB, value any) json.RawMessage {
+	t.Helper()
+	payload, err := tasks.EncodePayload(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return payload
+}
+
+func TestNewPersistsDeviceWithoutSelectingRoute(t *testing.T) {
 	store, err := database.Open(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 
-	first, err := NewDiscoverService(t.Context(), store.Client, javdb.Options{}, nil, nil)
+	first, err := New(t.Context(), store.Client, javdb.Options{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +83,7 @@ func TestNewDiscoverServicePersistsDeviceWithoutSelectingRoute(t *testing.T) {
 		t.Fatalf("device UUID = %q: %v", firstDevice, err)
 	}
 
-	second, err := NewDiscoverService(t.Context(), store.Client, javdb.Options{}, nil, nil)
+	second, err := New(t.Context(), store.Client, javdb.Options{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +101,7 @@ func TestNewDiscoverServicePersistsDeviceWithoutSelectingRoute(t *testing.T) {
 	}
 }
 
-func TestNewDiscoverServiceRestoresPersistedRoute(t *testing.T) {
+func TestNewRestoresPersistedRoute(t *testing.T) {
 	store, err := database.Open(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +111,7 @@ func TestNewDiscoverServiceRestoresPersistedRoute(t *testing.T) {
 	if err := saveSetting(t.Context(), store.Client, javdbRouteSetting, saved); err != nil {
 		t.Fatal(err)
 	}
-	service, err := NewDiscoverService(t.Context(), store.Client, javdb.Options{}, nil, nil)
+	service, err := New(t.Context(), store.Client, javdb.Options{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,17 +136,14 @@ func TestProjectMoviesAddsLibraryTaskAndReleaseState(t *testing.T) {
 	}
 	defer store.Close()
 
-	localMovie, err := store.Client.Movie.Create().SetCode("ABP-001").Save(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Client.File.Create().SetFileID("1001").SetName("ABP-001.mp4").SetSize(1).
-		SetAccountID("100").SetRootID("10").SetMovie(localMovie).Exec(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	driveSvc := newMountedDrive(t, store.Client, &panStub{}, domain.LibrarySource{
+	source := domain.LibrarySource{
 		AccountID: "100", Directory: domain.LibraryDirectory{ID: "10", Name: "Movies", Path: "/Movies"},
-	})
+	}
+	localState := &stubLocalState{
+		source: &source,
+		movies: []domain.LocalMovie{{ID: 42, Code: "ABP-001"}},
+	}
+
 	if _, err := store.Client.Task.Create().
 		SetType("offline").
 		SetPayload(taskPayloadJSON(t, map[string]any{"code": "ABP-002", "javdb_id": "two", "account_id": "100", "directory_id": "10"})).
@@ -132,7 +169,7 @@ func TestProjectMoviesAddsLibraryTaskAndReleaseState(t *testing.T) {
 
 	today := time.Now().In(time.Local)
 	tomorrow := today.AddDate(0, 0, 1).Format("2006-01-02")
-	service := &DiscoverService{database: store.Client, local: driveSvc}
+	service := &Service{database: store.Client, local: localState}
 	movies, err := service.projectMovies(t.Context(), []domain.Movie{
 		{ID: "one", Code: "ABP-001", ReleaseDate: today.Format("2006-01-02")},
 		{ID: "two", Code: "ABP-002", ReleaseDate: tomorrow},
@@ -143,7 +180,7 @@ func TestProjectMoviesAddsLibraryTaskAndReleaseState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if movies[0].State != MovieInLibrary || movies[0].ReleaseStatus != ReleaseReleased {
+	if movies[0].State != MovieInLibrary || movies[0].ReleaseStatus != ReleaseReleased || movies[0].LibraryID != 42 {
 		t.Fatalf("library movie = %#v", movies[0])
 	}
 	if movies[1].State != MovieSaving || movies[1].ReleaseStatus != ReleaseUpcoming {
@@ -153,7 +190,7 @@ func TestProjectMoviesAddsLibraryTaskAndReleaseState(t *testing.T) {
 		t.Fatalf("remote movie = %#v", movies[2])
 	}
 	if movies[3].State != MovieInLibrary || movies[3].ReleaseStatus != ReleaseUnknown ||
-		movies[3].ReleaseDate != "" || movies[3].LibraryID != localMovie.ID {
+		movies[3].ReleaseDate != "" || movies[3].LibraryID != 42 {
 		t.Fatalf("invalid date changed library state: %#v", movies[3])
 	}
 	if movies[4].State != MovieSaving || movies[4].ReleaseStatus != ReleaseUnknown || movies[4].ReleaseDate != "" {
@@ -167,7 +204,7 @@ func TestProjectMoviesOmitsInvalidDatesWithoutMutatingCatalogue(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	service := &DiscoverService{database: store.Client}
+	service := &Service{database: store.Client}
 	now := time.Now().In(time.Local)
 	today := now.Format("2006-01-02")
 	past := now.AddDate(0, 0, -1).Format("2006-01-02")
@@ -212,7 +249,7 @@ func TestProjectMoviesOmitsInvalidDatesWithoutMutatingCatalogue(t *testing.T) {
 }
 
 func TestProjectEmptyMoviesSkipsDatabase(t *testing.T) {
-	service := &DiscoverService{}
+	service := &Service{}
 	result, err := service.projectMovies(t.Context(), nil)
 	if err != nil || result == nil || len(result) != 0 {
 		t.Fatalf("empty projection = %#v, error = %v", result, err)
@@ -220,115 +257,68 @@ func TestProjectEmptyMoviesSkipsDatabase(t *testing.T) {
 }
 
 func TestProjectionUsesSourceIDBeforeCatalogueSpelling(t *testing.T) {
-	fix := libraryFixture(t)
-	ctx := t.Context()
-	db := fix.DB
-	payload := fix.Payload
-	known := db.Movie.Create().SetCode("OLD-001").SetJavdbID("known-id").SaveX(ctx)
-	pending := db.Movie.Create().SetCode("KNB-M014").SaveX(ctx)
-	conflicting := db.Movie.Create().SetCode("GLOD-0436").SetJavdbID("different-id").SaveX(ctx)
-	for index, id := range []int{known.ID, pending.ID, conflicting.ID} {
-		db.File.Create().SetFileID(fmt.Sprint(index)).SetName("video.mp4").SetSize(1).
-			SetAccountID(payload.Source.AccountID).SetRootID(payload.Source.Directory.ID).SetMovieID(id).SaveX(ctx)
-	}
-	db.Task.Create().SetType("offline").SetPayload(taskPayloadJSON(t, map[string]any{
-		"javdb_id": "queued-id", "code": "PREVIOUS-002",
-		"account_id": payload.Source.AccountID, "directory_id": payload.Source.Directory.ID,
-	})).SaveX(ctx)
-	service := &DiscoverService{database: db, local: fix.Drive}
-	source := []domain.Movie{
-		{ID: "known-id", Code: "作品/新版 #001"},
-		{ID: "pending-id", Code: "knb_m014"},
-		{ID: "conflicting-id", Code: "GLOD-0436"},
-		{ID: "queued-id", Code: "Current.Number"},
-	}
-	result, err := service.projectMovies(ctx, source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantIDs := []int{known.ID, pending.ID, 0, 0}
-	wantStates := []MovieState{MovieInLibrary, MovieInLibrary, MovieNotInLibrary, MovieSaving}
-	for index, item := range result {
-		if item.Code != source[index].Code || item.LibraryID != wantIDs[index] || item.State != wantStates[index] {
-			t.Fatalf("wrong identity projection at %d: %#v", index, item)
-		}
-	}
-}
-
-func TestCachedCatalogueStillReflectsCurrentLibraryAndTaskState(t *testing.T) {
 	store, err := database.Open(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	driveSvc := newMountedDrive(t, store.Client, &panStub{}, domain.LibrarySource{
+	ctx := t.Context()
+
+	source := domain.LibrarySource{
 		AccountID: "100", Directory: domain.LibraryDirectory{ID: "10", Name: "Movies", Path: "/Movies"},
-	})
-	service, err := NewDiscoverService(t.Context(), store.Client, javdb.Options{}, nil, driveSvc)
+	}
+	knownID := "known-id"
+	differentID := "different-id"
+	localState := &stubLocalState{
+		source: &source,
+		movies: []domain.LocalMovie{
+			{ID: 10, Code: "OLD-001", JavDBID: &knownID},
+			{ID: 11, Code: "KNB-M014", JavDBID: nil},
+			{ID: 12, Code: "GLOD-0436", JavDBID: &differentID},
+		},
+	}
+
+	store.Client.Task.Create().SetType("offline").SetPayload(taskPayloadJSON(t, map[string]any{
+		"javdb_id": "queued-id", "code": "PREVIOUS-002",
+		"account_id": source.AccountID, "directory_id": source.Directory.ID,
+	})).SaveX(ctx)
+
+	service := &Service{database: store.Client, local: localState}
+	sourceMovies := []domain.Movie{
+		{ID: "known-id", Code: "作品/新版 #001"},
+		{ID: "pending-id", Code: "knb_m014"},
+		{ID: "conflicting-id", Code: "GLOD-0436"},
+		{ID: "queued-id", Code: "Current.Number"},
+	}
+	result, err := service.projectMovies(ctx, sourceMovies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer service.Close()
-	loads := 0
-	project := func() MovieState {
-		t.Helper()
-		source, err := cachedJavDB(t.Context(), service, service.lists, "fixture", func(context.Context) ([]domain.Movie, error) {
-			loads++
-			return []domain.Movie{{ID: "fixture", Code: "ABP-001"}}, nil
-		})
-		if err != nil {
-			t.Fatal(err)
+	wantIDs := []int{10, 11, 0, 0}
+	wantStates := []MovieState{MovieInLibrary, MovieInLibrary, MovieNotInLibrary, MovieSaving}
+	for i, item := range result {
+		if item.LibraryID != wantIDs[i] || item.State != wantStates[i] {
+			t.Fatalf("item %d: got id=%d state=%s, want id=%d state=%s", i, item.LibraryID, item.State, wantIDs[i], wantStates[i])
 		}
-		movies, err := service.projectMovies(t.Context(), source)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return movies[0].State
-	}
-	if got := project(); got != MovieNotInLibrary {
-		t.Fatalf("initial state = %s", got)
-	}
-	if err := store.Client.Task.Create().SetType("offline").SetPayload(taskPayloadJSON(t, map[string]any{"code": "ABP-001", "javdb_id": "fixture", "account_id": "100", "directory_id": "10"})).Exec(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	if got := project(); got != MovieSaving {
-		t.Fatalf("queued state = %s", got)
-	}
-	localMovie, err := store.Client.Movie.Create().SetCode("ABP-001").Save(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := project(); got != MovieSaving {
-		t.Fatalf("metadata without a file changed library state: %s", got)
-	}
-	if err := store.Client.File.Create().SetFileID("1001").SetName("ABP-001.mp4").SetSize(1).
-		SetAccountID("100").SetRootID("10").SetMovie(localMovie).Exec(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	if got := project(); got != MovieInLibrary || loads != 1 {
-		t.Fatalf("scanned state = %s, loads = %d", got, loads)
-	}
-	mountSource(t, driveSvc, stubOf(t, driveSvc), domain.LibrarySource{
-		AccountID: "100", Directory: domain.LibraryDirectory{ID: "20", Name: "Other", Path: "/Other"},
-	})
-	if got := project(); got != MovieNotInLibrary || loads != 1 {
-		t.Fatalf("movie outside the mounted root = %s, loads = %d", got, loads)
-	}
-	mountSource(t, driveSvc, stubOf(t, driveSvc), domain.LibrarySource{
-		AccountID: "200", Directory: domain.LibraryDirectory{ID: "10", Name: "Movies", Path: "/Movies"},
-	})
-	if got := project(); got != MovieNotInLibrary {
-		t.Fatalf("another account inherited task state: %s", got)
 	}
 }
 
-func TestProjectMagnetsBuildsStandardURIFromHash(t *testing.T) {
-	const hash = "0000000000000000000000000000000000000001"
-	result := projectMagnets([]domain.Magnet{{Hash: hash, Name: "Fixture", Size: 1024}})
-	if len(result) != 1 || result[0].URI != "magnet:?xt=urn:btih:"+hash || result[0].Name != "Fixture" {
-		t.Fatalf("result = %#v", result)
+func TestFacets(t *testing.T) {
+	service := &Service{}
+	facets := service.Facets()
+	if len(facets.Zones) == 0 || len(facets.Sorts) == 0 {
+		t.Fatalf("empty facets: %+v", facets)
 	}
-	if empty := projectMagnets(nil); empty == nil || len(empty) != 0 {
-		t.Fatalf("empty result = %#v", empty)
+	expectedZones := map[string]bool{"censored": true, "uncensored": true, "fc2": true, "western": true, "anime": true}
+	for _, z := range facets.Zones {
+		if !expectedZones[z.Value] {
+			t.Errorf("unexpected zone: %s", z.Value)
+		}
+	}
+	expectedSorts := map[string]bool{"release": true, "update": true, "hit": true, "score": true}
+	for _, s := range facets.Sorts {
+		if !expectedSorts[s.Value] {
+			t.Errorf("unexpected sort: %s", s.Value)
+		}
 	}
 }

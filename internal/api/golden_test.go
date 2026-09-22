@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ppxb/miyabi/internal/catalogue"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent/movie"
@@ -26,9 +27,9 @@ import (
 	"github.com/ppxb/miyabi/internal/offline"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/playback"
-	"github.com/ppxb/miyabi/internal/service"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
+
 
 // Golden files freeze the JSON contract the frontend depends on. Run with
 // -update after an intentional wire change and review the diff.
@@ -57,39 +58,39 @@ func goldenMovie() domain.Movie {
 	}
 }
 
-func (goldenDiscover) Browse(context.Context, domain.BrowseOptions) ([]service.DiscoverMovie, error) {
+func (goldenDiscover) Browse(context.Context, domain.BrowseOptions) ([]catalogue.Movie, error) {
 	bare := domain.Movie{ID: "movie-near", Code: "ABP-124", Title: "Similar result", ReleaseDate: "2027-01-01",
 		Thumbnail: "https://media.example/thumb-near.jpg", Cover: "https://media.example/cover-near.jpg",
 		PreviewImages: []domain.PreviewImage{}, Actors: []domain.Actor{}, Tags: []domain.Tag{}}
-	return []service.DiscoverMovie{
-		{Movie: goldenMovie(), LibraryID: 7, State: service.MovieInLibrary, ReleaseStatus: service.ReleaseReleased},
-		{Movie: bare, State: service.MovieNotInLibrary, ReleaseStatus: service.ReleaseUpcoming},
+	return []catalogue.Movie{
+		{Movie: goldenMovie(), LibraryID: 7, State: catalogue.MovieInLibrary, ReleaseStatus: catalogue.ReleaseReleased},
+		{Movie: bare, State: catalogue.MovieNotInLibrary, ReleaseStatus: catalogue.ReleaseUpcoming},
 	}, nil
 }
 
-func (stub goldenDiscover) Search(context.Context, string, domain.SearchOptions) ([]service.DiscoverMovie, error) {
+func (stub goldenDiscover) Search(context.Context, string, domain.SearchOptions) ([]catalogue.Movie, error) {
 	return stub.Browse(context.Background(), domain.BrowseOptions{})
 }
 
-func (goldenDiscover) MovieDetail(context.Context, string) (service.DiscoverMovieDetail, error) {
-	return service.DiscoverMovieDetail{
-		DiscoverMovie: service.DiscoverMovie{Movie: goldenMovie(), State: service.MovieSaving, ReleaseStatus: service.ReleaseReleased},
+func (goldenDiscover) MovieDetail(context.Context, string) (catalogue.MovieDetail, error) {
+	return catalogue.MovieDetail{
+		Movie:         catalogue.Movie{Movie: goldenMovie(), State: catalogue.MovieSaving, ReleaseStatus: catalogue.ReleaseReleased},
 		Zone:          domain.ZoneCensored,
 		ActorMovies:   []domain.MovieReference{{ID: "actor-movie-1", Code: "ABP-124", Thumbnail: "https://media.example/actor-movie.jpg"}},
 		RelatedMovies: []domain.MovieReference{{ID: "related-movie-1", Code: "SONE-001", Thumbnail: "https://media.example/related-movie.jpg"}},
 	}, nil
 }
 
-func (goldenDiscover) MovieStates(context.Context, []service.MovieIdentity) ([]service.DiscoverMovieState, error) {
-	return []service.DiscoverMovieState{
-		{ID: "movie-exact", LibraryID: 7, State: service.MovieInLibrary},
-		{ID: "movie-near", State: service.MovieNotInLibrary},
-		{ID: "movie-saving", State: service.MovieSaving},
+func (goldenDiscover) MovieStates(context.Context, []catalogue.MovieIdentity) ([]catalogue.MovieStateItem, error) {
+	return []catalogue.MovieStateItem{
+		{ID: "movie-exact", LibraryID: 7, State: catalogue.MovieInLibrary},
+		{ID: "movie-near", State: catalogue.MovieNotInLibrary},
+		{ID: "movie-saving", State: catalogue.MovieSaving},
 	}, nil
 }
 
-func (goldenDiscover) Magnets(context.Context, string) ([]service.DiscoverMagnet, error) {
-	return []service.DiscoverMagnet{
+func (goldenDiscover) Magnets(context.Context, string) ([]catalogue.Magnet, error) {
+	return []catalogue.Magnet{
 		{Magnet: domain.Magnet{Hash: "0000000000000000000000000000000000000003", Name: "HD subtitle fixture", Size: 1024 << 20,
 			HasSubtitle: true, HD: true, FilesCount: 3, CreatedAt: "2026-08-03"}, URI: "magnet:?xt=urn:btih:0000000000000000000000000000000000000003"},
 		{Magnet: domain.Magnet{Hash: "0000000000000000000000000000000000000002", Name: "HD fixture", Size: 16384 << 20,
@@ -101,14 +102,15 @@ func (goldenDiscover) Tags(context.Context, domain.Zone) ([]domain.TagCategory, 
 	return []domain.TagCategory{{ID: "category-1", Name: "主題", Tags: []domain.TagOption{{ID: "tag-1", Name: "Tag"}, {ID: "tag-2", Name: "Other"}}}}, nil
 }
 
-func (goldenDiscover) Route() service.JavDBRouteStatus {
-	return service.JavDBRouteStatus{Host: "https://api.example", LatencyMS: 125, Active: true, Manual: false,
-		Candidates: []service.JavDBRouteCandidate{
+func (goldenDiscover) Route() catalogue.RouteStatus {
+	return catalogue.RouteStatus{Host: "https://api.example", LatencyMS: 125, Active: true, Manual: false,
+		Candidates: []catalogue.RouteCandidate{
 			{Host: "https://api.example", LatencyMS: 125, Status: javdb.RouteAvailable},
 			{Host: "https://backup.example", LatencyMS: 0, Status: javdb.RouteUnavailable},
 			{Host: "https://untested.example", Status: javdb.RouteUntested},
 		}}
 }
+
 
 type goldenLibrary struct {
 	LibraryManager

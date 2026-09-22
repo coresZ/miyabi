@@ -6,6 +6,14 @@ type MovieRef struct {
 	JavDBID string `json:"javdb_id"`
 }
 
+// LocalMovie represents the identity and library ID of a movie indexed locally.
+type LocalMovie struct {
+	ID      int     `json:"id"`
+	Code    string  `json:"code"`
+	JavDBID *string `json:"javdb_id,omitempty"`
+}
+
+
 // Zone is a movie category/section.
 type Zone string
 

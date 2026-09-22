@@ -12,9 +12,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/ppxb/miyabi/internal/catalogue"
 	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
+
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
@@ -270,7 +272,7 @@ type pipelineFixture struct {
 	tasks     *tasks.Service
 	library   *library.Service
 	scrape    *scrapePkg.Service
-	discover  *DiscoverService
+	discover  *catalogue.Service
 	images    *mediaimage.Cache
 	source    domain.LibrarySource
 }
@@ -298,23 +300,22 @@ func newPipelineFixture(t *testing.T) *pipelineFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	discover, err := NewDiscoverService(ctx, store.Client, javdb.Options{}, nil, d)
+	catalogueClient := &fakeCatalogue{ids: make(map[string]string), details: make(map[string]domain.MovieDetail), cover: fixtureJPEG(t, 600, 400)}
+	library := library.New(store.Client, d, taskSvc, images)
+	discover, err := catalogue.NewWithProvider(ctx, store.Client, catalogueClient, library)
 	if err != nil {
 		t.Fatal(err)
 	}
-	discover.javdb.Close()
-	catalogue := &fakeCatalogue{ids: make(map[string]string), details: make(map[string]domain.MovieDetail), cover: fixtureJPEG(t, 600, 400)}
-	discover.javdb = catalogue
-	library := library.New(store.Client, d, taskSvc, images)
 	scrape := scrapePkg.New(store.Client, d, discover, images, taskSvc)
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScan, library.Scan, library.Finished))
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScrape, scrape.Scrape, scrape.Finished))
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindCover, scrape.Cover, scrape.Finished))
 	return &pipelineFixture{
-		store: store, drive: drive, catalogue: catalogue, tasks: taskSvc,
+		store: store, drive: drive, catalogue: catalogueClient, tasks: taskSvc,
 		library: library, discover: discover, scrape: scrape, images: images, source: source,
 	}
 }
+
 
 func (fixture *pipelineFixture) addCatalogueMovie(detail domain.MovieDetail) {
 	fixture.catalogue.ids[detail.Code] = detail.ID
@@ -455,10 +456,11 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 	if len(infos) != 1 || infos[0].Status != task.StatusDone || infos[0].Scan.MetadataTotal != 1 || infos[0].Scan.MetadataCompleted != 1 || infos[0].Scan.Movies != 1 {
 		t.Fatalf("scan workflow = %+v", infos)
 	}
-	states, err := fixture.discover.MovieStates(ctx, []MovieIdentity{{ID: "movie-exact", Code: "ABP-123"}})
-	if err != nil || len(states) != 1 || states[0].State != MovieInLibrary || states[0].LibraryID != record.ID {
+	states, err := fixture.discover.MovieStates(ctx, []catalogue.MovieIdentity{{ID: "movie-exact", Code: "ABP-123"}})
+	if err != nil || len(states) != 1 || states[0].State != catalogue.MovieInLibrary || states[0].LibraryID != record.ID {
 		t.Fatalf("movie states = %+v, %v", states, err)
 	}
+
 	page, err := fixture.library.Movies(ctx, 1, 20)
 	if err != nil || page.Total != 1 || len(page.Movies) != 1 || page.Movies[0].Fanart != artwork.Fanart || page.Movies[0].ScrapeStatus != movie.ScrapeStatusDone {
 		t.Fatalf("library page = %+v, %v", page, err)

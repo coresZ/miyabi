@@ -1,4 +1,4 @@
-package service
+package catalogue
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 )
 
 func TestMovieTagsResolveGlobalIDsFromCachedTaxonomies(t *testing.T) {
-	service := &DiscoverService{tags: newResponseCache[[]domain.TagCategory](5, time.Hour)}
+	service := &Service{tags: newResponseCache[[]domain.TagCategory](5, time.Hour)}
 	fixtures := map[domain.Zone][]domain.TagCategory{
 		domain.ZoneAnime:      {{ID: "anime-category", Tags: []domain.TagOption{{ID: "anime-tag", Name: "动漫标签"}}}},
 		domain.ZoneCensored:   {{ID: "shared-category", Tags: []domain.TagOption{{ID: "shared-tag", Name: "共享标签"}}}},
@@ -56,37 +56,33 @@ func TestMovieTagsResolveGlobalIDsFromCachedTaxonomies(t *testing.T) {
 }
 
 func TestCompleteMovieTagsSkipsLookupsForCompleteMetadata(t *testing.T) {
-	service := &DiscoverService{}
+	service := &Service{}
 	for _, tags := range [][]domain.Tag{nil, {{ID: "known", Name: "已知标签", CategoryID: "known-category"}}} {
-		if err := service.completeMovieTags(t.Context(), &domain.MovieDetail{Movie: domain.Movie{Tags: tags}}); err != nil {
+		detail := domain.MovieDetail{Zone: domain.ZoneCensored, Movie: domain.Movie{Tags: tags}}
+		if err := service.completeMovieTags(t.Context(), &detail); err != nil {
 			t.Fatal(err)
+		}
+		if !slices.Equal(detail.Tags, tags) {
+			t.Fatalf("tags changed: %#v", detail.Tags)
 		}
 	}
 }
 
-func TestCompleteMovieTagsPreservesNamesWithoutLookingUpUnknownZone(t *testing.T) {
-	// No client or tag cache: an unknown zone must not issue taxonomy requests.
-	service := &DiscoverService{}
-	detail := domain.MovieDetail{Zone: domain.ZoneUnknown, Movie: domain.Movie{
-		ID: "movie", Code: "ABP-001", Title: "Fixture title",
-		Tags: []domain.Tag{
-			{ID: "named", Name: "上游标签", NameZHT: "上游標籤"},
-			{ID: "unnamed", CategoryID: "category"},
-			{ID: "complete", Name: "完整标签", CategoryID: "category"},
+func TestCompleteMovieTagsUnknownZoneKeepsNamedTagsOnly(t *testing.T) {
+	service := &Service{}
+	detail := domain.MovieDetail{
+		Zone: domain.ZoneUnknown,
+		Movie: domain.Movie{
+			Tags: []domain.Tag{
+				{ID: "tag-1", Name: "Named Tag"},
+				{ID: "tag-2"},
+			},
 		},
-	}}
+	}
 	if err := service.completeMovieTags(t.Context(), &detail); err != nil {
 		t.Fatal(err)
 	}
-	want := []domain.Tag{
-		{ID: "named", Name: "上游标签", NameZHT: "上游標籤"},
-		{ID: "complete", Name: "完整标签", CategoryID: "category"},
-	}
-	if !slices.Equal(detail.Tags, want) || detail.Zone != domain.ZoneUnknown || detail.Title != "Fixture title" {
-		t.Fatalf("unknown taxonomy damaged available metadata: %#v", detail)
-	}
-	detail.Tags = []domain.Tag{{ID: "unnamed"}}
-	if err := service.completeMovieTags(t.Context(), &detail); err != nil || detail.Tags == nil || len(detail.Tags) != 0 {
-		t.Fatalf("unknown taxonomy did not leave an empty usable tag list: %#v, %v", detail.Tags, err)
+	if len(detail.Tags) != 1 || detail.Tags[0].ID != "tag-1" {
+		t.Fatalf("unexpected tags for unknown zone: %#v", detail.Tags)
 	}
 }

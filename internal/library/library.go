@@ -105,9 +105,43 @@ func (s *Service) StartScan(ctx context.Context) (tasks.TaskInfo, error) {
 	return s.tasks.EnqueueScan(ctx, sess.Source())
 }
 
+// Source returns the currently mounted library source, or nil if unmounted.
+func (s *Service) Source() *domain.LibrarySource {
+	if s.drive == nil {
+		return nil
+	}
+	return s.drive.Source()
+}
+
+// MatchingMovies queries local movies matching any of the given JavDB IDs or normalized codes
+// that possess indexed files in the currently mounted library source.
+func (s *Service) MatchingMovies(ctx context.Context, javdbIDs []string, codes []string) ([]domain.LocalMovie, error) {
+	source := s.Source()
+	if source == nil || (len(javdbIDs) == 0 && len(codes) == 0) {
+		return nil, nil
+	}
+	records, err := s.database.Movie.Query().Where(
+		movie.Or(movie.JavdbIDIn(javdbIDs...), movie.And(movie.JavdbIDIsNil(), movie.CodeIn(codes...))),
+		movie.HasFilesWith(scan.LibraryFiles(*source)),
+	).Select(movie.FieldID, movie.FieldCode, movie.FieldJavdbID).All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query matching movies: %w", err)
+	}
+	result := make([]domain.LocalMovie, len(records))
+	for i, r := range records {
+		result[i] = domain.LocalMovie{
+			ID:      r.ID,
+			Code:    r.Code,
+			JavDBID: r.JavdbID,
+		}
+	}
+	return result, nil
+}
+
 func (s *Service) Scan(ctx context.Context, job tasks.Job) error {
 	return scan.Scan(ctx, job, s.drive, s.database, s.images, s.tasks)
 }
+
 
 func (s *Service) Finished(context.Context, *ent.Tx, tasks.Job, error) (tasks.Change, error) {
 	return tasks.ChangeOffline, nil

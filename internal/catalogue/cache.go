@@ -1,4 +1,4 @@
-package service
+package catalogue
 
 import (
 	"container/list"
@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// responseCache holds immutable JavDB models, never projected library/task state.
+// responseCache holds immutable upstream models, never projected library/task state.
 // Pending loads are shared; the last departing caller cancels the upstream request.
 type responseCache[T any] struct {
 	mu       sync.Mutex
@@ -110,7 +110,7 @@ func (cache *responseCache[T]) remove(element *list.Element) {
 	cache.recent.Remove(element)
 }
 
-func cachedJavDB[T any](ctx context.Context, service *DiscoverService, cache *responseCache[T], key string, load func(context.Context) (T, error)) (T, error) {
+func cachedJavDB[T any](ctx context.Context, service *Service, cache *responseCache[T], key string, load func(context.Context) (T, error)) (T, error) {
 	return cache.get(ctx, key, func(ctx context.Context) (T, error) {
 		value, err := load(ctx)
 		if err == nil {

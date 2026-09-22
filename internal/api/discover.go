@@ -5,23 +5,24 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ppxb/miyabi/internal/catalogue"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/javdb"
-	"github.com/ppxb/miyabi/internal/service"
 )
 
 type Discoverer interface {
-	Search(context.Context, string, domain.SearchOptions) ([]service.DiscoverMovie, error)
-	Browse(context.Context, domain.BrowseOptions) ([]service.DiscoverMovie, error)
-	MovieDetail(context.Context, string) (service.DiscoverMovieDetail, error)
-	MovieStates(context.Context, []service.MovieIdentity) ([]service.DiscoverMovieState, error)
-	Magnets(context.Context, string) ([]service.DiscoverMagnet, error)
+	Search(context.Context, string, domain.SearchOptions) ([]catalogue.Movie, error)
+	Browse(context.Context, domain.BrowseOptions) ([]catalogue.Movie, error)
+	MovieDetail(context.Context, string) (catalogue.MovieDetail, error)
+	MovieStates(context.Context, []catalogue.MovieIdentity) ([]catalogue.MovieStateItem, error)
+	Magnets(context.Context, string) ([]catalogue.Magnet, error)
 	Tags(context.Context, domain.Zone) ([]domain.TagCategory, error)
 	Media(context.Context, string) (javdb.Media, error)
-	Route() service.JavDBRouteStatus
-	Reselect(context.Context) (service.JavDBRouteStatus, error)
-	SelectRoute(context.Context, string) (service.JavDBRouteStatus, error)
+	Route() catalogue.RouteStatus
+	Reselect(context.Context) (catalogue.RouteStatus, error)
+	SelectRoute(context.Context, string) (catalogue.RouteStatus, error)
 }
+
 
 type ViewedManager interface {
 	ViewedMovieIDs(context.Context, ...int) ([]string, error)
@@ -57,8 +58,9 @@ type movieURI struct {
 }
 
 type movieStatesInput struct {
-	Movies []service.MovieIdentity `json:"movies" binding:"required,min=1,max=100,dive"`
+	Movies []catalogue.MovieIdentity `json:"movies" binding:"required,min=1,max=100,dive"`
 }
+
 
 func discoverMovieStatesHandler(discover Discoverer) gin.HandlerFunc {
 	return func(c *gin.Context) {

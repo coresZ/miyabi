@@ -159,3 +159,43 @@ func TestLibraryPageKeepsEmptyAndUnmatchedSourcesUsable(t *testing.T) {
 		}
 	}
 }
+
+func TestLibraryMatchingMovies(t *testing.T) {
+	lib, _, payload := libraryFixture(t)
+	ctx := t.Context()
+
+	film1 := lib.database.Movie.Create().SetCode("ABP-001").SetJavdbID("javdb-1").SaveX(ctx)
+	film2 := lib.database.Movie.Create().SetCode("ABP-002").SaveX(ctx)
+	filmOther := lib.database.Movie.Create().SetCode("ABP-003").SetJavdbID("javdb-3").SaveX(ctx)
+
+	// Files in mounted source
+	lib.database.File.Create().SetFileID("f1").SetName("ABP-001.mp4").SetSize(1024).
+		SetAccountID(payload.Source.AccountID).SetRootID(payload.Source.Directory.ID).SetMovie(film1).ExecX(ctx)
+	lib.database.File.Create().SetFileID("f2").SetName("ABP-002.mp4").SetSize(1024).
+		SetAccountID(payload.Source.AccountID).SetRootID(payload.Source.Directory.ID).SetMovie(film2).ExecX(ctx)
+	// File in different source
+	lib.database.File.Create().SetFileID("f3").SetName("ABP-003.mp4").SetSize(1024).
+		SetAccountID("different-account").SetRootID("different-dir").SetMovie(filmOther).ExecX(ctx)
+
+	matches, err := lib.MatchingMovies(ctx, []string{"javdb-1", "javdb-3"}, []string{"ABP-002", "ABP-999"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 2 {
+		t.Fatalf("expected 2 matches, got %d: %+v", len(matches), matches)
+	}
+
+	found1, found2 := false, false
+	for _, m := range matches {
+		if m.ID == film1.ID && m.Code == "ABP-001" && m.JavDBID != nil && *m.JavDBID == "javdb-1" {
+			found1 = true
+		}
+		if m.ID == film2.ID && m.Code == "ABP-002" && m.JavDBID == nil {
+			found2 = true
+		}
+	}
+	if !found1 || !found2 {
+		t.Fatalf("expected matches for film1 and film2, got %+v", matches)
+	}
+}
+
