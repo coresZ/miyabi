@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ppxb/miyabi/internal/monitor"
@@ -22,57 +21,39 @@ type monitorInput struct {
 func monitorListHandler(monitors MonitorManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		items, err := monitors.List(c.Request.Context())
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, items)
+		respond(c, items, err)
 	}
 }
 
 func monitorAddHandler(monitors MonitorManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var input monitorInput
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.Error(BadRequest(err))
+		input, ok := bindJSON[monitorInput](c)
+		if !ok {
 			return
 		}
 		item, err := monitors.Add(c.Request.Context(), input.MovieID)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusCreated, item)
+		created(c, item, err)
 	}
 }
 
 func monitorRemoveHandler(monitors MonitorManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var uri movieURI
-		if err := c.ShouldBindUri(&uri); err != nil {
-			c.Error(BadRequest(err))
+		uri, ok := bindURI[movieURI](c)
+		if !ok {
 			return
 		}
-		if err := monitors.Remove(c.Request.Context(), uri.ID); err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, nil)
+		err := monitors.Remove(c.Request.Context(), uri.ID)
+		respond(c, nil, err)
 	}
 }
 
 func monitorRetryHandler(monitors MonitorManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var uri movieURI
-		if err := c.ShouldBindUri(&uri); err != nil {
-			c.Error(BadRequest(err))
+		uri, ok := bindURI[movieURI](c)
+		if !ok {
 			return
 		}
 		item, err := monitors.Retry(c.Request.Context(), uri.ID)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, item)
+		respond(c, item, err)
 	}
 }

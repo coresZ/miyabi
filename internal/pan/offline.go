@@ -42,19 +42,16 @@ func (task *OfflineTask) UnmarshalJSON(data []byte) error {
 
 // RemoveOffline removes download history only. Source files are never deleted.
 func (client *Client) RemoveOffline(ctx context.Context, accessToken, hash string) error {
-	response, err := client.request(
+	_, err := apiRequest[apiResponse](
+		client,
 		client.http.R().SetContext(ctx).SetAuthToken(accessToken).SetFormData(map[string]string{
 			"info_hash": hash, "del_source_file": "0",
-		}), http.MethodPost, apiURL+"/open/offline/del_task",
+		}),
+		http.MethodPost,
+		apiURL+"/open/offline/del_task",
+		"offline removal",
 	)
-	if err != nil {
-		return err
-	}
-	var result apiResponse
-	if err := json.Unmarshal(response.Body(), &result); err != nil {
-		return fmt.Errorf("decode 115 offline removal: %w", err)
-	}
-	return result.err()
+	return err
 }
 
 type OfflinePage struct {
@@ -63,26 +60,23 @@ type OfflinePage struct {
 }
 
 func (client *Client) AddOffline(ctx context.Context, accessToken, uri, directoryID string) (string, error) {
-	response, err := client.request(
-		client.http.R().SetContext(ctx).SetAuthToken(accessToken).SetMultipartFormData(map[string]string{
-			"urls": uri, "wp_path_id": directoryID,
-		}),
-		http.MethodPost, apiURL+"/open/offline/add_task_urls",
-	)
-	if err != nil {
-		return "", err
-	}
-	var result struct {
+	type addOfflineWire struct {
 		apiResponse
 		Data []struct {
 			apiResponse
 			Hash string `json:"info_hash"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(response.Body(), &result); err != nil {
-		return "", fmt.Errorf("decode 115 offline submission: %w", err)
-	}
-	if err := result.err(); err != nil {
+	result, err := apiRequest[addOfflineWire](
+		client,
+		client.http.R().SetContext(ctx).SetAuthToken(accessToken).SetMultipartFormData(map[string]string{
+			"urls": uri, "wp_path_id": directoryID,
+		}),
+		http.MethodPost,
+		apiURL+"/open/offline/add_task_urls",
+		"offline submission",
+	)
+	if err != nil {
 		return "", err
 	}
 	if len(result.Data) != 1 {
@@ -99,21 +93,18 @@ func (client *Client) AddOffline(ctx context.Context, accessToken, uri, director
 }
 
 func (client *Client) OfflineTasks(ctx context.Context, accessToken string, page int) (OfflinePage, error) {
-	response, err := client.request(
-		client.http.R().SetContext(ctx).SetAuthToken(accessToken).SetQueryParam("page", strconv.Itoa(page)),
-		http.MethodGet, apiURL+"/open/offline/get_task_list",
-	)
-	if err != nil {
-		return OfflinePage{}, err
-	}
-	var result struct {
+	type offlineTasksWire struct {
 		apiResponse
 		Data *OfflinePage `json:"data"`
 	}
-	if err := json.Unmarshal(response.Body(), &result); err != nil {
-		return OfflinePage{}, fmt.Errorf("decode 115 offline tasks: %w", err)
-	}
-	if err := result.err(); err != nil {
+	result, err := apiRequest[offlineTasksWire](
+		client,
+		client.http.R().SetContext(ctx).SetAuthToken(accessToken).SetQueryParam("page", strconv.Itoa(page)),
+		http.MethodGet,
+		apiURL+"/open/offline/get_task_list",
+		"offline tasks",
+	)
+	if err != nil {
 		return OfflinePage{}, err
 	}
 	if result.Data == nil {

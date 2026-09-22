@@ -2,13 +2,10 @@ package pan
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-
-	"github.com/ppxb/miyabi/internal/domain"
 )
 
 const mediaUserAgent = "Miyabi/1.0"
@@ -20,13 +17,7 @@ type PlaySource struct {
 }
 
 func (client *Client) DownloadURL(ctx context.Context, accessToken, pickCode string) (string, error) {
-	response, err := client.request(client.http.R().SetContext(ctx).SetAuthToken(accessToken).
-		SetHeader("User-Agent", mediaUserAgent).SetFormData(map[string]string{"pick_code": pickCode}),
-		http.MethodPost, apiURL+"/open/ufile/downurl")
-	if err != nil {
-		return "", err
-	}
-	var result struct {
+	type downloadURLWire struct {
 		apiResponse
 		Data map[string]struct {
 			URL struct {
@@ -34,10 +25,15 @@ func (client *Client) DownloadURL(ctx context.Context, accessToken, pickCode str
 			} `json:"url"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(response.Body(), &result); err != nil {
-		return "", fmt.Errorf("decode 115 download URL: %w", err)
-	}
-	if err := result.err(); err != nil {
+	result, err := apiRequest[downloadURLWire](
+		client,
+		client.http.R().SetContext(ctx).SetAuthToken(accessToken).
+			SetHeader("User-Agent", mediaUserAgent).SetFormData(map[string]string{"pick_code": pickCode}),
+		http.MethodPost,
+		apiURL+"/open/ufile/downurl",
+		"download URL",
+	)
+	if err != nil {
 		return "", err
 	}
 	if len(result.Data) != 1 {
@@ -54,26 +50,25 @@ func (client *Client) DownloadURL(ctx context.Context, accessToken, pickCode str
 }
 
 func (client *Client) PlayURL(ctx context.Context, accessToken, pickCode string) ([]PlaySource, error) {
-	response, err := client.request(client.http.R().SetContext(ctx).SetAuthToken(accessToken).
-		SetHeader("User-Agent", mediaUserAgent).SetQueryParam("pick_code", pickCode),
-		http.MethodGet, apiURL+"/open/video/play")
-	if err != nil {
-		return nil, err
-	}
-	var result struct {
+	type playURLWire struct {
 		apiResponse
 		Data struct {
 			Sources []PlaySource `json:"video_url"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(response.Body(), &result); err != nil {
-		return nil, fmt.Errorf("decode 115 playback URLs: %w", err)
-	}
-	if err := result.err(); err != nil {
+	result, err := apiRequest[playURLWire](
+		client,
+		client.http.R().SetContext(ctx).SetAuthToken(accessToken).
+			SetHeader("User-Agent", mediaUserAgent).SetQueryParam("pick_code", pickCode),
+		http.MethodGet,
+		apiURL+"/open/video/play",
+		"playback URLs",
+	)
+	if err != nil {
 		return nil, err
 	}
 	if len(result.Data.Sources) == 0 {
-		return nil, domain.E(domain.KindUpstream, "115 暂未提供该文件的转码播放地址，请稍后重试", errors.New("transcoded playback sources unavailable"))
+		return nil, ErrTranscodeUnavailable
 	}
 	for _, source := range result.Data.Sources {
 		if source.URL == "" || source.Height <= 0 {

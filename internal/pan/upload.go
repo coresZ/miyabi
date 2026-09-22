@@ -32,9 +32,14 @@ type uploadResult struct {
 // UploadMetadata uploads one small sidecar. Callers decide its destination and
 // whether a same-name file already exists; this endpoint is not an overwrite.
 func (client *Client) UploadMetadata(ctx context.Context, accessToken, directoryID, name string, body []byte) error {
+	fullHash := SHA1(body)
+	preHash := fullHash
+	if len(body) > 128*1024 {
+		preHash = SHA1(body[:128*1024])
+	}
 	form := map[string]string{
 		"file_name": name, "file_size": strconv.Itoa(len(body)), "target": "U_1_" + directoryID,
-		"fileid": SHA1(body), "preid": SHA1(body[:min(len(body), 128*1024)]),
+		"fileid": fullHash, "preid": preHash,
 	}
 	init, err := client.initUpload(ctx, accessToken, form)
 	if err != nil {
@@ -69,12 +74,7 @@ func (client *Client) UploadMetadata(ctx context.Context, accessToken, directory
 	if callback.Callback == "" {
 		return fmt.Errorf("115 upload callback is empty")
 	}
-	response, err := client.request(client.http.R().SetContext(ctx).SetAuthToken(accessToken),
-		http.MethodGet, apiURL+"/open/upload/get_token")
-	if err != nil {
-		return err
-	}
-	var token struct {
+	type uploadTokenWire struct {
 		apiResponse
 		Data struct {
 			Endpoint string `json:"endpoint"`
@@ -83,10 +83,14 @@ func (client *Client) UploadMetadata(ctx context.Context, accessToken, directory
 			Token    string `json:"SecurityToken"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(response.Body(), &token); err != nil {
-		return fmt.Errorf("decode 115 upload token: %w", err)
-	}
-	if err := token.err(); err != nil {
+	token, err := apiRequest[uploadTokenWire](
+		client,
+		client.http.R().SetContext(ctx).SetAuthToken(accessToken),
+		http.MethodGet,
+		apiURL+"/open/upload/get_token",
+		"upload token",
+	)
+	if err != nil {
 		return err
 	}
 	storage, err := oss.New(token.Data.Endpoint, token.Data.KeyID, token.Data.Secret,
@@ -113,17 +117,19 @@ func (client *Client) UploadMetadata(ctx context.Context, accessToken, directory
 }
 
 func (client *Client) initUpload(ctx context.Context, accessToken string, form map[string]string) (uploadResult, error) {
-	response, err := client.request(client.http.R().SetContext(ctx).SetAuthToken(accessToken).SetFormData(form),
-		http.MethodPost, apiURL+"/open/upload/init")
-	if err != nil {
-		return uploadResult{}, err
-	}
-	var result struct {
+	type initUploadWire struct {
 		apiResponse
 		Data uploadResult `json:"data"`
 	}
-	if err := json.Unmarshal(response.Body(), &result); err != nil {
-		return uploadResult{}, fmt.Errorf("decode 115 upload initialization: %w", err)
+	result, err := apiRequest[initUploadWire](
+		client,
+		client.http.R().SetContext(ctx).SetAuthToken(accessToken).SetFormData(form),
+		http.MethodPost,
+		apiURL+"/open/upload/init",
+		"upload initialization",
+	)
+	if err != nil {
+		return uploadResult{}, err
 	}
-	return result.Data, result.err()
+	return result.Data, nil
 }

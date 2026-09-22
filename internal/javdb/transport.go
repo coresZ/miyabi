@@ -79,12 +79,14 @@ func (t *transport) getJSON(
 	}
 	defer response.Body.Close()
 
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		_, _ = io.CopyN(io.Discard, response.Body, 4096)
+		return &HTTPError{StatusCode: response.StatusCode}
+	}
+
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return &networkError{err: fmt.Errorf("read JavDB response: %w", err)}
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return &HTTPError{StatusCode: response.StatusCode}
 	}
 	return decodeEnvelope(body, destination)
 }

@@ -38,7 +38,7 @@ type Client struct {
 	selectionMu  sync.Mutex
 	routeContext context.Context
 	stopRoutes   context.CancelFunc
-	selectRoute  func(context.Context, routeSelection) (*routeState, error)
+	selector     func(context.Context, routeSelection) (*routeState, error)
 	proxyChanges <-chan struct{}
 }
 
@@ -73,7 +73,7 @@ func New(options Options) (*Client, error) {
 		routeContext: routeContext,
 		stopRoutes:   stopRoutes,
 	}
-	client.selectRoute = client.selectAndInstall
+	client.selector = client.selectAndInstall
 	if options.Proxy != nil {
 		client.proxyChanges = options.Proxy.Subscribe()
 		go client.watchProxy()
@@ -114,7 +114,7 @@ func (c *Client) Initialize(ctx context.Context) error {
 // Reselect measures every candidate and replaces the active route on success.
 func (c *Client) Reselect(ctx context.Context) (RouteStatus, error) {
 	state, err := c.waitRoute(ctx, "probe-all", func(ctx context.Context) (*routeState, error) {
-		return c.selectRoute(ctx, routeSelection{full: true, hosts: c.routeHosts()})
+		return c.selector(ctx, routeSelection{full: true, hosts: c.routeHosts()})
 	})
 	if err != nil {
 		return RouteStatus{}, err
@@ -222,7 +222,7 @@ func (c *Client) watchProxy() {
 			}
 			state, err := c.reinstall()
 			if err != nil {
-				slog.Warn("JavDB transport keeps previous proxy after change", "error", err)
+				slog.WarnContext(c.routeContext, "JavDB transport keeps previous proxy after change", "error", err)
 				continue
 			}
 			if state != nil && !state.status.Manual {
@@ -292,7 +292,7 @@ func (c *Client) ensureRoute(ctx context.Context) (*routeState, error) {
 		if c.options.ManualRoute {
 			options.preferredHost = c.options.CachedHost
 		}
-		return c.selectRoute(ctx, options)
+		return c.selector(ctx, options)
 	})
 }
 
@@ -301,11 +301,11 @@ func (c *Client) replaceFailedRoute(ctx context.Context, failed *routeState) (*r
 		if current := c.current.Load(); current != failed {
 			return current, nil
 		}
-		return c.selectRoute(ctx, routeSelection{hosts: c.routeHosts()})
+		return c.selector(ctx, routeSelection{hosts: c.routeHosts()})
 	})
 }
 
-func (c *Client) waitRoute(ctx context.Context, key string, selectRoute func(context.Context) (*routeState, error)) (*routeState, error) {
+func (c *Client) waitRoute(ctx context.Context, key string, selectFn func(context.Context) (*routeState, error)) (*routeState, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -316,7 +316,7 @@ func (c *Client) waitRoute(ctx context.Context, key string, selectRoute func(con
 		// cancels its own wait; bootstrap and dynamic probes are bounded.
 		shared, cancel := context.WithTimeout(c.routeContext, 3*c.options.Timeout)
 		defer cancel()
-		return selectRoute(shared)
+		return selectFn(shared)
 	})
 	select {
 	case <-ctx.Done():

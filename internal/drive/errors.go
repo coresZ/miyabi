@@ -1,6 +1,9 @@
 package drive
 
-import "github.com/ppxb/miyabi/internal/domain"
+import (
+	"github.com/ppxb/miyabi/internal/domain"
+	"github.com/ppxb/miyabi/internal/pan"
+)
 
 var (
 	// ErrSourceChanged indicates the mounted media directory or authenticated 115 account has changed.
@@ -11,4 +14,7 @@ var (
 
 	// ErrDirectoryIncomplete indicates directory listing changed or returned partial pages during traversal.
 	ErrDirectoryIncomplete = domain.E(domain.KindConflict, "115 目录内容在读取期间变化或分页不完整，请重新扫描", nil)
+
+	// ErrTranscodeUnavailable indicates 115 has not generated transcode streams for the video.
+	ErrTranscodeUnavailable = domain.E(domain.KindUpstream, "115 暂未提供该文件的转码播放地址，请稍后重试", pan.ErrTranscodeUnavailable)
 )

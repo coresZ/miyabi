@@ -6,6 +6,16 @@ import (
 	"log/slog"
 )
 
+// Validate checks whether levelName is a supported log level.
+func Validate(levelName string) error {
+	switch levelName {
+	case "debug", "info", "warn", "error":
+		return nil
+	default:
+		return fmt.Errorf("must be debug, info, warn or error, got %q", levelName)
+	}
+}
+
 func New(output io.Writer, levelName string) (*slog.Logger, error) {
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(levelName)); err != nil {

@@ -1,15 +1,17 @@
 package pan
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/ppxb/miyabi/internal/domain"
 )
 
 var (
-	ErrUnauthorized  = domain.E(domain.KindUnauthorized, "pan authorization required", nil)
-	ErrNotFound      = domain.E(domain.KindNotFound, "115 file not found", nil)
-	ErrOfflineExists = domain.E(domain.KindConflict, "115 offline task already exists", nil)
+	ErrUnauthorized         = domain.E(domain.KindUnauthorized, "pan authorization required", nil)
+	ErrNotFound             = domain.E(domain.KindNotFound, "115 file not found", nil)
+	ErrOfflineExists        = domain.E(domain.KindConflict, "115 offline task already exists", nil)
+	ErrTranscodeUnavailable = errors.New("transcoded playback sources unavailable")
 )
 
 type apiError struct {

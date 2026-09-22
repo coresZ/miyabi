@@ -2,6 +2,7 @@ package playback
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 
@@ -67,6 +68,9 @@ func (service *Service) Start(ctx context.Context, fileID string) (Playback, err
 	}
 	sources, err := sess.PlayURL(ctx, info.PickCode)
 	if err != nil {
+		if errors.Is(err, drive.ErrTranscodeUnavailable) {
+			return Playback{}, drive.ErrTranscodeUnavailable
+		}
 		return Playback{}, fmt.Errorf("get 115 playback URL: %w", err)
 	}
 	return service.createSession(source, sess.Version(), sources)

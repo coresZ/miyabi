@@ -60,7 +60,7 @@ func TestClientReusesCachedRouteWithoutSelecting(t *testing.T) {
 			transport := &stubTransport{}
 			client.current.Store(&routeState{transport: transport, status: cached.status})
 			selections := 0
-			client.selectRoute = func(context.Context, routeSelection) (*routeState, error) {
+			client.selector = func(context.Context, routeSelection) (*routeState, error) {
 				selections++
 				return nil, errors.New("cached route must be reused without probing")
 			}
@@ -87,7 +87,7 @@ func TestClientReselectStillMeasuresAllRoutesWithCache(t *testing.T) {
 	}
 	defer client.Close()
 	selections := 0
-	client.selectRoute = func(_ context.Context, options routeSelection) (*routeState, error) {
+	client.selector = func(_ context.Context, options routeSelection) (*routeState, error) {
 		selections++
 		if !options.full || !slices.Contains(options.hosts, "https://cached.example") {
 			return nil, errors.New("manual reselect must measure all routes, including the cached host")
@@ -112,7 +112,7 @@ func TestClientReplaysOnceAfterRouteFailure(t *testing.T) {
 	selections := 0
 	client := &Client{limiter: rate.NewLimiter(rate.Inf, 1), routeContext: t.Context(), options: Options{Timeout: time.Second}}
 	client.current.Store(failedState)
-	client.selectRoute = func(_ context.Context, options routeSelection) (*routeState, error) {
+	client.selector = func(_ context.Context, options routeSelection) (*routeState, error) {
 		selections++
 		if options.full {
 			return nil, errors.New("connection failure must use quick route recovery")
@@ -151,7 +151,7 @@ func TestClientDoesNotReselectForProtocolOrClientErrors(t *testing.T) {
 			transport := &stubTransport{err: test.err}
 			client := &Client{limiter: rate.NewLimiter(rate.Inf, 1)}
 			client.current.Store(&routeState{transport: transport})
-			client.selectRoute = func(context.Context, routeSelection) (*routeState, error) {
+			client.selector = func(context.Context, routeSelection) (*routeState, error) {
 				t.Fatal("route selection must not run")
 				return nil, nil
 			}
@@ -174,7 +174,7 @@ func TestClientReselectsForGatewayErrorsButOnlyReplaysOnce(t *testing.T) {
 		client := &Client{limiter: rate.NewLimiter(rate.Inf, 1), routeContext: t.Context(), options: Options{Timeout: time.Second}}
 		client.current.Store(&routeState{transport: failed})
 		selections := 0
-		client.selectRoute = func(context.Context, routeSelection) (*routeState, error) {
+		client.selector = func(context.Context, routeSelection) (*routeState, error) {
 			selections++
 			state := &routeState{transport: replacement}
 			client.current.Store(state)
@@ -198,7 +198,7 @@ func TestClientRouteSelectionOutlivesCanceledCaller(t *testing.T) {
 		defer client.Close()
 		var selections atomic.Int32
 		finish := make(chan struct{})
-		client.selectRoute = func(ctx context.Context, options routeSelection) (*routeState, error) {
+		client.selector = func(ctx context.Context, options routeSelection) (*routeState, error) {
 			if !options.full {
 				t.Error("initial selection must measure every candidate")
 			}
@@ -239,7 +239,7 @@ func TestClientRouteSelectionStopsOnTimeoutAndClose(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer client.Close()
-			client.selectRoute = func(ctx context.Context, _ routeSelection) (*routeState, error) {
+			client.selector = func(ctx context.Context, _ routeSelection) (*routeState, error) {
 				<-ctx.Done()
 				return nil, ctx.Err()
 			}

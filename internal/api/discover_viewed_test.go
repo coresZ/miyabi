@@ -35,6 +35,7 @@ func TestDiscoverViewedHandlers(t *testing.T) {
 		c, _ := gin.CreateTestContext(response)
 		c.Request = httptest.NewRequest(http.MethodGet, "/api/discover/viewed", nil)
 
+		noStore()(c)
 		discoverViewedHandler(stub)(c)
 
 		if response.Code != http.StatusOK {

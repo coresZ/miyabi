@@ -23,7 +23,7 @@ func TestLoadDefaultsAndEnvironment(t *testing.T) {
 		env  map[string]string
 		want Config
 	}{
-		{name: "defaults", want: Config{Listen: ":8080", DataDir: "./data", LogLevel: "info"}},
+		{name: "defaults", want: Config{Listen: ":8080", DataDir: "./data", LogLevel: "info", Runtime: DefaultRuntime()}},
 		{
 			name: "environment overrides defaults and preserves password whitespace",
 			env: map[string]string{
@@ -31,12 +31,12 @@ func TestLoadDefaultsAndEnvironment(t *testing.T) {
 				"MIYABI_LOG_LEVEL": " DEBUG ", "MIYABI_ACCESS_PASSWORD": " password with spaces ",
 			},
 			want: Config{Listen: "127.0.0.1:9090", DataDir: "./custom-data", LogLevel: "debug",
-				AccessPassword: " password with spaces "},
+				AccessPassword: " password with spaces ", Runtime: DefaultRuntime()},
 		},
 		{
 			name: "empty optional value disables access gate",
 			env:  map[string]string{"MIYABI_ACCESS_PASSWORD": ""},
-			want: Config{Listen: ":8080", DataDir: "./data", LogLevel: "info"},
+			want: Config{Listen: ":8080", DataDir: "./data", LogLevel: "info", Runtime: DefaultRuntime()},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

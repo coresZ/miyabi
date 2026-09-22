@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/ppxb/miyabi/internal/logging"
 )
 
 type Config struct {
@@ -12,6 +14,7 @@ type Config struct {
 	DataDir        string
 	LogLevel       string
 	AccessPassword string
+	Runtime        Runtime
 }
 
 func Load() (Config, error) {
@@ -20,6 +23,7 @@ func Load() (Config, error) {
 		DataDir:        envOrDefault("MIYABI_DATA_DIR", "./data"),
 		LogLevel:       envOrDefault("MIYABI_LOG_LEVEL", "info"),
 		AccessPassword: os.Getenv("MIYABI_ACCESS_PASSWORD"),
+		Runtime:        LoadRuntime(),
 	}
 	if err := cfg.validate(); err != nil {
 		return Config{}, err
@@ -45,10 +49,8 @@ func (cfg *Config) validate() error {
 	if cfg.DataDir == "" {
 		return errors.New("MIYABI_DATA_DIR must not be empty")
 	}
-	switch cfg.LogLevel {
-	case "debug", "info", "warn", "error":
-		return nil
-	default:
-		return fmt.Errorf("MIYABI_LOG_LEVEL must be debug, info, warn or error, got %q", cfg.LogLevel)
+	if err := logging.Validate(cfg.LogLevel); err != nil {
+		return fmt.Errorf("MIYABI_LOG_LEVEL %w", err)
 	}
+	return nil
 }

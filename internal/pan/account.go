@@ -40,14 +40,7 @@ func (value wireSpaceAmount) amount() (SpaceAmount, error) {
 }
 
 func (client *Client) Account(ctx context.Context, accessToken string) (Account, error) {
-	response, err := client.request(
-		client.http.R().SetContext(ctx).SetAuthToken(accessToken),
-		http.MethodGet, apiURL+"/open/user/info",
-	)
-	if err != nil {
-		return Account{}, err
-	}
-	var result struct {
+	type accountWire struct {
 		apiResponse
 		Data struct {
 			ID     json.Number `json:"user_id"`
@@ -63,10 +56,14 @@ func (client *Client) Account(ctx context.Context, accessToken string) (Account,
 			} `json:"rt_space_info"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(response.Body(), &result); err != nil {
-		return Account{}, fmt.Errorf("decode 115 account: %w", err)
-	}
-	if err := result.err(); err != nil {
+	result, err := apiRequest[accountWire](
+		client,
+		client.http.R().SetContext(ctx).SetAuthToken(accessToken),
+		http.MethodGet,
+		apiURL+"/open/user/info",
+		"account",
+	)
+	if err != nil {
 		return Account{}, err
 	}
 	if result.Data.ID == "" {

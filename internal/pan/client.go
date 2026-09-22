@@ -96,3 +96,22 @@ func (response apiResponse) err() error {
 	}
 	return nil
 }
+
+type apiPayload interface {
+	err() error
+}
+
+func apiRequest[T apiPayload](client *Client, request *resty.Request, method, endpoint, action string) (T, error) {
+	var result T
+	response, err := client.request(request, method, endpoint)
+	if err != nil {
+		return result, err
+	}
+	if err := json.Unmarshal(response.Body(), &result); err != nil {
+		return result, fmt.Errorf("decode 115 %s: %w", action, err)
+	}
+	if err := result.err(); err != nil {
+		return result, err
+	}
+	return result, nil
+}

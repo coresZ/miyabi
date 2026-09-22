@@ -18,48 +18,37 @@ type PlayManager interface {
 
 func playFilesHandler(play PlayManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var query struct {
+		query, ok := bindQuery[struct {
 			MovieID int `form:"movie_id" binding:"required,min=1"`
-		}
-		if err := c.ShouldBindQuery(&query); err != nil {
-			c.Error(BadRequest(err))
+		}](c)
+		if !ok {
 			return
 		}
 		files, err := play.Files(c.Request.Context(), query.MovieID)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, files)
+		respond(c, files, err)
 	}
 }
 
 func playStartHandler(play PlayManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var uri struct {
+		uri, ok := bindURI[struct {
 			ID string `uri:"id" binding:"required,numeric,max=30"`
-		}
-		if err := c.ShouldBindUri(&uri); err != nil {
-			c.Error(BadRequest(err))
+		}](c)
+		if !ok {
 			return
 		}
 		playback, err := play.Start(c.Request.Context(), uri.ID)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, playback)
+		respond(c, playback, err)
 	}
 }
 
 func playStreamHandler(play PlayManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var uri struct {
+		uri, ok := bindURI[struct {
 			ID       string `uri:"id" binding:"required,uuid"`
 			Resource int    `uri:"resource" binding:"min=0"`
-		}
-		if err := c.ShouldBindUri(&uri); err != nil {
-			c.Error(BadRequest(err))
+		}](c)
+		if !ok {
 			return
 		}
 		response, err := play.Stream(c.Request.Context(), uri.ID, uri.Resource, c.Request.Method, c.Request.Header)
@@ -84,14 +73,13 @@ func playStreamHandler(play PlayManager) gin.HandlerFunc {
 
 func playReleaseHandler(play PlayManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var uri struct {
+		uri, ok := bindURI[struct {
 			ID string `uri:"id" binding:"required,uuid"`
-		}
-		if err := c.ShouldBindUri(&uri); err != nil {
-			c.Error(BadRequest(err))
+		}](c)
+		if !ok {
 			return
 		}
 		play.Release(uri.ID)
-		c.JSON(http.StatusOK, gin.H{"released": true})
+		respond(c, gin.H{"released": true}, nil)
 	}
 }

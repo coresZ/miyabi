@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ppxb/miyabi/internal/domain"
@@ -36,90 +35,60 @@ type panDirectoryInput struct {
 func panAccountHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		account, err := pan.Account(c.Request.Context())
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, account)
+		respond(c, account, err)
 	}
 }
 
 func panBeginLoginHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session, err := pan.BeginLogin(c.Request.Context())
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, session)
+		respond(c, session, err)
 	}
 }
 
 func panLoginStatusHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var uri panLoginURI
-		if err := c.ShouldBindUri(&uri); err != nil {
-			c.Error(BadRequest(err))
+		uri, ok := bindURI[panLoginURI](c)
+		if !ok {
 			return
 		}
 		status, err := pan.LoginStatus(c.Request.Context(), uri.ID)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, status)
+		respond(c, status, err)
 	}
 }
 
 func panDisconnectHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status, err := pan.Disconnect(c.Request.Context())
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, status)
+		respond(c, status, err)
 	}
 }
 
 func panFilesHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var query panFilesQuery
-		if err := c.ShouldBindQuery(&query); err != nil {
-			c.Error(BadRequest(err))
+		query, ok := bindQuery[panFilesQuery](c)
+		if !ok {
 			return
 		}
 		files, err := pan.Files(c.Request.Context(), query.DirectoryID, query.Page)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, files)
+		respond(c, files, err)
 	}
 }
 
 func panSelectDirectoryHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var input panDirectoryInput
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.Error(BadRequest(err))
+		input, ok := bindJSON[panDirectoryInput](c)
+		if !ok {
 			return
 		}
 		directory, err := pan.SelectDirectory(c.Request.Context(), input.ID)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, directory)
+		respond(c, directory, err)
 	}
 }
 
 func panClearDirectoryHandler(pan DriveManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := pan.ClearDirectory(c.Request.Context()); err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, nil)
+		err := pan.ClearDirectory(c.Request.Context())
+		respond(c, nil, err)
 	}
 }

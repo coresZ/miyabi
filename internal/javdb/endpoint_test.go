@@ -169,7 +169,7 @@ func TestBrowsePreservesWesternSceneNumbers(t *testing.T) {
 }
 
 func TestMovieReferencesPreserveWesternSceneNumbers(t *testing.T) {
-	movies := movieReferencesFromWire("movie", "actor_movies", []wireMovieReference{
+	movies := movieReferencesFromWire(t.Context(), "movie", "actor_movies", []wireMovieReference{
 		{ID: "western-scene-one", Number: "ExampleStudio.26.09.05"},
 		{ID: "western-scene-two", Number: "ExampleStudio.26.09.06"},
 	})
@@ -402,7 +402,7 @@ func TestAnimeDetailAndCatalogueQueriesUseTheAnimeSection(t *testing.T) {
 }
 
 func TestMoviePreviewsOmitEmptyEntriesAndKeepAvailableURLs(t *testing.T) {
-	movie, err := movieFromWire(wireMovie{ID: "preview-movie", Number: "090826_100", PreviewImages: []wirePreviewImage{
+	movie, err := movieFromWire(t.Context(), wireMovie{ID: "preview-movie", Number: "090826_100", PreviewImages: []wirePreviewImage{
 		{},
 		{ThumbURL: "https://media.example/thumb.jpg", LargeURL: "https://media.example/image.jpg"},
 		{},

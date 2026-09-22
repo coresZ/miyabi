@@ -1,8 +1,6 @@
 package api
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -17,21 +15,17 @@ type accessLoginInput struct {
 
 func accessConfigHandler(gate AccessGate) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"enabled": gate.Enabled()})
+		respond(c, gin.H{"enabled": gate.Enabled()}, nil)
 	}
 }
 
 func accessLoginHandler(gate AccessGate) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var input accessLoginInput
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.Error(BadRequest(err))
+		input, ok := bindJSON[accessLoginInput](c)
+		if !ok {
 			return
 		}
-		if err := gate.Verify(input.Password); err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"success": true})
+		err := gate.Verify(input.Password)
+		respond(c, gin.H{"success": true}, err)
 	}
 }

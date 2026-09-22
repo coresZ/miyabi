@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ppxb/miyabi/internal/netx"
@@ -14,35 +13,25 @@ type NetworkManager interface {
 	TestNetwork(context.Context, netx.ProxyConfig) (netx.NetworkTestResponse, error)
 }
 
-
 func networkHandler(network NetworkManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		config, err := network.Network(c.Request.Context())
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, config)
+		respond(c, config, err)
 	}
 }
 
 func networkUpdateHandler(network NetworkManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var config netx.ProxyConfig
-		if err := c.ShouldBindJSON(&config); err != nil {
-			c.Error(BadRequest(err))
+		config, ok := bindJSON[netx.ProxyConfig](c)
+		if !ok {
 			return
 		}
 		if err := network.UpdateNetwork(c.Request.Context(), config); err != nil {
 			c.Error(err)
 			return
 		}
-		config, err := network.Network(c.Request.Context())
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, config)
+		updated, err := network.Network(c.Request.Context())
+		respond(c, updated, err)
 	}
 }
 
@@ -56,16 +45,13 @@ func networkTestHandler(network NetworkManager) gin.HandlerFunc {
 			return
 		}
 		if c.Request.ContentLength != 0 {
-			if err := c.ShouldBindJSON(&config); err != nil {
-				c.Error(BadRequest(err))
+			bodyConfig, ok := bindJSON[netx.ProxyConfig](c)
+			if !ok {
 				return
 			}
+			config = bodyConfig
 		}
 		result, err := network.TestNetwork(c.Request.Context(), config)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, result)
+		respond(c, result, err)
 	}
 }

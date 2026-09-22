@@ -29,7 +29,7 @@ func (c *Client) Search(ctx context.Context, keyword string, options domain.Sear
 	if err := c.getJSON(ctx, "/api/v2/search", params, defaultLanguage, &data); err != nil {
 		return nil, err
 	}
-	return moviesFromWire(data.Movies)
+	return moviesFromWire(ctx, data.Movies)
 }
 
 func buildSearchParams(keyword string, options domain.SearchOptions) (url.Values, error) {

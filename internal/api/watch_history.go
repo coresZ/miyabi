@@ -1,8 +1,6 @@
 package api
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"github.com/ppxb/miyabi/internal/domain"
 	lib "github.com/ppxb/miyabi/internal/library"
@@ -10,75 +8,55 @@ import (
 
 func libraryHistoryHandler(library LibraryManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var query struct {
+		query, ok := bindQuery[struct {
 			Page int `form:"page,default=1" binding:"min=1,max=100000000"`
-		}
-		if err := c.ShouldBindQuery(&query); err != nil {
-			c.Error(BadRequest(err))
+		}](c)
+		if !ok {
 			return
 		}
 		page, err := library.WatchHistory(c.Request.Context(), query.Page)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, page)
+		respond(c, page, err)
 	}
 }
 
 func libraryHistoryProgressHandler(library LibraryManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var uri struct {
+		uri, ok := bindURI[struct {
 			ID int `uri:"id" binding:"min=1"`
-		}
-		if err := c.ShouldBindUri(&uri); err != nil {
-			c.Error(BadRequest(err))
+		}](c)
+		if !ok {
 			return
 		}
-		var progress lib.WatchProgress
-		if err := c.ShouldBindJSON(&progress); err != nil {
-			c.Error(BadRequest(err))
+		progress, ok := bindJSON[lib.WatchProgress](c)
+		if !ok {
 			return
 		}
-		if err := library.SaveWatchProgress(c.Request.Context(), uri.ID, progress); err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, nil)
+		err := library.SaveWatchProgress(c.Request.Context(), uri.ID, progress)
+		respond(c, nil, err)
 	}
 }
 
 func libraryHistoryRemoveHandler(library LibraryManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var request struct {
+		request, ok := bindJSON[struct {
 			domain.WatchHistoryScope
 			IDs []int `json:"ids" binding:"required,min=1,max=100,unique,dive,min=1"`
-		}
-		if err := c.ShouldBindJSON(&request); err != nil {
-			c.Error(BadRequest(err))
+		}](c)
+		if !ok {
 			return
 		}
 		count, err := library.RemoveWatchHistory(c.Request.Context(), request.WatchHistoryScope, request.IDs)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"removed": count})
+		respond(c, gin.H{"removed": count}, err)
 	}
 }
 
 func libraryHistoryClearHandler(library LibraryManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var scope domain.WatchHistoryScope
-		if err := c.ShouldBindQuery(&scope); err != nil {
-			c.Error(BadRequest(err))
+		scope, ok := bindQuery[domain.WatchHistoryScope](c)
+		if !ok {
 			return
 		}
 		count, err := library.ClearWatchHistory(c.Request.Context(), scope)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"removed": count})
+		respond(c, gin.H{"removed": count}, err)
 	}
 }

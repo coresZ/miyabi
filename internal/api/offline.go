@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ppxb/miyabi/internal/domain"
@@ -18,12 +17,7 @@ type OfflineManager interface {
 func offlineActivityHandler(offline OfflineManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		activity, err := offline.Activity(c.Request.Context())
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.Header("Cache-Control", "no-store")
-		c.JSON(http.StatusOK, activity)
+		respond(c, activity, err)
 	}
 }
 
@@ -37,43 +31,30 @@ type offlineTasksQuery struct {
 
 func offlineTasksHandler(offline OfflineManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var uri movieURI
-		if err := c.ShouldBindUri(&uri); err != nil {
-			c.Error(BadRequest(err))
+		uri, ok := bindURI[movieURI](c)
+		if !ok {
 			return
 		}
-		var query offlineTasksQuery
-		if err := c.ShouldBindQuery(&query); err != nil {
-			c.Error(BadRequest(err))
+		query, ok := bindQuery[offlineTasksQuery](c)
+		if !ok {
 			return
 		}
 		tasks, err := offline.Tasks(c.Request.Context(), uri.ID, query.AccountID)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.Header("Cache-Control", "no-store")
-		c.JSON(http.StatusOK, tasks)
+		respond(c, tasks, err)
 	}
 }
 
 func offlineAddHandler(offline OfflineManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var uri movieURI
-		if err := c.ShouldBindUri(&uri); err != nil {
-			c.Error(BadRequest(err))
+		uri, ok := bindURI[movieURI](c)
+		if !ok {
 			return
 		}
-		var input offlineInput
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.Error(BadRequest(err))
+		input, ok := bindJSON[offlineInput](c)
+		if !ok {
 			return
 		}
 		submission, err := offline.Add(c.Request.Context(), uri.ID, input.Hash)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusAccepted, submission)
+		accepted(c, submission, err)
 	}
 }

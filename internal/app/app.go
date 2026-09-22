@@ -43,6 +43,10 @@ type App struct {
 
 // New initializes all services, database connections, and registers task handlers.
 func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
+	cfgCopy := *cfg
+	cfgCopy.Runtime = applyRuntimeDefaults(cfg.Runtime)
+	cfg = &cfgCopy
+
 	ctx := context.Background()
 	store, err := database.Open(ctx, cfg.DataDir)
 	if err != nil {
@@ -100,7 +104,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	taskRegistry.Register(tasks.NewHandler(tasks.KindScrape, scrapeSvc.Scrape, scrapeSvc.Finished))
 	taskRegistry.Register(tasks.NewHandler(tasks.KindCover, scrapeSvc.Cover, scrapeSvc.Finished))
 
-	pool := tasks.NewPool(taskSvc.Queue(), taskSvc.Bus(), taskRegistry, 1, logger)
+	pool := tasks.NewPool(taskSvc.Queue(), taskSvc.Bus(), taskRegistry, cfg.Runtime.TaskPoolWorkers, logger)
 
 	router := api.NewRouter(api.Dependencies{
 		Logger:      logger,
@@ -156,11 +160,11 @@ func (a *App) Run(ctx context.Context) error {
 	}()
 	go func() {
 		defer workers.Done()
-		tasks.RunPeriodic(ctx, a.logger, "sync 115 offline tasks", 30*time.Second, nil, a.offline.Sync)
+		tasks.RunPeriodic(ctx, a.logger, "sync 115 offline tasks", a.cfg.Runtime.OfflineSyncInterval, nil, a.offline.Sync)
 	}()
 	go func() {
 		defer workers.Done()
-		tasks.RunPeriodic(ctx, a.logger, "monitor", 5*time.Minute, a.monitors.Pending(), a.monitors.Check)
+		tasks.RunPeriodic(ctx, a.logger, "monitor", a.cfg.Runtime.MonitorCheckInterval, a.monitors.Pending(), a.monitors.Check)
 	}()
 
 	serverError := make(chan error, 1)
@@ -240,3 +244,33 @@ func CheckHealth(listen string) error {
 	}
 	return nil
 }
+
+func applyRuntimeDefaults(rt config.Runtime) config.Runtime {
+	def := config.DefaultRuntime()
+	if rt.TaskPoolWorkers <= 0 {
+		rt.TaskPoolWorkers = def.TaskPoolWorkers
+	}
+	if rt.OfflineSyncInterval <= 0 {
+		rt.OfflineSyncInterval = def.OfflineSyncInterval
+	}
+	if rt.MonitorCheckInterval <= 0 {
+		rt.MonitorCheckInterval = def.MonitorCheckInterval
+	}
+	if rt.PanRateLimit <= 0 {
+		rt.PanRateLimit = def.PanRateLimit
+	}
+	if rt.PanTimeout <= 0 {
+		rt.PanTimeout = def.PanTimeout
+	}
+	if rt.DriveAuthTimeout <= 0 {
+		rt.DriveAuthTimeout = def.DriveAuthTimeout
+	}
+	if rt.OfflineTimeout <= 0 {
+		rt.OfflineTimeout = def.OfflineTimeout
+	}
+	if rt.PlaybackSessionTTL <= 0 {
+		rt.PlaybackSessionTTL = def.PlaybackSessionTTL
+	}
+	return rt
+}
+

@@ -70,7 +70,7 @@ func TestMovieActorGenderMapping(t *testing.T) {
 		if err := json.Unmarshal([]byte(`{"gender":`+test.input+`}`), &actor); err != nil {
 			t.Fatal(err)
 		}
-		movie, err := movieFromWire(wireMovie{ID: "movie", Number: "ABP-001", Actors: []wireActor{actor}})
+		movie, err := movieFromWire(t.Context(), wireMovie{ID: "movie", Number: "ABP-001", Actors: []wireActor{actor}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -87,10 +87,10 @@ func TestMovieMappingsRejectMissingIdentity(t *testing.T) {
 		{ID: "invalid"},
 		{ID: "invalid", Number: " \t\n"},
 	} {
-		if _, err := movieFromWire(source); err == nil {
+		if _, err := movieFromWire(t.Context(), source); err == nil {
 			t.Errorf("movie accepted missing identity: %#v", source)
 		}
-		if _, err := moviesFromWire([]wireMovie{{ID: "valid", Number: "SSIS-589"}, source}); err == nil {
+		if _, err := moviesFromWire(t.Context(), []wireMovie{{ID: "valid", Number: "SSIS-589"}, source}); err == nil {
 			t.Errorf("movie list accepted missing identity: %#v", source)
 		}
 	}
@@ -99,14 +99,14 @@ func TestMovieMappingsRejectMissingIdentity(t *testing.T) {
 func TestMovieMappingsPreserveUnfamiliarNumbers(t *testing.T) {
 	for _, number := range []string{"KNB-M014", "配信/作品 #0007", "Studio.SpecialEdition", "NO-SEQUENCE", "SCUTE-1575-ITSUKI.mp4"} {
 		t.Run(number, func(t *testing.T) {
-			movies, err := moviesFromWire([]wireMovie{
+			movies, err := moviesFromWire(t.Context(), []wireMovie{
 				{ID: "main", Number: "GLOD-0436"},
 				{ID: "unfamiliar", Number: number},
 			})
 			if err != nil || len(movies) != 2 || movies[1].Code != number {
 				t.Fatalf("unfamiliar number changed or blocked the page: %#v, %v", movies, err)
 			}
-			references := movieReferencesFromWire("movie", "actor_movies", []wireMovieReference{
+			references := movieReferencesFromWire(t.Context(), "movie", "actor_movies", []wireMovieReference{
 				{ID: "main", Number: "GLOD-0436"},
 				{ID: "unfamiliar", Number: number},
 			})

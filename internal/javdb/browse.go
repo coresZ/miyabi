@@ -22,7 +22,7 @@ func (c *Client) Browse(ctx context.Context, options domain.BrowseOptions) ([]do
 	if err := c.getJSON(ctx, "/api/v1/movies/tags", params, defaultLanguage, &data); err != nil {
 		return nil, err
 	}
-	return moviesFromWire(data.Movies)
+	return moviesFromWire(ctx, data.Movies)
 }
 
 func buildBrowseParams(options domain.BrowseOptions) (url.Values, error) {

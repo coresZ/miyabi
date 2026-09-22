@@ -77,7 +77,7 @@ func TestFetchMediaUsesImageTransportWithoutAPIRoute(t *testing.T) {
 			}
 			t.Cleanup(client.Close)
 			client.media.SetTransport(server.Client().Transport)
-			client.selectRoute = func(context.Context, routeSelection) (*routeState, error) {
+			client.selector = func(context.Context, routeSelection) (*routeState, error) {
 				t.Fatal("image download must not select an API route")
 				return nil, nil
 			}

@@ -27,11 +27,10 @@ type ArtworkReader interface {
 
 func libraryArtworkHandler(artwork ArtworkReader) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var uri struct {
+		uri, ok := bindURI[struct {
 			Key string `uri:"key" binding:"required,len=64,hexadecimal"`
-		}
-		if err := c.ShouldBindUri(&uri); err != nil {
-			c.Error(BadRequest(err))
+		}](c)
+		if !ok {
 			return
 		}
 		body, err := artwork.Artwork(uri.Key)
@@ -51,50 +50,35 @@ type libraryPageQuery struct {
 
 func libraryMoviesHandler(library LibraryManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var query libraryPageQuery
-		if err := c.ShouldBindQuery(&query); err != nil {
-			c.Error(BadRequest(err))
+		query, ok := bindQuery[libraryPageQuery](c)
+		if !ok {
 			return
 		}
 		movies, err := library.Movies(c.Request.Context(), query.Page, query.Limit)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, movies)
+		respond(c, movies, err)
 	}
 }
 
 func libraryWatchedHandler(library LibraryManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var uri struct {
+		uri, ok := bindURI[struct {
 			ID int `uri:"id" binding:"required,min=1"`
-		}
-		if err := c.ShouldBindUri(&uri); err != nil {
-			c.Error(BadRequest(err))
+		}](c)
+		if !ok {
 			return
 		}
-		var scope domain.WatchHistoryScope
-		if err := c.ShouldBindJSON(&scope); err != nil {
-			c.Error(BadRequest(err))
+		scope, ok := bindJSON[domain.WatchHistoryScope](c)
+		if !ok {
 			return
 		}
 		history, err := library.MarkWatched(c.Request.Context(), uri.ID, scope)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"id": uri.ID, "watched": true, "history": history})
+		respond(c, gin.H{"id": uri.ID, "watched": true, "history": history}, err)
 	}
 }
 
 func libraryScanHandler(library LibraryManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		task, err := library.StartScan(c.Request.Context())
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusAccepted, task)
+		accepted(c, task, err)
 	}
 }

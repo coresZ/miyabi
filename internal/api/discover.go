@@ -61,18 +61,12 @@ type movieStatesInput struct {
 
 func discoverMovieStatesHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var input movieStatesInput
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.Error(BadRequest(err))
+		input, ok := bindJSON[movieStatesInput](c)
+		if !ok {
 			return
 		}
 		states, err := discover.MovieStates(c.Request.Context(), input.Movies)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.Header("Cache-Control", "no-store")
-		c.JSON(http.StatusOK, states)
+		respond(c, states, err)
 	}
 }
 
@@ -86,28 +80,22 @@ type javdbRouteInput struct {
 
 func discoverSearchHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var query discoverSearchQuery
-		if err := c.ShouldBindQuery(&query); err != nil {
-			c.Error(BadRequest(err))
+		query, ok := bindQuery[discoverSearchQuery](c)
+		if !ok {
 			return
 		}
 		movies, err := discover.Search(c.Request.Context(), query.Query, domain.SearchOptions{
 			Page:  query.Page,
 			Limit: query.Limit,
 		})
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, movies)
+		respond(c, movies, err)
 	}
 }
 
 func discoverBrowseHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var query discoverBrowseQuery
-		if err := c.ShouldBindQuery(&query); err != nil {
-			c.Error(BadRequest(err))
+		query, ok := bindQuery[discoverBrowseQuery](c)
+		if !ok {
 			return
 		}
 		movies, err := discover.Browse(c.Request.Context(), domain.BrowseOptions{
@@ -123,67 +111,47 @@ func discoverBrowseHandler(discover CatalogueManager) gin.HandlerFunc {
 			Page:       query.Page,
 			Limit:      query.Limit,
 		})
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, movies)
+		respond(c, movies, err)
 	}
 }
 
 func discoverMovieHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var uri movieURI
-		if err := c.ShouldBindUri(&uri); err != nil {
-			c.Error(BadRequest(err))
+		uri, ok := bindURI[movieURI](c)
+		if !ok {
 			return
 		}
 		movie, err := discover.MovieDetail(c.Request.Context(), uri.ID)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, movie)
+		respond(c, movie, err)
 	}
 }
 
 func discoverTagsHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var query discoverTagsQuery
-		if err := c.ShouldBindQuery(&query); err != nil {
-			c.Error(BadRequest(err))
+		query, ok := bindQuery[discoverTagsQuery](c)
+		if !ok {
 			return
 		}
 		categories, err := discover.Tags(c.Request.Context(), domain.Zone(query.Zone))
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, categories)
+		respond(c, categories, err)
 	}
 }
 
 func discoverMagnetsHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var uri movieURI
-		if err := c.ShouldBindUri(&uri); err != nil {
-			c.Error(BadRequest(err))
+		uri, ok := bindURI[movieURI](c)
+		if !ok {
 			return
 		}
 		magnets, err := discover.Magnets(c.Request.Context(), uri.ID)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, magnets)
+		respond(c, magnets, err)
 	}
 }
 
 func imageHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var query imageQuery
-		if err := c.ShouldBindQuery(&query); err != nil {
-			c.Error(BadRequest(err))
+		query, ok := bindQuery[imageQuery](c)
+		if !ok {
 			return
 		}
 		media, err := discover.Media(c.Request.Context(), query.URL)
@@ -198,34 +166,25 @@ func imageHandler(discover CatalogueManager) gin.HandlerFunc {
 
 func javdbRouteHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.JSON(http.StatusOK, discover.Route())
+		respond(c, discover.Route(), nil)
 	}
 }
 
 func javdbReselectHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status, err := discover.Reselect(c.Request.Context())
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, status)
+		respond(c, status, err)
 	}
 }
 
 func javdbSelectRouteHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var input javdbRouteInput
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.Error(BadRequest(err))
+		input, ok := bindJSON[javdbRouteInput](c)
+		if !ok {
 			return
 		}
 		status, err := discover.SelectRoute(c.Request.Context(), input.Host)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, status)
+		respond(c, status, err)
 	}
 }
 
@@ -236,26 +195,17 @@ type addViewedInput struct {
 func discoverViewedHandler(viewed ViewedManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ids, err := viewed.ViewedMovieIDs(c.Request.Context())
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		c.Header("Cache-Control", "no-store")
-		c.JSON(http.StatusOK, ids)
+		respond(c, ids, err)
 	}
 }
 
 func discoverAddViewedHandler(viewed ViewedManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var input addViewedInput
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.Error(BadRequest(err))
+		input, ok := bindJSON[addViewedInput](c)
+		if !ok {
 			return
 		}
-		if err := viewed.AddViewedMovieIDs(c.Request.Context(), input.IDs); err != nil {
-			c.Error(err)
-			return
-		}
-		c.JSON(http.StatusOK, nil)
+		err := viewed.AddViewedMovieIDs(c.Request.Context(), input.IDs)
+		respond(c, nil, err)
 	}
 }

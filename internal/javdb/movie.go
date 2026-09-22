@@ -29,7 +29,7 @@ func (c *Client) MovieDetail(ctx context.Context, movieID string) (domain.MovieD
 	); err != nil {
 		return domain.MovieDetail{}, err
 	}
-	movie, err := movieFromWire(data.Movie.wireMovie)
+	movie, err := movieFromWire(ctx, data.Movie.wireMovie)
 	if err != nil {
 		return domain.MovieDetail{}, err
 	}
@@ -43,8 +43,8 @@ func (c *Client) MovieDetail(ctx context.Context, movieID string) (domain.MovieD
 	}
 	return domain.MovieDetail{
 		Movie: movie, Zone: zone,
-		ActorMovies:   movieReferencesFromWire(movie.ID, "actor_movies", data.Movie.ActorMovies),
-		RelatedMovies: movieReferencesFromWire(movie.ID, "relative_movies", data.Movie.RelatedMovies),
+		ActorMovies:   movieReferencesFromWire(ctx, movie.ID, "actor_movies", data.Movie.ActorMovies),
+		RelatedMovies: movieReferencesFromWire(ctx, movie.ID, "relative_movies", data.Movie.RelatedMovies),
 	}, nil
 }
 
@@ -57,7 +57,7 @@ func zoneFromCode(code int) domain.Zone {
 	return domain.ZoneUnknown
 }
 
-func movieReferencesFromWire(movieID, field string, source []wireMovieReference) []domain.MovieReference {
+func movieReferencesFromWire(ctx context.Context, movieID, field string, source []wireMovieReference) []domain.MovieReference {
 	result := make([]domain.MovieReference, 0, len(source))
 	for index, item := range source {
 		id := strings.TrimSpace(item.ID)
@@ -70,7 +70,7 @@ func movieReferencesFromWire(movieID, field string, source []wireMovieReference)
 			reason = "missing number"
 		}
 		if reason != "" {
-			slog.Warn("skipping invalid JavDB recommendation",
+			slog.WarnContext(ctx, "skipping invalid JavDB recommendation",
 				"movie_id", movieID, "field", field, "index", index,
 				"reference_id", id, "reason", reason)
 			continue
@@ -113,10 +113,10 @@ func (c *Client) ResolveMovieID(ctx context.Context, number string) (string, err
 	return matched, nil
 }
 
-func moviesFromWire(source []wireMovie) ([]domain.Movie, error) {
+func moviesFromWire(ctx context.Context, source []wireMovie) ([]domain.Movie, error) {
 	movies := make([]domain.Movie, len(source))
 	for index, item := range source {
-		movie, err := movieFromWire(item)
+		movie, err := movieFromWire(ctx, item)
 		if err != nil {
 			return nil, fmt.Errorf("decode JavDB movie %d: %w", index, err)
 		}
@@ -125,7 +125,7 @@ func moviesFromWire(source []wireMovie) ([]domain.Movie, error) {
 	return movies, nil
 }
 
-func movieFromWire(source wireMovie) (domain.Movie, error) {
+func movieFromWire(ctx context.Context, source wireMovie) (domain.Movie, error) {
 	if strings.TrimSpace(source.ID) == "" {
 		return domain.Movie{}, errors.New("missing id")
 	}
@@ -170,7 +170,7 @@ func movieFromWire(source wireMovie) (domain.Movie, error) {
 			case 1:
 				gender = "male"
 			default:
-				slog.Warn("unknown JavDB actor gender; using unknown",
+				slog.WarnContext(ctx, "unknown JavDB actor gender; using unknown",
 					"movie_id", movie.ID, "field", "actors.gender", "index", index,
 					"actor_id", actor.ID, "value", *actor.Gender)
 			}

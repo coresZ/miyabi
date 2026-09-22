@@ -14,19 +14,18 @@ type FileInfo struct {
 }
 
 func (client *Client) Info(ctx context.Context, accessToken, fileID string) (FileInfo, error) {
-	response, err := client.request(client.http.R().SetContext(ctx).SetAuthToken(accessToken).
-		SetQueryParam("file_id", fileID), http.MethodGet, apiURL+"/open/folder/get_info")
-	if err != nil {
-		return FileInfo{}, err
-	}
-	var result struct {
+	type fileInfoWire struct {
 		apiResponse
 		Data json.RawMessage `json:"data"`
 	}
-	if err := json.Unmarshal(response.Body(), &result); err != nil {
-		return FileInfo{}, fmt.Errorf("decode 115 file info: %w", err)
-	}
-	if err := result.err(); err != nil {
+	result, err := apiRequest[fileInfoWire](
+		client,
+		client.http.R().SetContext(ctx).SetAuthToken(accessToken).SetQueryParam("file_id", fileID),
+		http.MethodGet,
+		apiURL+"/open/folder/get_info",
+		"file info",
+	)
+	if err != nil {
 		return FileInfo{}, err
 	}
 	data := result.Data

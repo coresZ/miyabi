@@ -50,6 +50,7 @@ func TestMovieStatesHandlerValidatesBatchesAndDisablesHTTPCaching(t *testing.T) 
 			c.Request = httptest.NewRequest(http.MethodPost, "/api/discover/movie-states", bytes.NewReader(body))
 			c.Request.Header.Set("Content-Type", "application/json")
 			stub := &movieStateStub{}
+			noStore()(c)
 			discoverMovieStatesHandler(stub)(c)
 			if !scenario.valid {
 				if len(c.Errors) != 1 || stub.movies != nil {

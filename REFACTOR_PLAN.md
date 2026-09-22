@@ -221,13 +221,13 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 | `contextLock` 三份 | 收敛为 `syncx.ContextLock` | ✅ B3 |
 | 扫描与刮削两份 NFO 读取 | 合并为 `scrape.ReadNFO / FindNFO / DirectoryNFO` | ✅ B4 |
 | `service/*` 直接用 `slog.Default()` | 注入 logger | ✅ 已无 |
-| `pan/*` 16 处 `json.Unmarshal + result.err()` 样板 | 抽 `apiRequest[T]`，仿现有 `authRequest[T]` | ⏳ |
-| `pan/upload.go` ≤128KiB 时两次 SHA1 | 复用 | ⏳ |
-| `javdb/transport.go:82` 先读全 body 再判状态码 | 先判状态码，非 2xx 只做有上限 drain | ⏳ |
-| `javdb` 3 处 `slog.Warn` 与 `WarnContext` 混用 | 统一 `WarnContext` | ⏳ |
-| `javdb/client.go:41` 字段 `selectRoute` 与包级函数同名 | 字段改名 `selector` | ⏳ |
-| `pan/play.go` 基础设施层中文文案 | 改为 `domain.E` 由上层赋文案 | ⏳ |
-| `pan/file.go` `Count/Size` 未用 `json.Number` | 与同结构其它字段一致 | ⏳ |
+| `pan/*` 16 处 `json.Unmarshal + result.err()` 样板 | 抽 `apiRequest[T]`，仿现有 `authRequest[T]` | ✅ M5 |
+| `pan/upload.go` ≤128KiB 时两次 SHA1 | 复用 | ✅ M5 |
+| `javdb/transport.go:82` 先读全 body 再判状态码 | 先判状态码，非 2xx 只做有上限 drain | ✅ M5 |
+| `javdb` 3 处 `slog.Warn` 与 `WarnContext` 混用 | 统一 `WarnContext` | ✅ M5 |
+| `javdb/client.go:41` 字段 `selectRoute` 与包级函数同名 | 字段改名 `selector` | ✅ M5 |
+| `pan/play.go` 基础设施层中文文案 | 改为 `domain.E` 由上层赋文案 | ✅ M5 |
+| `pan/file.go` `Count/Size` 未用 `json.Number` | 与同结构其它字段一致 | ✅ M5 |
 | `worker/offline.go`、`worker/monitor.go` 两个相同的 ticker 循环 | 合并为 `tasks.RunPeriodic(name, interval, wake, fn)` | ✅ B5/B6 |
 | `library.Service` 四个依赖 getter | 随 B6 删除 | ✅ B6 |
 | `internal/ent/enttest` 生成但未使用 | 保留（生成物） | — |
@@ -461,13 +461,13 @@ func (a *Aggregator) Find(ctx, ref domain.MovieRef) ([]domain.Magnet, error)
 | M2 | 模型与错误 | B1 | ✅ 2026-09-21 | M0 |
 | M3 | 任务与会话 | B2、B3 | ✅ 2026-09-21 | M2 |
 | M4 | 业务包迁移 | B4 到 B8 | ✅ 2026-09-22 | M3 |
-| M5 | API 与配置收口 | B9、3.8 后端清单 | 待做，约 4 天 | M4 |
+| M5 | API 与配置收口 | B9、3.8 后端清单 | ✅ 2026-09-22 | M4 |
 | M6 | 磁力聚合 | 工作线 C | 待做，1 到 1.5 周 | M1、M2 |
 | M7 | JavDB 接口补齐 | 工作线 D | 待做，3 到 5 天 | M2 |
 | M8 | 前端结构清理 | 3.9 清单、`/api/discover/viewed` 增量 | 分页已收敛，其余待做，约 1 周 | 可与 M5 并行 |
 | M9 | 字幕自动化与播放集成 | 工作线 E | 待做，4 到 5 天 | M2、M5 |
 
-剩余约 5 到 6 周单人工作量。串行顺序 M5 → M6 → M7 → M9，M8 并行。下一步：B9。
+剩余约 5 到 6 周单人工作量。串行顺序 M5 → M6 → M7 → M9，M8 并行。下一步：M6 或 M8。
 
 ---
 
