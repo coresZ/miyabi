@@ -6,6 +6,7 @@
 
 ![媒体库](./screenshots/ScreenShot_2026-09-19_131853_357.png)
 ![播放器](./screenshots/ScreenShot_2026-09-19_131853_237.png)
+![字幕](./screenshots/ScreenShot_2026-09-23_131948_796.png)
 ![发现](./screenshots/ScreenShot_2026-09-19_132213_340.png)
 ![搜索](./screenshots/ScreenShot_2026-09-19_132227_063.png)
 ![设置](./screenshots/ScreenShot_2026-09-19_132249_331.png)
