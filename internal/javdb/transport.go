@@ -62,6 +62,8 @@ func (t *transport) closeIdleConnections() {
 	t.client.CloseIdleConnections()
 }
 
+const maxResponseBodyBytes = 4 << 20 // 4 MiB
+
 func (t *transport) getJSON(
 	ctx context.Context,
 	path string,
@@ -84,9 +86,13 @@ func (t *transport) getJSON(
 		return &HTTPError{StatusCode: response.StatusCode}
 	}
 
-	body, err := io.ReadAll(response.Body)
+	limited := io.LimitReader(response.Body, maxResponseBodyBytes+1)
+	body, err := io.ReadAll(limited)
 	if err != nil {
 		return &networkError{err: fmt.Errorf("read JavDB response: %w", err)}
+	}
+	if int64(len(body)) > maxResponseBodyBytes {
+		return &networkError{err: fmt.Errorf("JavDB response exceeded %d bytes limit", maxResponseBodyBytes)}
 	}
 	return decodeEnvelope(body, destination)
 }

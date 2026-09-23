@@ -76,4 +76,36 @@ func TestTransportClassifiesResponseReadFailureAsNetworkError(t *testing.T) {
 	}
 }
 
+type infiniteBody struct{}
+
+func (infiniteBody) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'x'
+	}
+	return len(p), nil
+}
+
+func (infiniteBody) Close() error {
+	return nil
+}
+
+func TestTransportLimitsResponseBodyExceedingMax(t *testing.T) {
+	transport := &transport{
+		host:       "https://api.example",
+		deviceUUID: "device-1",
+		client: &responseClient{response: &http.Response{
+			StatusCode: 200,
+			Body:       infiniteBody{},
+		}},
+	}
+
+	err := transport.getJSON(context.Background(), "/api/v2/search", nil, defaultLanguage, nil)
+	var network *networkError
+	if !errors.As(err, &network) || !strings.Contains(err.Error(), "exceeded") {
+		t.Fatalf("error = %v, want networkError with exceeded limit", err)
+	}
+}
+
 var _ io.ReadCloser = failingBody{}
+var _ io.ReadCloser = infiniteBody{}
+
