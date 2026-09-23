@@ -14,7 +14,7 @@ import (
 type SubtitleManager interface {
 	Search(ctx context.Context, code string, isUncensored bool) ([]domain.SubtitleCandidate, error)
 	ApplyCandidate(ctx context.Context, movieID int, candidate domain.SubtitleCandidate) (*domain.SubtitleTrack, error)
-	GetTrackVTT(ctx context.Context, id int) ([]byte, error)
+	GetTrackVTT(ctx context.Context, id int, offsetOverride *int) ([]byte, error)
 	UpdateOffset(ctx context.Context, id int, offsetMs int) error
 	SetDefault(ctx context.Context, movieID int, subID int) error
 	Delete(ctx context.Context, id int) error
@@ -35,7 +35,14 @@ func subtitleVTTHandler(subtitles SubtitleManager) gin.HandlerFunc {
 			return
 		}
 
-		data, err := subtitles.GetTrackVTT(c.Request.Context(), id)
+		var offsetOverride *int
+		if offsetStr := c.Query("offset_ms"); offsetStr != "" {
+			if v, err := strconv.Atoi(offsetStr); err == nil {
+				offsetOverride = &v
+			}
+		}
+
+		data, err := subtitles.GetTrackVTT(c.Request.Context(), id, offsetOverride)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return

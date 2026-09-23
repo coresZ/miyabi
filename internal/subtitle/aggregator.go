@@ -11,25 +11,35 @@ import (
 )
 
 type Aggregator struct {
-	providers []Provider
-	client    *resty.Client
+	providers     []Provider
+	client        *resty.Client
+	allowLoopback bool
 }
 
-func NewAggregator(proxyManager *netx.ProxyManager) *Aggregator {
-	var client *resty.Client
-	opts := netx.RestyOptions{Timeout: 20 * time.Second}
-	if proxyManager != nil {
-		client = netx.NewRestyClient(proxyManager, opts)
-	} else {
-		client = netx.NewDirectRestyClient(opts)
+type AggregatorOption func(*Aggregator)
+
+// WithAllowLoopbackForTesting allows loopback IP addresses for safe downloads, strictly for unit tests.
+func WithAllowLoopbackForTesting(allow bool) AggregatorOption {
+	return func(a *Aggregator) {
+		a.allowLoopback = allow
+		if allow {
+			a.client = netx.NewDirectRestyClient(netx.RestyOptions{Timeout: 10 * time.Second})
+		}
 	}
-	return &Aggregator{
+}
+
+func NewAggregator(proxyManager *netx.ProxyManager, opts ...AggregatorOption) *Aggregator {
+	a := &Aggregator{
 		providers: []Provider{
 			NewXunleiProvider(proxyManager),
 			NewSubtitleCatProvider(proxyManager),
 		},
-		client: client,
+		client: netx.NewSafeDownloadClient(proxyManager, 20*time.Second),
 	}
+	for _, opt := range opts {
+		opt(a)
+	}
+	return a
 }
 
 // Search queries all registered providers concurrently, ranks the results, and returns deduplicated candidates.
@@ -82,15 +92,15 @@ func (a *Aggregator) DownloadAndConvert(ctx context.Context, c Candidate) (strin
 		return "", fmt.Errorf("empty candidate URL")
 	}
 
-	resp, err := a.client.R().SetContext(ctx).Get(c.URL)
+	var opts []netx.DownloadOption
+	if a.allowLoopback {
+		opts = append(opts, netx.WithAllowLoopback(true))
+	}
+	rawBytes, err := netx.SafeDownload(ctx, a.client, c.URL, opts...)
 	if err != nil {
 		return "", fmt.Errorf("download subtitle: %w", err)
 	}
-	if resp.StatusCode() != 200 {
-		return "", fmt.Errorf("download subtitle status %d", resp.StatusCode())
-	}
 
-	rawBytes := resp.Body()
 	utf8Text, err := DecodeToUTF8(rawBytes)
 	if err != nil {
 		return "", fmt.Errorf("decode subtitle encoding: %w", err)

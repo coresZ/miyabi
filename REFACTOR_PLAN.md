@@ -454,4 +454,6 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 - 订阅页（2026-09-22，M6 收口）：新页面只组合现有 `MovieCard / Badge / Button / Checkbox / Avatar / Switch / Tooltip / Dialog / Tabs / Skeleton`，卡片选择态沿用历史页的 `ring-2 ring-success` 与右上角 `Checkbox`；演员条目是 `rounded-2xl border p-2` 容器内的 `Avatar` 加 `Button`，没有新增 Badge 变体与动效。每日检查时间用 shadcn `Input type="time"` 并隐藏原生日历指示器。
 - 番号格式等价与补零容差（2026-09-23）：在 `internal/codeid` 新增 `IsFormatEquivalent` 与 `UnpaddedNumericCandidate`，纯字符结构与算法推导，无硬编码字典；`ResolveMovieID` 实行严格全等优先、格式等价兜底、去零退避搜索，多等价候选严格拒绝防串片。
 - 字幕引擎与自动化播放（2026-09-23，M9）：跨源聚合（迅雷云字幕 API + SubtitleCat HTML 解析），基于 15,000 字符简繁特征频次加权识别中文；自动转码为标准 WebVTT 并支持毫秒级时间轴偏移；本地 115 目录同级字幕自动索引关联；刮削完成自动触发在线最优字幕下载、转码、回传 115 媒体文件夹与本地缓存；播放器控制栏采用参考 jm-boom 风格的磨砂暗黑下拉菜单（`DropdownMenu`），支持字幕轨即时切换、±0.5s/±1.0s 微调持久化与在线候选热检索加载。
+- M9 审查系统性修复与收口（2026-09-23）：修复 M9-R1（SSRF 拨号与多跳拦截、非字幕/错误回包校验）、M9-R2（`<Track id>` 唯一键与精确切轨）、M9-R3（全屏容器挂载与防自动淡出）、M9-R4（API `?offset_ms=` 实时覆盖与先存后载杜绝竞态）、M9-R5（异番号排除与独占目录隔离）、M9-R6（多轨共享缓存文件 DB 引用计数检查）、M9-R7（支持标准短格式 `MM:SS.mmm`）、M9-G1（手动应用回传 115 并保证同语言同版本字幕唯一）、M9-G4（脱锁异步调度字幕获取，避免阻塞封面排他锁）。全部单元测试、e2e 测试与前端构建均 100% 通过。
+
 

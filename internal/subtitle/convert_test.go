@@ -108,4 +108,12 @@ func TestApplyTimeOffset(t *testing.T) {
 			t.Errorf("shifted time not clamped to zero: %s", shifted)
 		}
 	})
+
+	t.Run("short format MM:SS.mmm offset and normalization", func(t *testing.T) {
+		shortVTT := "WEBVTT\n\n1\n01:20.000 --> 01:23.500\n短时间戳字幕\n"
+		shifted := ApplyTimeOffset(shortVTT, 1000)
+		if !strings.Contains(shifted, "00:01:21.000 --> 00:01:24.500") {
+			t.Errorf("shifted short format wrong: %s", shifted)
+		}
+	})
 }

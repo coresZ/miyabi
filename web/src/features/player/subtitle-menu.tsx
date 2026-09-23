@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Captions, Globe, Loader2, Minus, Plus, RotateCcw, Search } from 'lucide-react'
+import { useMediaPlayer } from '@vidstack/react'
 
 import {
   applySubtitle,
@@ -35,6 +36,7 @@ export function SubtitleMenu({
   onSelectTrack: (id: number | null) => void
   onUpdateTracks: (updater: (prev: SubtitleTrack[]) => SubtitleTrack[]) => void
 }) {
+  const player = useMediaPlayer()
   const [open, setOpen] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const [searching, setSearching] = useState(false)
@@ -80,13 +82,11 @@ export function SubtitleMenu({
     const newOffset = activeTrack.offset_ms + deltaMs
     setOffsetBusy(true)
 
-    // Optimistically update
-    onUpdateTracks(prev =>
-      prev.map(t => (t.id === activeTrack.id ? { ...t, offset_ms: newOffset } : t))
-    )
-
     try {
       await updateSubtitleOffset(activeTrack.id, newOffset)
+      onUpdateTracks(prev =>
+        prev.map(t => (t.id === activeTrack.id ? { ...t, offset_ms: newOffset } : t))
+      )
     } catch (err) {
       console.error('Failed to update subtitle offset:', err)
     } finally {
@@ -98,10 +98,9 @@ export function SubtitleMenu({
     if (!activeTrack || offsetBusy || activeTrack.offset_ms === 0) return
     setOffsetBusy(true)
 
-    onUpdateTracks(prev => prev.map(t => (t.id === activeTrack.id ? { ...t, offset_ms: 0 } : t)))
-
     try {
       await updateSubtitleOffset(activeTrack.id, 0)
+      onUpdateTracks(prev => prev.map(t => (t.id === activeTrack.id ? { ...t, offset_ms: 0 } : t)))
     } catch (err) {
       console.error('Failed to reset subtitle offset:', err)
     } finally {
@@ -110,7 +109,17 @@ export function SubtitleMenu({
   }
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu
+      open={open}
+      onOpenChange={nextOpen => {
+        setOpen(nextOpen)
+        if (nextOpen) {
+          player?.controls.pause()
+        } else {
+          player?.controls.resume()
+        }
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -126,6 +135,7 @@ export function SubtitleMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
+        container={player?.el}
         side="top"
         align="end"
         sideOffset={8}

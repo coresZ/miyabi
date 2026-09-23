@@ -17,7 +17,7 @@ type mockSubtitleManager struct {
 	SubtitleManager
 	searchFunc    func(ctx context.Context, code string, isUncensored bool) ([]domain.SubtitleCandidate, error)
 	applyFunc     func(ctx context.Context, movieID int, candidate domain.SubtitleCandidate) (*domain.SubtitleTrack, error)
-	getVTTFunc    func(ctx context.Context, id int) ([]byte, error)
+	getVTTFunc    func(ctx context.Context, id int, offsetOverride *int) ([]byte, error)
 	offsetFunc    func(ctx context.Context, id int, offsetMs int) error
 	setDefaultFunc func(ctx context.Context, movieID int, subID int) error
 	deleteFunc    func(ctx context.Context, id int) error
@@ -37,9 +37,9 @@ func (m *mockSubtitleManager) ApplyCandidate(ctx context.Context, movieID int, c
 	return &domain.SubtitleTrack{ID: 10, DisplayName: "简体中文"}, nil
 }
 
-func (m *mockSubtitleManager) GetTrackVTT(ctx context.Context, id int) ([]byte, error) {
+func (m *mockSubtitleManager) GetTrackVTT(ctx context.Context, id int, offsetOverride *int) ([]byte, error) {
 	if m.getVTTFunc != nil {
-		return m.getVTTFunc(ctx, id)
+		return m.getVTTFunc(ctx, id, offsetOverride)
 	}
 	return []byte("WEBVTT\n\n00:00:01.000 --> 00:00:04.000\nHello\n"), nil
 }
@@ -73,7 +73,13 @@ func TestSubtitleEndpoints(t *testing.T) {
 	})
 
 	t.Run("GET /api/play/subtitles/1.vtt", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/play/subtitles/1.vtt", nil)
+		var receivedOverride *int
+		mock.getVTTFunc = func(ctx context.Context, id int, offsetOverride *int) ([]byte, error) {
+			receivedOverride = offsetOverride
+			return []byte("WEBVTT\n\n00:00:01.000 --> 00:00:04.000\nHello\n"), nil
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/play/subtitles/1.vtt?offset_ms=500", nil)
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)
 
@@ -83,8 +89,8 @@ func TestSubtitleEndpoints(t *testing.T) {
 		if rec.Header().Get("Content-Type") != "text/vtt; charset=utf-8" {
 			t.Errorf("expected text/vtt, got %s", rec.Header().Get("Content-Type"))
 		}
-		if !bytes.Contains(rec.Body.Bytes(), []byte("WEBVTT")) {
-			t.Errorf("expected WEBVTT body, got %s", rec.Body.String())
+		if receivedOverride == nil || *receivedOverride != 500 {
+			t.Errorf("expected offset override 500, got %v", receivedOverride)
 		}
 	})
 

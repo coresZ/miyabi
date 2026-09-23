@@ -17,7 +17,7 @@ import (
 
 var (
 	srtTimeRegex = regexp.MustCompile(`(?m)^([0-9]{2}:[0-9]{2}:[0-9]{2}),([0-9]{3})\s*-->\s*([0-9]{2}:[0-9]{2}:[0-9]{2}),([0-9]{3})(.*)$`)
-	vttTimeRegex = regexp.MustCompile(`(?m)^([0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3})\s*-->\s*([0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3})(.*)$`)
+	vttTimeRegex = regexp.MustCompile(`(?m)^((?:[0-9]{2}:)?[0-9]{2}:[0-9]{2}\.[0-9]{3})\s*-->\s*((?:[0-9]{2}:)?[0-9]{2}:[0-9]{2}\.[0-9]{3})(.*)$`)
 	assTagRegex  = regexp.MustCompile(`\{[^}]*\}`)
 )
 
@@ -63,6 +63,8 @@ func DecodeToUTF8(raw []byte) (string, error) {
 }
 
 // ConvertToWebVTT standardizes SRT, ASS/SSA, or existing VTT text into standard WebVTT format.
+// It also enforces that the result contains at least one valid timing cue to prevent
+// non-subtitle payloads (e.g. JSON/HTML error pages) from being accepted.
 func ConvertToWebVTT(content string, ext string) (string, error) {
 	trimmed := strings.TrimSpace(content)
 	if trimmed == "" {
@@ -71,19 +73,34 @@ func ConvertToWebVTT(content string, ext string) (string, error) {
 
 	ext = strings.ToLower(strings.TrimPrefix(ext, "."))
 
+	var vtt string
+	var err error
+
 	switch ext {
 	case "vtt":
 		if strings.HasPrefix(trimmed, "WEBVTT") {
-			return trimmed + "\n", nil
+			vtt = trimmed + "\n"
+		} else {
+			vtt = "WEBVTT\n\n" + trimmed + "\n"
 		}
-		return "WEBVTT\n\n" + trimmed + "\n", nil
 
 	case "ass", "ssa":
-		return convertASSToVTT(trimmed)
+		vtt, err = convertASSToVTT(trimmed)
 
 	default: // Default to SRT or SRT-like format.
-		return convertSRTToVTT(trimmed)
+		vtt, err = convertSRTToVTT(trimmed)
 	}
+
+	if err != nil {
+		return "", err
+	}
+
+	// Enforce valid timing cues
+	if !vttTimeRegex.MatchString(vtt) {
+		return "", errors.New("invalid subtitle format: no valid timing cues found")
+	}
+
+	return vtt, nil
 }
 
 // convertSRTToVTT converts an SRT format string to standard WebVTT.
@@ -91,6 +108,11 @@ func convertSRTToVTT(srt string) (string, error) {
 	// Normalize CRLF to LF.
 	normalized := strings.ReplaceAll(srt, "\r\n", "\n")
 	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+
+	// Check if it has SRT or VTT timing lines
+	if !srtTimeRegex.MatchString(normalized) && !vttTimeRegex.MatchString(normalized) {
+		return "", errors.New("invalid SRT: missing timing cues")
+	}
 
 	// Replace comma in timecodes (00:01:20,123 -> 00:01:20.123).
 	vttContent := srtTimeRegex.ReplaceAllString(normalized, "$1.$2 --> $3.$4$5")
@@ -250,13 +272,21 @@ func ApplyTimeOffset(vtt string, offsetMs int) string {
 
 func parseVTTTime(t string) int {
 	parts := strings.Split(t, ":")
-	if len(parts) < 3 {
+	if len(parts) < 2 {
 		return 0
 	}
-	h, _ := strconv.Atoi(parts[0])
-	m, _ := strconv.Atoi(parts[1])
+	var h, m int
+	var secPart string
+	if len(parts) == 2 {
+		m, _ = strconv.Atoi(parts[0])
+		secPart = parts[1]
+	} else {
+		h, _ = strconv.Atoi(parts[0])
+		m, _ = strconv.Atoi(parts[1])
+		secPart = parts[2]
+	}
 
-	secParts := strings.Split(parts[2], ".")
+	secParts := strings.Split(secPart, ".")
 	s, _ := strconv.Atoi(secParts[0])
 	ms := 0
 	if len(secParts) > 1 {

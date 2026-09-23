@@ -15,6 +15,7 @@ import (
 	"github.com/ppxb/miyabi/internal/nfo"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
+	"time"
 )
 
 // CoverPayload describes the input and intermediate state of a cover creation job.
@@ -37,19 +38,37 @@ func (service *Service) Cover(ctx context.Context, job tasks.Job) error {
 	if input.Snapshot != nil {
 		return nil
 	}
-	if err := service.artwork.Lock(ctx); err != nil {
+
+	var postTask func()
+	err = func() error {
+		if err := service.artwork.Lock(ctx); err != nil {
+			return err
+		}
+		defer service.artwork.Unlock()
+
+		var err error
+		postTask, err = service.processCover(ctx, job, input)
+		return err
+	}()
+	if err != nil {
 		return err
 	}
-	defer service.artwork.Unlock()
-	return service.processCover(ctx, job, input)
+
+	// Dispatch subtitle fetching asynchronously after releasing the artwork lock
+	// to avoid blocking other movies' scrape and artwork pipelines.
+	if postTask != nil {
+		go postTask()
+	}
+
+	return nil
 }
 
-func (service *Service) processCover(ctx context.Context, job tasks.Job, input CoverPayload) error {
+func (service *Service) processCover(ctx context.Context, job tasks.Job, input CoverPayload) (func(), error) {
 	input.Code = codeid.Normalize(input.Code)
 	input.Document.Code = codeid.Normalize(input.Document.Code)
 	sess, err := service.begin(ctx, input.MetadataPayload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var artwork mediaimage.Artwork
 	switch {
@@ -58,57 +77,57 @@ func (service *Service) processCover(ctx context.Context, job tasks.Job, input C
 	case input.Origin != nil:
 		poster, err := service.originImage(ctx, sess, input.Origin.Poster)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		fanart, err := service.originImage(ctx, sess, input.Origin.Fanart)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		artwork, err = service.images.Restore(poster, fanart)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	default:
 		if input.CoverURL == "" {
-			return domain.E(domain.KindNotFound, "JavDB 未返回影片封面", nil)
+			return nil, domain.E(domain.KindNotFound, "JavDB 未返回影片封面", nil)
 		}
 		media, err := service.discover.Media(ctx, input.CoverURL)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		artwork, err = service.images.FromCover(media.Body)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 	poster, err := service.images.ReadURL(artwork.Poster)
 	if err != nil {
-		return fmt.Errorf("read cached poster: %w", err)
+		return nil, fmt.Errorf("read cached poster: %w", err)
 	}
 	fanart, err := service.images.ReadURL(artwork.Fanart)
 	if err != nil {
-		return fmt.Errorf("read cached fanart: %w", err)
+		return nil, fmt.Errorf("read cached fanart: %w", err)
 	}
 	input.Artwork = &artwork
 	encoded, err := tasks.EncodePayload(input)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := service.db.Task.UpdateOneID(job.ID).SetPayload(encoded).Exec(ctx); err != nil {
-		return err
+		return nil, err
 	}
 	// Re-read the directory after scraping. Never upload alongside a video
 	// which was deleted or moved while waiting for JavDB or another task.
 	directories, err := service.directories(ctx, sess, input.MetadataPayload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	snapshot := &Snapshot{}
 	var videos []pan.File
 	for i, directory := range directories {
 		state, err := service.writeSidecars(ctx, sess, input, directory, poster, fanart)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		snapshot.Directories = append(snapshot.Directories, state)
 		for _, entry := range directory.Files {
@@ -117,14 +136,14 @@ func (service *Service) processCover(ctx context.Context, job tasks.Job, input C
 			}
 		}
 		if err := service.db.Task.UpdateOneID(job.ID).SetProgress((i + 1) * 100 / len(directories)).Exec(ctx); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	snapshot.Videos = VideoFingerprint(videos)
 	input.Snapshot = snapshot
 	encoded, err = tasks.EncodePayload(input)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := sess.Commit(ctx, func(tx *ent.Tx) error {
 		if err := tx.Movie.UpdateOneID(input.MovieID).SetCode(input.Code).
@@ -134,9 +153,10 @@ func (service *Service) processCover(ctx context.Context, job tasks.Job, input C
 		}
 		return tx.Task.UpdateOneID(job.ID).SetPayload(encoded).Exec(ctx)
 	}); err != nil {
-		return fmt.Errorf("save movie artwork: %w", err)
+		return nil, fmt.Errorf("save movie artwork: %w", err)
 	}
 
+	var postTask func()
 	if service.subtitles != nil && len(directories) > 0 {
 		isUncensored := false
 		for _, v := range videos {
@@ -146,13 +166,27 @@ func (service *Service) processCover(ctx context.Context, job tasks.Job, input C
 				break
 			}
 		}
-		_ = service.subtitles.AutoFetchAndUpload(ctx, sess, directories[0].ID, input.MovieID, input.Code, isUncensored)
+		dirID := directories[0].ID
+		movieID := input.MovieID
+		code := input.Code
+		metaPayload := input.MetadataPayload
+
+		postTask = func() {
+			asyncCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+
+			subSess, err := service.begin(asyncCtx, metaPayload)
+			if err != nil {
+				return
+			}
+			_ = service.subtitles.AutoFetchAndUpload(asyncCtx, subSess, dirID, movieID, code, isUncensored)
+		}
 	}
 
 	if service.notifier != nil {
 		service.notifier.NotifyLibraryChanged()
 	}
-	return nil
+	return postTask, nil
 }
 
 func (service *Service) originImage(ctx context.Context, sess drive.Session, entry pan.File) ([]byte, error) {

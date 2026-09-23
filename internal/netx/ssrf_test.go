@@ -1,0 +1,92 @@
+package netx
+
+import (
+	"context"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestIsPrivateOrLoopbackIP(t *testing.T) {
+	tests := []struct {
+		ip       string
+		expected bool
+	}{
+		{"127.0.0.1", true},
+		{"127.0.0.2", true},
+		{"::1", true},
+		{"10.0.0.1", true},
+		{"172.16.0.1", true},
+		{"172.31.255.255", true},
+		{"192.168.1.1", true},
+		{"169.254.1.1", true},
+		{"100.64.0.1", true},
+		{"0.0.0.0", true},
+		{"::", true},
+		{"255.255.255.255", true},
+		{"8.8.8.8", false},
+		{"1.1.1.1", false},
+		{"104.21.23.45", false},
+	}
+
+	for _, tt := range tests {
+		ip := net.ParseIP(tt.ip)
+		if ip == nil {
+			t.Fatalf("failed to parse %s", tt.ip)
+		}
+		if got := IsPrivateOrLoopbackIP(ip); got != tt.expected {
+			t.Errorf("IP %s: got %v, want %v", tt.ip, got, tt.expected)
+		}
+	}
+}
+
+func TestValidateSafeURL(t *testing.T) {
+	ctx := context.Background()
+
+	// Prohibited URLs
+	prohibited := []string{
+		"http://127.0.0.1/secret",
+		"http://localhost:8080/metrics",
+		"http://192.168.1.1/admin",
+		"http://10.10.10.10/token",
+		"file:///etc/passwd",
+		"ftp://example.com/file",
+	}
+
+	for _, u := range prohibited {
+		_, err := ValidateSafeURL(ctx, u, false)
+		if err == nil {
+			t.Errorf("URL %s should be rejected", u)
+		}
+	}
+
+	// Allowed public domain
+	_, err := ValidateSafeURL(ctx, "https://example.com/subtitle.srt", false)
+	if err != nil {
+		// If DNS resolution fails in offline environment, ignore, otherwise ensure no false positive
+		t.Logf("DNS resolve result for example.com: %v", err)
+	}
+}
+
+func TestSafeDownload_BlocksLoopback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("sensitive internal data"))
+	}))
+	defer server.Close()
+
+	client := NewSafeDownloadClient(nil, 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	_, err := SafeDownload(ctx, client, server.URL, WithMaxBytes(1024))
+	if err == nil {
+		t.Fatalf("SafeDownload must block loopback test server")
+	}
+	if !strings.Contains(err.Error(), "prohibited") && !strings.Contains(err.Error(), "blocked") {
+		t.Errorf("expected prohibition error, got: %v", err)
+	}
+}

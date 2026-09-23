@@ -112,8 +112,9 @@ export function PlaybackPlayer({
       <MediaProvider>
         {subtitles.map(sub => (
           <Track
+            id={String(sub.id)}
             key={`${sub.id}-${sub.offset_ms}`}
-            src={`${sub.src}?t=${sub.offset_ms}`}
+            src={`${sub.src}?offset_ms=${sub.offset_ms}&t=${sub.offset_ms}`}
             kind="subtitles"
             label={sub.display_name}
             language={sub.language}
@@ -269,7 +270,11 @@ function syncTextTracks(
   const active = subtitles.find(s => s.id === activeTrackId)
   for (const track of player.textTracks) {
     if (track.kind === 'subtitles' || track.kind === 'captions') {
-      if (active && track.label === active.display_name) {
+      const isMatch =
+        activeTrackId !== null &&
+        (track.id === String(activeTrackId) ||
+          (!track.id && active && track.label === active.display_name))
+      if (isMatch) {
         track.mode = 'showing'
       } else {
         track.mode = 'disabled'

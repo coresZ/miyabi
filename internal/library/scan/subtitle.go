@@ -60,6 +60,11 @@ func IndexDirectorySubtitles(ctx context.Context, tx *ent.Tx, videos []Video, su
 					break
 				}
 			}
+			// If a distinct code was extracted but matches none of the videos in this directory,
+			// it is an alien subtitle and must NOT fall back to exclusiveMovieID.
+			if targetMovieID == 0 {
+				continue
+			}
 		}
 		if targetMovieID == 0 && exclusiveMovieID != 0 {
 			targetMovieID = exclusiveMovieID
