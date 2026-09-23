@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -20,6 +21,10 @@ type SubtitleManager interface {
 	Delete(ctx context.Context, id int) error
 }
 
+type subtitleVTTQuery struct {
+	OffsetMs *int `form:"offset_ms"`
+}
+
 func subtitleVTTHandler(subtitles SubtitleManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uri, ok := bindURI[struct {
@@ -31,20 +36,18 @@ func subtitleVTTHandler(subtitles SubtitleManager) gin.HandlerFunc {
 		rawID := strings.TrimSuffix(uri.ID, ".vtt")
 		id, err := strconv.Atoi(rawID)
 		if err != nil || id <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid subtitle ID"})
+			c.Error(BadRequest(errors.New("invalid subtitle ID")))
 			return
 		}
 
-		var offsetOverride *int
-		if offsetStr := c.Query("offset_ms"); offsetStr != "" {
-			if v, err := strconv.Atoi(offsetStr); err == nil {
-				offsetOverride = &v
-			}
+		query, ok := bindQuery[subtitleVTTQuery](c)
+		if !ok {
+			return
 		}
 
-		data, err := subtitles.GetTrackVTT(c.Request.Context(), id, offsetOverride)
+		data, err := subtitles.GetTrackVTT(c.Request.Context(), id, query.OffsetMs)
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			c.Error(err)
 			return
 		}
 		c.Header("Content-Type", "text/vtt; charset=utf-8")

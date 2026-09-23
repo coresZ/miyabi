@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ppxb/miyabi/internal/domain"
 	sloggin "github.com/samber/slog-gin"
 )
 
@@ -122,7 +123,7 @@ func installFrontend(router *gin.Engine, frontend fs.FS) {
 	fileServer := http.FileServer(http.FS(frontend))
 	router.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			c.Error(domain.E(domain.KindNotFound, "not found", nil))
 			return
 		}
 

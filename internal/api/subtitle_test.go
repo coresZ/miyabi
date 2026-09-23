@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -91,6 +92,64 @@ func TestSubtitleEndpoints(t *testing.T) {
 		}
 		if receivedOverride == nil || *receivedOverride != 500 {
 			t.Errorf("expected offset override 500, got %v", receivedOverride)
+		}
+	})
+
+	t.Run("GET /api/play/subtitles/invalid.vtt returns 400", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/play/subtitles/invalid.vtt", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", rec.Code)
+		}
+	})
+
+	t.Run("GET /api/play/subtitles/-1.vtt returns 400", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/play/subtitles/-1.vtt", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", rec.Code)
+		}
+	})
+
+	t.Run("GET /api/play/subtitles/1.vtt?offset_ms=invalid returns 400", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/play/subtitles/1.vtt?offset_ms=invalid", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", rec.Code)
+		}
+	})
+
+	t.Run("GET /api/play/subtitles/999.vtt not found returns 404", func(t *testing.T) {
+		mock.getVTTFunc = func(ctx context.Context, id int, offsetOverride *int) ([]byte, error) {
+			return nil, domain.E(domain.KindNotFound, "字幕不存在", nil)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/play/subtitles/999.vtt", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d", rec.Code)
+		}
+	})
+
+	t.Run("GET /api/play/subtitles/1.vtt internal error returns 500", func(t *testing.T) {
+		mock.getVTTFunc = func(ctx context.Context, id int, offsetOverride *int) ([]byte, error) {
+			return nil, errors.New("db query failed")
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/play/subtitles/1.vtt", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("expected 500, got %d", rec.Code)
 		}
 	})
 

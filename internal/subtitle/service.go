@@ -336,6 +336,9 @@ func (s *Service) IndexLocalSubtitle(ctx context.Context, movieID int, file pan.
 func (s *Service) GetTrackVTT(ctx context.Context, id int, offsetOverride *int) ([]byte, error) {
 	record, err := s.db.Subtitle.Get(ctx, id)
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, domain.E(domain.KindNotFound, "字幕不存在", err)
+		}
 		return nil, fmt.Errorf("read subtitle %d: %w", id, err)
 	}
 
@@ -378,7 +381,7 @@ func (s *Service) GetTrackVTT(ctx context.Context, id int, offsetOverride *int) 
 	}
 
 	if rawContent == "" {
-		return nil, fmt.Errorf("subtitle content not available")
+		return nil, domain.E(domain.KindNotFound, "字幕内容不可用", nil)
 	}
 
 	effectiveOffset := record.OffsetMs
