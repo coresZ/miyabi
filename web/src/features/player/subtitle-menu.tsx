@@ -154,7 +154,7 @@ export function SubtitleMenu({
         side="top"
         align="end"
         sideOffset={8}
-        className="max-h-[30rem] w-80 space-y-1 overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950/95 p-2 text-white shadow-2xl backdrop-blur-2xl"
+        className="max-h-120 w-80 space-y-1 overflow-y-auto rounded-2xl bg-zinc-950/95 p-2 text-white shadow-2xl ring-0 backdrop-blur-2xl"
       >
         {/* Track Selection */}
         <DropdownMenuLabel className="flex items-center justify-between px-2 py-1 text-xs text-white/50">
@@ -165,7 +165,7 @@ export function SubtitleMenu({
         <DropdownMenuRadioGroup
           value={activeTrackId !== null ? String(activeTrackId) : 'off'}
           onValueChange={val => onSelectTrack(val === 'off' ? null : Number(val))}
-          className="max-h-48 space-y-0.5 overflow-y-auto scroll-fade-y pr-1"
+          className="max-h-48 scroll-fade-y space-y-0.5 overflow-y-auto pr-1"
         >
           <DropdownMenuRadioItem
             value="off"
@@ -183,7 +183,7 @@ export function SubtitleMenu({
               <div className="flex min-w-0 flex-col pr-1">
                 <span className="truncate text-xs font-medium">{sub.display_name}</span>
                 <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-white/40">
-                  <span className="rounded bg-white/10 px-1 py-0.5 text-[9px] uppercase text-white/70">
+                  <span className="rounded bg-white/10 px-1 py-0.5 text-[9px] text-white/70 uppercase">
                     {sub.source === 'local' ? '本地内置' : sub.source}
                   </span>
                   {sub.name ? (
@@ -284,7 +284,7 @@ export function SubtitleMenu({
                 <span>正在跨源聚合检索 (迅雷 + SubtitleCat)…</span>
               </div>
             ) : candidates.length > 0 ? (
-              <div className="max-h-48 space-y-1 overflow-y-auto scroll-fade-y pr-1">
+              <div className="max-h-48 scroll-fade-y space-y-1 overflow-y-auto pr-1">
                 {candidates.map((cand, idx) => {
                   const isApplying = applyingUrl === cand.url
                   return (
@@ -297,7 +297,7 @@ export function SubtitleMenu({
                           {cand.display_name}
                         </span>
                         <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-white/40">
-                          <span className="rounded bg-white/10 px-1 py-0.5 text-[9px] uppercase text-white/70">
+                          <span className="rounded bg-white/10 px-1 py-0.5 text-[9px] text-white/70 uppercase">
                             {cand.source}
                           </span>
                           <span className="max-w-[130px] truncate text-[10px] text-white/50">
@@ -319,9 +319,7 @@ export function SubtitleMenu({
                 })}
               </div>
             ) : (
-              <div className="py-3 text-center text-xs text-white/40">
-                未检索到匹配的在线字幕
-              </div>
+              <div className="py-3 text-center text-xs text-white/40">未检索到匹配的在线字幕</div>
             )}
           </div>
         )}
