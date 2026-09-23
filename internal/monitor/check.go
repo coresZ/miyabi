@@ -124,7 +124,7 @@ func (service *Service) checkMovie(ctx context.Context, record *ent.Subscription
 		SetLastCheckedAt(now).AddChecks(1).ClearNextCheckAt().ClearError().Exec(ctx); err != nil && !ent.IsNotFound(err) {
 		return fmt.Errorf("complete subscription %d: %w", record.ID, err)
 	}
-	slog.InfoContext(ctx, "subscribed movie submitted to 115", "code", record.Code, "hash", best.Hash, "task_id", submission.TaskID)
+	slog.InfoContext(ctx, "subscribed movie submitted to 115", "code", record.Code, "hash", best.Hash, "pan_task_id", submission.TaskID)
 	service.tasks.NotifyMonitorChanged()
 	return nil
 }

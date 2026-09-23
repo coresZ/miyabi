@@ -31,6 +31,9 @@ type Pool struct {
 
 // NewPool initializes a new worker Pool.
 func NewPool(queue PoolQueue, bus PoolBus, registry *Registry, size int, logger *slog.Logger) *Pool {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Pool{
 		queue:    queue,
 		bus:      bus,
@@ -74,7 +77,7 @@ func (pool *Pool) runWorker(ctx context.Context, kinds []Kind) error {
 		if !ok {
 			return fmt.Errorf("no handler registered for task type %s", job.Type)
 		}
-		pool.logger.InfoContext(ctx, "task started", "id", job.ID, "type", string(job.Type))
+		pool.logger.InfoContext(ctx, "task started", "task_id", job.ID, "type", string(job.Type))
 		runError := handler.Handle(ctx, *job)
 		if ctx.Err() != nil {
 			// Keep running state for startup recovery, rather than reporting a
@@ -88,9 +91,9 @@ func (pool *Pool) runWorker(ctx context.Context, kinds []Kind) error {
 			return fmt.Errorf("persist task result: %w", err)
 		}
 		if runError != nil {
-			pool.logger.ErrorContext(ctx, "task failed", "id", job.ID, "type", string(job.Type), "error", runError)
+			pool.logger.ErrorContext(ctx, "task failed", "task_id", job.ID, "type", string(job.Type), "error", runError)
 		} else {
-			pool.logger.InfoContext(ctx, "task completed", "id", job.ID, "type", string(job.Type))
+			pool.logger.InfoContext(ctx, "task completed", "task_id", job.ID, "type", string(job.Type))
 		}
 	}
 	return nil

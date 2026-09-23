@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -39,7 +40,16 @@ func Open(ctx context.Context, dataDir string) (*Store, error) {
 	}
 
 	driver := entsql.OpenDB(dialect.SQLite, db)
-	client := ent.NewClient(ent.Driver(driver))
+	opts := []ent.Option{
+		ent.Driver(driver),
+		ent.Log(func(args ...any) {
+			slog.Debug(fmt.Sprint(args...))
+		}),
+	}
+	if slog.Default().Enabled(ctx, slog.LevelDebug) {
+		opts = append(opts, ent.Debug())
+	}
+	client := ent.NewClient(opts...)
 	if err := client.Schema.Create(ctx); err != nil {
 		client.Close()
 		return nil, fmt.Errorf("migrate database schema: %w", err)

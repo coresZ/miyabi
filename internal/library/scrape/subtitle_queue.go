@@ -44,6 +44,9 @@ func newSubtitleQueue(service *Service, concurrency, capacity int, logger *slog.
 	if capacity <= 0 {
 		capacity = defaultSubtitleQueueCapacity
 	}
+	if logger == nil {
+		logger = slog.Default()
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	q := &SubtitleQueue{
@@ -87,7 +90,7 @@ func (q *SubtitleQueue) Enqueue(task SubtitleTask) bool {
 		delete(q.pending, task.MovieID)
 		q.mu.Unlock()
 		if q.logger != nil {
-			q.logger.Warn("subtitle task queue is full; dropping task",
+			q.logger.WarnContext(q.ctx, "subtitle task queue is full; dropping task",
 				"code", task.Code,
 				"movie_id", task.MovieID,
 			)
@@ -132,7 +135,7 @@ func (q *SubtitleQueue) process(task SubtitleTask) {
 	sess, err := q.service.begin(taskCtx, task.MetaPayload)
 	if err != nil {
 		if q.logger != nil {
-			q.logger.Warn("failed to open session for subtitle auto-fetch",
+			q.logger.WarnContext(taskCtx, "failed to open session for subtitle auto-fetch",
 				"code", task.Code,
 				"error", err,
 			)
@@ -142,7 +145,7 @@ func (q *SubtitleQueue) process(task SubtitleTask) {
 
 	if err := q.service.subtitles.AutoFetchAndUpload(taskCtx, sess, task.DirectoryID, task.MovieID, task.Code, task.IsUncensored); err != nil {
 		if q.logger != nil {
-			q.logger.Warn("subtitle auto-fetch error",
+			q.logger.WarnContext(taskCtx, "subtitle auto-fetch error",
 				"code", task.Code,
 				"error", err,
 			)
