@@ -40,6 +40,7 @@ type App struct {
 	driveSvc  *drive.Drive
 	catalogue *catalogue.Service
 	play      *playback.Service
+	scrape    *scrape.Service
 }
 
 // New initializes all services, database connections, and registers task handlers.
@@ -150,6 +151,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		driveSvc:  driveSvc,
 		catalogue: catalogueSvc,
 		play:      playSvc,
+		scrape:    scrapeSvc,
 	}, nil
 }
 
@@ -209,6 +211,9 @@ func (a *App) Run(ctx context.Context) error {
 
 // Close releases resources held by the application.
 func (a *App) Close() error {
+	if a.scrape != nil {
+		a.scrape.Close()
+	}
 	if a.play != nil {
 		a.play.Close()
 	}

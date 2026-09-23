@@ -15,7 +15,6 @@ import (
 	"github.com/ppxb/miyabi/internal/nfo"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
-	"time"
 )
 
 // CoverPayload describes the input and intermediate state of a cover creation job.
@@ -39,7 +38,7 @@ func (service *Service) Cover(ctx context.Context, job tasks.Job) error {
 		return nil
 	}
 
-	var postTask func()
+	var subTask *SubtitleTask
 	err = func() error {
 		if err := service.artwork.Lock(ctx); err != nil {
 			return err
@@ -47,23 +46,23 @@ func (service *Service) Cover(ctx context.Context, job tasks.Job) error {
 		defer service.artwork.Unlock()
 
 		var err error
-		postTask, err = service.processCover(ctx, job, input)
+		subTask, err = service.processCover(ctx, job, input)
 		return err
 	}()
 	if err != nil {
 		return err
 	}
 
-	// Dispatch subtitle fetching asynchronously after releasing the artwork lock
-	// to avoid blocking other movies' scrape and artwork pipelines.
-	if postTask != nil {
-		go postTask()
+	// Dispatch subtitle fetching asynchronously via bounded queue after releasing the artwork lock
+	// to avoid blocking other movies' scrape and artwork pipelines and prevent unbounded goroutines.
+	if subTask != nil && service.subtitleQueue != nil {
+		service.subtitleQueue.Enqueue(*subTask)
 	}
 
 	return nil
 }
 
-func (service *Service) processCover(ctx context.Context, job tasks.Job, input CoverPayload) (func(), error) {
+func (service *Service) processCover(ctx context.Context, job tasks.Job, input CoverPayload) (*SubtitleTask, error) {
 	input.Code = codeid.Normalize(input.Code)
 	input.Document.Code = codeid.Normalize(input.Document.Code)
 	sess, err := service.begin(ctx, input.MetadataPayload)
@@ -125,6 +124,9 @@ func (service *Service) processCover(ctx context.Context, job tasks.Job, input C
 	snapshot := &Snapshot{}
 	var videos []pan.File
 	for i, directory := range directories {
+		if err := service.verifyVideoPositions(ctx, sess, directory); err != nil {
+			return nil, err
+		}
 		state, err := service.writeSidecars(ctx, sess, input, directory, poster, fanart)
 		if err != nil {
 			return nil, err
@@ -156,37 +158,34 @@ func (service *Service) processCover(ctx context.Context, job tasks.Job, input C
 		return nil, fmt.Errorf("save movie artwork: %w", err)
 	}
 
-	var postTask func()
+	var subTask *SubtitleTask
 	if service.subtitles != nil && len(directories) > 0 {
-		isUncensored := false
-		for _, v := range videos {
-			low := strings.ToLower(v.Name)
-			if strings.Contains(low, "uncensored") || strings.Contains(v.Name, "无码") {
-				isUncensored = true
-				break
-			}
-		}
-		dirID := directories[0].ID
-		movieID := input.MovieID
-		code := input.Code
-		metaPayload := input.MetadataPayload
-
-		postTask = func() {
-			asyncCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			defer cancel()
-
-			subSess, err := service.begin(asyncCtx, metaPayload)
-			if err != nil {
-				return
-			}
-			_ = service.subtitles.AutoFetchAndUpload(asyncCtx, subSess, dirID, movieID, code, isUncensored)
+		subTask = &SubtitleTask{
+			MovieID:      input.MovieID,
+			Code:         input.Code,
+			DirectoryID:  directories[0].ID,
+			IsUncensored: isUncensoredVideo(videos),
+			MetaPayload:  input.MetadataPayload,
 		}
 	}
 
 	if service.notifier != nil {
 		service.notifier.NotifyLibraryChanged()
 	}
-	return postTask, nil
+	return subTask, nil
+}
+
+func (service *Service) verifyVideoPositions(ctx context.Context, sess drive.Session, directory MovieDirectory) error {
+	for videoID := range directory.VideoIDs {
+		info, err := sess.Info(ctx, videoID)
+		if err != nil {
+			return domain.E(domain.KindNotFound, "视频文件已删除或无法访问，请重新扫描", err)
+		}
+		if info.ParentID != directory.ID || !drive.WithinSource(info, sess.Source()) {
+			return domain.E(domain.KindConflict, "视频已移动，请重新扫描", nil)
+		}
+	}
+	return nil
 }
 
 func (service *Service) originImage(ctx context.Context, sess drive.Session, entry pan.File) ([]byte, error) {
@@ -227,6 +226,7 @@ func (service *Service) writeSidecars(ctx context.Context, sess drive.Session, i
 	}
 	// NFO is the completion marker and is written last. A restarted job can
 	// reuse previously uploaded images without creating same-name duplicates.
+	uploaded := false
 	for _, item := range []struct {
 		name string
 		body []byte
@@ -242,6 +242,10 @@ func (service *Service) writeSidecars(ctx context.Context, sess drive.Session, i
 		if err := UploadSidecar(ctx, sess, directory, item.name, item.body); err != nil {
 			return snapshot, fmt.Errorf("write %s to 115: %w", item.name, err)
 		}
+		uploaded = true
+	}
+	if uploaded {
+		service.InvalidateDirCache(sess.Source().AccountID, directory.ID)
 	}
 	return NewDirectorySnapshot(directory.ID, pan.File{Name: nfoName, SHA1: pan.SHA1(body)},
 		pan.File{Name: posterName, SHA1: pan.SHA1(poster)}, pan.File{Name: fanartName, SHA1: pan.SHA1(fanart)}), nil

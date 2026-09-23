@@ -3,6 +3,9 @@ package scrape
 import (
 	"context"
 	"fmt"
+	"slices"
+	"sync"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
@@ -15,6 +18,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/predicate"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
+	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/syncx"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
@@ -45,25 +49,51 @@ type SubtitleFetcher interface {
 	AutoFetchAndUpload(ctx context.Context, sess drive.Session, directoryID string, movieID int, code string, isUncensored bool) error
 }
 
+const defaultDirCacheTTL = 45 * time.Second
+
+type dirCacheEntry struct {
+	files     []pan.File
+	expiresAt time.Time
+}
+
 // Service manages movie metadata scraping and artwork caching.
 type Service struct {
-	db        *ent.Client
-	drive     *drive.Drive
-	discover  Discoverer
-	images    *mediaimage.Cache
-	notifier  Notifier
-	subtitles SubtitleFetcher
-	artwork   syncx.ContextLock
+	db            *ent.Client
+	drive         *drive.Drive
+	discover      Discoverer
+	images        *mediaimage.Cache
+	notifier      Notifier
+	subtitles     SubtitleFetcher
+	subtitleQueue *SubtitleQueue
+	artwork       syncx.ContextLock
+
+	dirMu    sync.RWMutex
+	dirCache map[string]dirCacheEntry
+	dirTTL   time.Duration
 }
 
 // New creates a new scrape Service.
 func New(db *ent.Client, d *drive.Drive, discover Discoverer, images *mediaimage.Cache, notifier Notifier) *Service {
-	return &Service{
+	service := &Service{
 		db:       db,
 		drive:    d,
 		discover: discover,
 		images:   images,
 		notifier: notifier,
+		dirCache: make(map[string]dirCacheEntry),
+		dirTTL:   defaultDirCacheTTL,
+	}
+	service.subtitleQueue = newSubtitleQueue(service, defaultSubtitleConcurrency, defaultSubtitleQueueCapacity, nil)
+	return service
+}
+
+// Close releases resources and terminates background workers.
+func (service *Service) Close() {
+	if service == nil {
+		return
+	}
+	if service.subtitleQueue != nil {
+		service.subtitleQueue.Close()
 	}
 }
 
@@ -98,6 +128,9 @@ func (service *Service) Artwork(key string) ([]byte, error) {
 }
 
 func (service *Service) begin(ctx context.Context, input MetadataPayload) (drive.Session, error) {
+	if service.drive == nil {
+		return nil, domain.E(domain.KindInvalid, "网盘服务未初始化", nil)
+	}
 	return service.drive.OpenSource(ctx, input.Source)
 }
 
@@ -244,7 +277,7 @@ func (service *Service) directories(ctx context.Context, sess drive.Session, inp
 	}
 	for i := range result {
 		directory := &result[i]
-		directory.Files, err = drive.DirectoryEntries(ctx, sess, directory.ID)
+		directory.Files, err = service.directoryEntries(ctx, sess, directory.ID)
 		if err != nil {
 			return nil, fmt.Errorf("read metadata directory: %w", err)
 		}
@@ -263,4 +296,59 @@ func (service *Service) directories(ctx context.Context, sess drive.Session, inp
 		}
 	}
 	return result, nil
+}
+
+// directoryEntries retrieves directory entries using a short-lived cache to avoid redundant pagination of large folders.
+func (service *Service) directoryEntries(ctx context.Context, sess drive.Session, dirID string) ([]pan.File, error) {
+	key := dirID
+	if src := sess.Source(); src.AccountID != "" {
+		key = src.AccountID + ":" + dirID
+	}
+
+	service.dirMu.RLock()
+	if entry, ok := service.dirCache[key]; ok && time.Now().Before(entry.expiresAt) {
+		service.dirMu.RUnlock()
+		return slices.Clone(entry.files), nil
+	}
+	service.dirMu.RUnlock()
+
+	files, err := drive.DirectoryEntries(ctx, sess, dirID)
+	if err != nil {
+		return nil, err
+	}
+
+	service.dirMu.Lock()
+	if service.dirCache == nil {
+		service.dirCache = make(map[string]dirCacheEntry)
+	}
+	ttl := service.dirTTL
+	if ttl <= 0 {
+		ttl = defaultDirCacheTTL
+	}
+	service.dirCache[key] = dirCacheEntry{
+		files:     files,
+		expiresAt: time.Now().Add(ttl),
+	}
+	service.dirMu.Unlock()
+
+	return slices.Clone(files), nil
+}
+
+// InvalidateDirCache purges cached directory entries for the specified directory.
+func (service *Service) InvalidateDirCache(accountID, dirID string) {
+	service.dirMu.Lock()
+	defer service.dirMu.Unlock()
+	if service.dirCache != nil {
+		if accountID != "" {
+			delete(service.dirCache, accountID+":"+dirID)
+		}
+		delete(service.dirCache, dirID)
+	}
+}
+
+// SetDirTTL configures the directory cache TTL (used for tests or tuning).
+func (service *Service) SetDirTTL(ttl time.Duration) {
+	service.dirMu.Lock()
+	service.dirTTL = ttl
+	service.dirMu.Unlock()
 }
