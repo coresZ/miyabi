@@ -1,10 +1,10 @@
 # Miyabi 重构方案
 
-- 日期：2026-09-19；最近更新 2026-09-22
-- 基线：`master / 85228f7`；当前进度基线 `e0de46b` 加 M6 收口
+- 日期：2026-09-19；最近更新 2026-09-23
+- 基线：`master / 85228f7`；当前进度基线 `61fbcba` 加番号容差增强
 - 范围：五条工作线。① 全局代理；② 整体结构重构（含冗余清理）；③ 磁力聚合（JavDB + JavBus）；④ javdb-cli 接口补齐评估；⑤ 字幕自动化与播放集成。
 - 约束：前端所有样式与动效原样沿用，前端只做结构性调整（已记录三次例外，见第 9 节）；预览视频、DMM、第三方图库不在本轮范围。
-- 进度：M0 到 M6 已完成并收口（M6 含订阅）；D、E 未开始；前端 3.9 与主线并行，已完成分页收敛与磁力徽章改造。
+- 进度：M0 到 M6 已完成并收口（M6 含订阅）；M8 前端结构清理已完成（8da0c34）；工作线 D 番号容差增强（ResolveMovieID 格式等价与补零容差）已落地；优先开始工作线 E（字幕自动化与播放集成）。
 
 ---
 
@@ -332,12 +332,12 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 | `GET /api/v1/lists/related?movie_id=` | 相关合集 | 暂不 | 价值一般，合集页需要新 UI |
 | `GET /api/v1/codes/{id}` | 番号前缀实体 | 不加 | 用处很小 |
 | `POST /api/v1/sessions`、users/*、reviews 写操作、`movies/top` | 登录与个人状态 | **不加** | miyabi 有自己的观看记录；绑定 JavDB 账号引入封号与隐私风险 |
-| `ResolveMovieID` 的"格式等价唯一匹配" | 番号解析 | **采纳** | 分隔符差异（`ABC00123` vs `ABC-123`）可接受，多候选拒绝；比现在严格相等更实用，直接影响刮削命中率 |
+| `ResolveMovieID` 的"格式等价唯一匹配" | 番号解析 | **已落地** | 分隔符差异（`ABC00123` vs `ABC-123`）与补零容差解析，多候选拒绝；2026-09-23 完成 |
 | 自动选线 `SelectAutoHost` | 路由 | 不动 | miyabi 现有实现更完整（持久化、手动选择、故障切换） |
 | 以图搜番（avscan.cc） | 反搜 | 后议 | 上传截图到第三方，隐私边界需要你决定 |
 | 资源下载与 HLS→MP4 重封装 | 预览视频 | 后议 | 属于预览视频范围 |
 
-建议本轮实现"加"的四项加上 `ResolveMovieID` 规则，约 3 到 5 天，其中后端各半天，前端排行标签页与评论折叠区约两天。
+工作线 D 的番号容差规则已落地；排行、评论及实体详情暂缓，优先推进工作线 E。
 
 ---
 
@@ -391,11 +391,11 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 | M4 | 业务包迁移 | B4 到 B8 | ✅ 2026-09-22 | M3 |
 | M5 | API 与配置收口 | B9、3.8 后端清单 | ✅ 2026-09-22 | M4 |
 | M6 | 磁力聚合与订阅 | 工作线 C | ✅ 2026-09-22（`217e28b`、`e0de46b` 及收口） | M1、M2 |
-| M7 | JavDB 接口补齐 | 工作线 D | 待做，3 到 5 天 | M2 |
-| M8 | 前端结构清理 | 3.9 清单、`/api/discover/viewed` 增量 | 分页与徽章已收敛，其余待做，约 1 周 | 可与 M5 并行 |
-| M9 | 字幕自动化与播放集成 | 工作线 E | 待做，4 到 5 天 | M2、M5 |
+| M8 | 前端结构清理 | 3.9 清单、`/api/discover/viewed` 增量 | ✅ 2026-09-22（`8da0c34` 收口） | 可与 M5 并行 |
+| M9 | 字幕自动化与播放集成 | 工作线 E | **正在进行**（4 到 5 天，优先实施） | M2、M5 |
+| M7 | JavDB 接口补齐 | 工作线 D（排行、评论、实体详情） | 待做（番号容差已于 2026-09-23 提前落地） | M2 |
 
-剩余约 3.5 到 4 周单人工作量。串行顺序 M7 → M9，M8 并行。下一步：M7（工作线 D）或 M8。
+下一步：优先攻坚 M9（工作线 E：字幕自动化与播放集成）。
 
 ---
 
@@ -452,3 +452,4 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 - 徽章（2026-09-21，`23c58cc`）：Badge 新增 `library`（紫色，已入库/新入库）与 `frosted`（磨砂，番号/下载中）两个变体，"预览"文案改为"有预览"。
 - 分页器（2026-09-21，`562f49d`、`58622d6`、`1b64d52`、`09e1b6f`）：`ListPagination` 改为 shadcn `PaginationLink / PaginationEllipsis` 页码链接，库页面移除"共 N 部影片 · 每页 20 部"文案，单页时隐藏。页码算法在 `lib/pagination.ts`：连续窗口 3 页（当前页 ±1），首尾页始终可点，总页数 ≤7 时全列，省略号不用于只遮一页。当前页 `aria-current="page"` 不可点，禁用态 `aria-disabled` + `pointer-events-none`；上一页/下一页保持原生 `Button`。传 `totalPages` 的页面（库、观看历史）渲染完整页码，发现页只渲染当前页占位。`562f49d` 的页码输入框已被页码链接替代。
 - 订阅页（2026-09-22，M6 收口）：新页面只组合现有 `MovieCard / Badge / Button / Checkbox / Avatar / Switch / Tooltip / Dialog / Tabs / Skeleton`，卡片选择态沿用历史页的 `ring-2 ring-success` 与右上角 `Checkbox`；演员条目是 `rounded-2xl border p-2` 容器内的 `Avatar` 加 `Button`，没有新增 Badge 变体与动效。每日检查时间用 shadcn `Input type="time"` 并隐藏原生日历指示器。
+- 番号格式等价与补零容差（2026-09-23）：在 `internal/codeid` 新增 `IsFormatEquivalent` 与 `UnpaddedNumericCandidate`，纯字符结构与算法推导，无硬编码字典；`ResolveMovieID` 实行严格全等优先、格式等价兜底、去零退避搜索，多等价候选严格拒绝防串片。
