@@ -147,3 +147,26 @@ func TestDetectChineseLanguage(t *testing.T) {
 		})
 	}
 }
+
+func TestIsUncensored(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{"ABP-123.uncensored.mp4", true},
+		{"ABP-123.无码.mp4", true},
+		{"ABP-123.無碼.mp4", true},
+		{"ABP-123.破解.mp4", true},
+		{"ABP-123.流出.mp4", true},
+		{"ABP-123.leaked.mp4", true},
+		{"ABP-123.mosaic.mp4", true},
+		{"ABP-123.standard.mp4", false},
+		{"ABP-123.chs.srt", false},
+	}
+
+	for _, tc := range cases {
+		if got := IsUncensored(tc.name); got != tc.want {
+			t.Errorf("IsUncensored(%q) = %v; want %v", tc.name, got, tc.want)
+		}
+	}
+}

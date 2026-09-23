@@ -114,9 +114,7 @@ export function createMovieDetailLoader(
     return queryOptions({
       queryKey: discoverKeys.movie(id),
       queryFn: ({ signal }) => fetchDetail(id, signal),
-      staleTime: detailStaleTime,
-      retry: false,
-      refetchOnWindowFocus: false
+      staleTime: detailStaleTime
     })
   }
 

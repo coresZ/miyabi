@@ -1,6 +1,4 @@
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max)
-}
+import { clamp } from './math.ts'
 
 export type PageItem = number | 'ellipsis-left' | 'ellipsis-right'
 

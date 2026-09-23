@@ -6,16 +6,7 @@ import (
 )
 
 // Payload describes a library scanning task in the task queue.
-type Payload struct {
-	Source        domain.LibrarySource `json:"source"`
-	Scan          domain.ScanProgress  `json:"scan"`
-	TargetID      string               `json:"target_id,omitempty"`
-	TargetPath    string               `json:"target_path,omitempty"`
-	TargetFile    bool                 `json:"target_file,omitempty"`
-	OfflineTaskID int                  `json:"offline_task_id,omitempty"`
-	Code          string               `json:"code,omitempty"`
-	JavDBID       string               `json:"javdb_id,omitempty"`
-}
+type Payload = domain.ScanPayload
 
 // Directory describes a directory queued during BFS traversal.
 type Directory struct {

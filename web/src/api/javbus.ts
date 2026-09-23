@@ -15,9 +15,7 @@ export function useJavBusConfig() {
     queryKey: javbusKeys.config,
     queryFn: ({ signal }) => apiGet<JavBusConfig>('/api/settings/javbus', undefined, signal),
     staleTime: 15_000,
-    retry: false,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: false
+    refetchOnMount: 'always'
   })
 }
 

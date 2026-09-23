@@ -52,10 +52,8 @@ type Playback = {
 }
 
 const playQueryOptions = {
-  retry: false,
   gcTime: 0,
   staleTime: Infinity,
-  refetchOnWindowFocus: false,
   refetchOnReconnect: false
 } as const
 

@@ -72,9 +72,7 @@ export function movieStateOptions(load: StateLoader, movie?: MovieIdentity) {
     // seed this cache or overwrite a more recent local-state response.
     initialData: emptyState,
     staleTime: Infinity,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: false,
-    retry: false
+    refetchOnMount: 'always'
   })
 }
 

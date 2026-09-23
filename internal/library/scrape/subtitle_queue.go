@@ -3,11 +3,11 @@ package scrape
 import (
 	"context"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/ppxb/miyabi/internal/pan"
+	"github.com/ppxb/miyabi/internal/subtitle"
 )
 
 // SubtitleTask captures the parameters needed to asynchronously fetch subtitles for a movie.
@@ -156,8 +156,7 @@ func (q *SubtitleQueue) process(task SubtitleTask) {
 // isUncensoredVideo detects uncensored indicators from video filenames.
 func isUncensoredVideo(videos []pan.File) bool {
 	for _, v := range videos {
-		low := strings.ToLower(v.Name)
-		if strings.Contains(low, "uncensored") || strings.Contains(v.Name, "无码") {
+		if subtitle.IsUncensored(v.Name) {
 			return true
 		}
 	}

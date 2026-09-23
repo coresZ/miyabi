@@ -56,7 +56,6 @@ export function useWatchHistory(page: number) {
     queryKey: watchHistoryKeys.page(page),
     queryFn: ({ signal }) => apiGet<WatchHistoryPage>('/api/library/history', { page }, signal),
     staleTime: 0,
-    retry: false,
     refetchOnWindowFocus: true
   })
 }

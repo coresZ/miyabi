@@ -2,13 +2,10 @@ package scan
 
 import (
 	"context"
-	"path"
-	"strings"
 
 	"github.com/ppxb/miyabi/internal/codeid"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/movie"
-	"github.com/ppxb/miyabi/internal/ent/subtitle"
 	"github.com/ppxb/miyabi/internal/pan"
 	subpkg "github.com/ppxb/miyabi/internal/subtitle"
 )
@@ -73,35 +70,9 @@ func IndexDirectorySubtitles(ctx context.Context, tx *ent.Tx, videos []Video, su
 			continue
 		}
 
-		exists, err := tx.Subtitle.Query().
-			Where(subtitle.MovieIDEQ(targetMovieID), subtitle.FileIDEQ(sub.ID)).
-			Exist(ctx)
-		if err != nil || exists {
-			continue
+		if err := subpkg.IndexLocalSubtitleTx(ctx, tx, targetMovieID, sub); err != nil {
+			return err
 		}
-
-		ext := strings.ToLower(strings.TrimPrefix(path.Ext(sub.Name), "."))
-		lang := subpkg.DetectChineseLanguage(sub.Name, "")
-		ver := subpkg.DetectVersion(sub.Name)
-		displayName := subpkg.BuildDisplayName(lang, ver, true)
-
-		hasDefault, _ := tx.Subtitle.Query().
-			Where(subtitle.MovieIDEQ(targetMovieID), subtitle.IsDefault(true)).
-			Exist(ctx)
-
-		_ = tx.Subtitle.Create().
-			SetMovieID(targetMovieID).
-			SetFileID(sub.ID).
-			SetPickCode(sub.PickCode).
-			SetName(sub.Name).
-			SetDisplayName(displayName).
-			SetLanguage(string(lang)).
-			SetFormat(ext).
-			SetVersionTag(string(ver)).
-			SetSource("local").
-			SetOffsetMs(0).
-			SetIsDefault(!hasDefault).
-			Exec(ctx)
 	}
 	return nil
 }

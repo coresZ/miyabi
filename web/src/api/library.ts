@@ -49,9 +49,7 @@ export function useLibraryMovies(page: number) {
   return useQuery({
     queryKey: libraryKeys.movies(page),
     queryFn: ({ signal }) =>
-      apiGet<LibraryPage>('/api/library/movies', { page, limit: LIBRARY_PAGE_SIZE }, signal),
-    retry: false,
-    refetchOnWindowFocus: false
+      apiGet<LibraryPage>('/api/library/movies', { page, limit: LIBRARY_PAGE_SIZE }, signal)
   })
 }
 

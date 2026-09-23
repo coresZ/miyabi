@@ -6,6 +6,7 @@ import (
 	"path"
 	"testing"
 
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
@@ -126,7 +127,7 @@ func TestRescanRepairsAuxiliaryVideosAndSSNISubtitleAlias(t *testing.T) {
 		}
 	}
 	canonical := lib.database.Movie.Query().Where(movie.CodeEQ("SSNI-748")).OnlyX(ctx)
-	if canonical.ID != movies["SSNI-748"].ID || valueOrZero(canonical.JavdbID) != "catalogue-SSNI-748" {
+	if canonical.ID != movies["SSNI-748"].ID || domain.ValueOrZero(canonical.JavdbID) != "catalogue-SSNI-748" {
 		t.Fatal("subtitle alias repair replaced valid catalogue metadata")
 	}
 	files := lib.database.File.Query().Where(file.MovieIDEQ(canonical.ID)).AllX(ctx)

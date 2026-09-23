@@ -226,6 +226,56 @@ func TestServiceIndexLocalSubtitle(t *testing.T) {
 	}
 }
 
+func TestServiceSingleDefaultInvariant(t *testing.T) {
+	svc, movieID := setupTestService(t)
+	ctx := context.Background()
+
+	// 1. Add first subtitle
+	err := svc.IndexLocalSubtitle(ctx, movieID, pan.File{
+		ID:       "file-1",
+		PickCode: "pick-1",
+		Name:     "ABP-123.chs.srt",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Add second subtitle as default
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte("1\n00:00:01,000 --> 00:00:04,000\nHello world\n"))
+	}))
+	defer ts.Close()
+
+	_, err = svc.ApplyCandidate(ctx, movieID, domain.SubtitleCandidate{
+		Source:      "xunlei",
+		Name:        "ABP-123.uncensored.chs.srt",
+		DisplayName: "简体中文（无码版）",
+		Language:    "zh-CN",
+		Version:     "uncensored",
+		URL:         ts.URL,
+		Ext:         "srt",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := svc.ListByMovie(ctx, movieID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defaultCount := 0
+	for _, track := range list {
+		if track.IsDefault {
+			defaultCount++
+		}
+	}
+	if defaultCount != 1 {
+		t.Fatalf("expected exactly 1 default subtitle, got %d out of %d tracks", defaultCount, len(list))
+	}
+}
+
 func TestAggregatorSSRFBlocked(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")

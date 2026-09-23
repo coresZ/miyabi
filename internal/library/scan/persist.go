@@ -6,6 +6,7 @@ import (
 	"path"
 
 	"github.com/ppxb/miyabi/internal/codeid"
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
@@ -112,7 +113,7 @@ func ProcessScanPageTx(ctx context.Context, tx *ent.Tx, taskID int, scanID, dire
 			if old != nil && old.Name == video.Name && old.ParentID == video.ParentID &&
 				old.Size == video.Size && old.Sha1 == video.SHA1 && old.PickCode == video.PickCode &&
 				old.AccountID == payload.Source.AccountID && old.RootID == payload.Source.Directory.ID &&
-				old.Path == path.Join(directoryPath, video.Name) && valueOrZero(old.MovieID) == codes[video.Code] {
+				old.Path == path.Join(directoryPath, video.Name) && domain.ValueOrZero(old.MovieID) == codes[video.Code] {
 				unchanged = append(unchanged, video.ID)
 				continue
 			}
@@ -246,12 +247,4 @@ func ReportScan(ctx context.Context, client *ent.TaskClient, taskID int, payload
 		tasksSvc.Notify()
 	}
 	return nil
-}
-
-func valueOrZero[T any](value *T) T {
-	if value != nil {
-		return *value
-	}
-	var zero T
-	return zero
 }

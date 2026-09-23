@@ -27,9 +27,7 @@ export function useNetworkConfig() {
     queryKey: networkKeys.config,
     queryFn: ({ signal }) => apiGet<NetworkConfig>('/api/settings/network', undefined, signal),
     staleTime: 15_000,
-    retry: false,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: false
+    refetchOnMount: 'always'
   })
 }
 

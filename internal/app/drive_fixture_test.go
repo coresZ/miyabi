@@ -285,14 +285,6 @@ func authorizationVersion(t testing.TB, d *drive.Drive) uint64 {
 	return sess.Version()
 }
 
-func valueOrZero[T any](value *T) T {
-	if value != nil {
-		return *value
-	}
-	var zero T
-	return zero
-}
-
 func libraryFixture(t testing.TB) testLibraryFixture {
 	t.Helper()
 	store, err := database.Open(t.Context(), t.TempDir())

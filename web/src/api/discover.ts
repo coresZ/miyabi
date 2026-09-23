@@ -127,18 +127,12 @@ export type SearchMoviesParams = {
   limit?: number
 }
 
-const discoverQueryDefaults = {
-  retry: false,
-  refetchOnWindowFocus: false
-} as const
-
 const movieDetails = createMovieDetailLoader((id, signal) =>
   apiGet<DiscoverMovieDetail>(`/api/discover/movies/${encodeURIComponent(id)}`, undefined, signal)
 )
 
 export function useDiscoverMovies(params: BrowseMoviesParams, enabled = true) {
   return useQuery({
-    ...discoverQueryDefaults,
     queryKey: discoverKeys.movies(params),
     placeholderData: keepPreviousData,
     enabled,
@@ -209,7 +203,6 @@ export function useRecommendationMovie(id: string) {
 
 export function useDiscoverMagnets(id: string) {
   return useQuery({
-    ...discoverQueryDefaults,
     queryKey: discoverKeys.magnets(id),
     queryFn: ({ signal }) =>
       apiGet<DiscoverMagnet[]>(
@@ -224,7 +217,6 @@ export function useDiscoverMagnets(id: string) {
 export function useSearchMovies(params: SearchMoviesParams) {
   const query = params.query.trim()
   return useQuery({
-    ...discoverQueryDefaults,
     queryKey: discoverKeys.search({ ...params, query }),
     queryFn: ({ signal }) =>
       apiGet<DiscoverMovie[]>(
@@ -242,7 +234,6 @@ export function useSearchMovies(params: SearchMoviesParams) {
 
 export function useDiscoverTags(zone: JavDBZone, enabled = true) {
   return useQuery({
-    ...discoverQueryDefaults,
     queryKey: discoverKeys.tags(zone),
     queryFn: ({ signal }) => apiGet<TagCategory[]>('/api/discover/tags', { zone }, signal),
     enabled,
@@ -252,7 +243,6 @@ export function useDiscoverTags(zone: JavDBZone, enabled = true) {
 
 export function useJavDBRoute() {
   return useQuery({
-    ...discoverQueryDefaults,
     queryKey: discoverKeys.route,
     queryFn: ({ signal }) => apiGet<JavDBRouteStatus>('/api/javdb/route', undefined, signal)
   })

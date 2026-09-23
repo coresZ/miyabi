@@ -7,8 +7,7 @@ export function useAccessGateConfig(enabled: boolean) {
     queryKey: ['auth', 'config'],
     queryFn: ({ signal }) => apiGet<{ enabled: boolean }>('/api/auth/config', undefined, signal),
     enabled,
-    staleTime: Infinity,
-    retry: false
+    staleTime: Infinity
   })
 }
 

@@ -88,6 +88,12 @@ func DetectVersion(name string) VersionTag {
 	return VersionStandard
 }
 
+// IsUncensored reports whether a video or subtitle name indicates an uncensored or leaked release.
+func IsUncensored(name string) bool {
+	ver := DetectVersion(name)
+	return ver == VersionUncensored || ver == VersionLeaked
+}
+
 // DetectChineseLanguage inspects sample text or hints to determine whether
 // Chinese text is Simplified or Traditional.
 func DetectChineseLanguage(sample string, hint string) Language {

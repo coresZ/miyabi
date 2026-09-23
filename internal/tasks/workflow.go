@@ -30,16 +30,7 @@ type TaskInfo struct {
 }
 
 // ScanPayload is the stored JSON payload of a scan task.
-type ScanPayload struct {
-	Source        domain.LibrarySource `json:"source"`
-	Scan          domain.ScanProgress  `json:"scan"`
-	TargetID      string               `json:"target_id,omitempty"`
-	TargetPath    string               `json:"target_path,omitempty"`
-	TargetFile    bool                 `json:"target_file,omitempty"`
-	OfflineTaskID int                  `json:"offline_task_id,omitempty"`
-	Code          string               `json:"code,omitempty"`
-	JavDBID       string               `json:"javdb_id,omitempty"`
-}
+type ScanPayload = domain.ScanPayload
 
 type metadataTaskGroup struct {
 	ParentID  int         `json:"parent_id"`

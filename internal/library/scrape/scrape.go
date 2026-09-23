@@ -185,7 +185,7 @@ func (service *Service) Scrape(ctx context.Context, job tasks.Job) error {
 			artwork := MovieArtwork(record)
 			cover.Artwork = &artwork
 		} else {
-			id := valueOrZero(record.JavdbID)
+			id := domain.ValueOrZero(record.JavdbID)
 			if id == "" {
 				id = input.JavDBID
 			}

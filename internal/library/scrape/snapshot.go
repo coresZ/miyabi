@@ -176,7 +176,7 @@ func CompletedMetadataSnapshots(ctx context.Context, database *ent.Client, sourc
 
 // MovieArtwork extracts the artwork URLs from an indexed ent.Movie record.
 func MovieArtwork(record *ent.Movie) mediaimage.Artwork {
-	artwork := mediaimage.Artwork{Poster: valueOrZero(record.Poster), Thumbnail: valueOrZero(record.Cover)}
+	artwork := mediaimage.Artwork{Poster: domain.ValueOrZero(record.Poster), Thumbnail: domain.ValueOrZero(record.Cover)}
 	if len(record.Fanarts) > 0 {
 		artwork.Fanart = record.Fanarts[0]
 	}

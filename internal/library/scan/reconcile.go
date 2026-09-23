@@ -7,6 +7,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/ppxb/miyabi/internal/database"
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
@@ -103,7 +104,7 @@ func ReconcileScanTx(ctx context.Context, tx *ent.Tx, taskID int, scanID string,
 			ScanTaskID: taskID,
 			MovieID:    record.ID,
 			Code:       record.Code,
-			JavDBID:    valueOrZero(record.JavdbID),
+			JavDBID:    domain.ValueOrZero(record.JavdbID),
 		}
 		encoded, err := tasks.EncodePayload(input)
 		if err != nil {

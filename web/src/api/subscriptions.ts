@@ -41,9 +41,7 @@ function describeError(error: unknown) {
 
 const listOptions = {
   staleTime: Infinity,
-  refetchOnMount: 'always',
-  refetchOnWindowFocus: false,
-  retry: false
+  refetchOnMount: 'always'
 } as const
 
 export function useSubscriptions(kind: SubscriptionKind, enabled = true) {
@@ -87,7 +85,6 @@ export function useAddSubscription() {
   return useMutation({
     mutationFn: (payload: { kind: SubscriptionKind; target_id: string; title?: string }) =>
       apiPost<SubscriptionItem>('/api/subscriptions', payload),
-    retry: false,
     onSuccess: item => {
       queryClient.setQueryData<SubscriptionItem[]>(subscriptionKeys.list(item.kind), items => [
         item,
@@ -118,7 +115,6 @@ export function useUpdateSubscription() {
       auto_download?: boolean
       status?: 'active' | 'paused'
     }) => apiPatch<SubscriptionItem>(`/api/subscriptions/${id}`, patch),
-    retry: false,
     onSuccess: item => {
       queryClient.setQueryData<SubscriptionItem[]>(subscriptionKeys.list(item.kind), items =>
         replaceItem(items, item)
@@ -134,7 +130,6 @@ export function useRemoveSubscription() {
   return useMutation({
     mutationFn: (item: Pick<SubscriptionItem, 'id' | 'kind'>) =>
       apiDelete<null>(`/api/subscriptions/${item.id}`),
-    retry: false,
     onSuccess: (_, item) => {
       queryClient.setQueryData<SubscriptionItem[]>(subscriptionKeys.list(item.kind), items =>
         (items ?? []).filter(existing => existing.id !== item.id)
@@ -149,7 +144,6 @@ export function useEnqueueSubscription() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => apiPost<SubscriptionItem>(`/api/subscriptions/${id}/enqueue`),
-    retry: false,
     onSuccess: item => {
       queryClient.setQueryData<SubscriptionItem[]>(subscriptionKeys.list(item.kind), items =>
         replaceItem(items, item)
@@ -170,7 +164,6 @@ export function useBatchEnqueueSubscriptions() {
   return useMutation({
     mutationFn: (payload: { ids?: number[]; all?: boolean }) =>
       apiPost<{ task_id: number }>('/api/subscriptions/enqueue', payload),
-    retry: false,
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: subscriptionKeys.all }),
     onError: error => toast.error('批量入库失败', { description: describeError(error) })
   })

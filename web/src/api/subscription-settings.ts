@@ -26,9 +26,7 @@ export function useSubscriptionSettings() {
     queryFn: ({ signal }) =>
       apiGet<SubscriptionConfig>('/api/settings/subscription', undefined, signal),
     staleTime: 15_000,
-    retry: false,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: false
+    refetchOnMount: 'always'
   })
 }
 

@@ -1,5 +1,7 @@
 package domain
 
+import "fmt"
+
 // SubtitleTrack represents a subtitle track associated with a movie in the library.
 type SubtitleTrack struct {
 	ID          int    `json:"id"`
@@ -26,4 +28,9 @@ type SubtitleCandidate struct {
 	URL         string `json:"url"`
 	Ext         string `json:"ext"`
 	Score       int    `json:"score"`
+}
+
+// SubtitleTrackURL returns the canonical streaming endpoint URL for a subtitle track ID.
+func SubtitleTrackURL(id int) string {
+	return fmt.Sprintf("/api/play/subtitles/%d.vtt", id)
 }

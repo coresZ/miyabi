@@ -108,8 +108,8 @@ func (service *Service) retainedArtwork(ctx context.Context) (map[string]bool, e
 	}
 	retained := make(map[string]bool)
 	for _, record := range records {
-		retained[valueOrZero(record.Cover)] = true
-		retained[valueOrZero(record.Poster)] = true
+		retained[domain.ValueOrZero(record.Cover)] = true
+		retained[domain.ValueOrZero(record.Poster)] = true
 		for _, fanart := range record.Fanarts {
 			retained[fanart] = true
 		}
@@ -137,12 +137,4 @@ func (service *Service) retainedArtwork(ctx context.Context) (map[string]bool, e
 		retained[artwork.Thumbnail] = true
 	}
 	return retained, nil
-}
-
-func valueOrZero[T any](value *T) T {
-	if value != nil {
-		return *value
-	}
-	var zero T
-	return zero
 }

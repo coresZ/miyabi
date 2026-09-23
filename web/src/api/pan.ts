@@ -71,9 +71,7 @@ export function usePanAccount(enabled = true) {
   return useQuery({
     queryKey: panKeys.account,
     queryFn: ({ signal }) => apiGet<PanAccountStatus>('/api/pan/account', undefined, signal),
-    enabled,
-    retry: false,
-    refetchOnWindowFocus: false
+    enabled
   })
 }
 
@@ -94,7 +92,6 @@ export function usePanLoginStatus(id: string) {
     retryDelay: PAN_LOGIN_POLL_MS,
     staleTime: 0,
     gcTime: 0,
-    refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     refetchInterval: query =>
       panLoginPollDelay({ failed: query.state.status === 'error', state: query.state.data?.state })
@@ -119,9 +116,7 @@ export function usePanFiles(accountID: string, directoryID: string, page: number
   const query = useQuery({
     queryKey: panKeys.files(accountID, directoryID, page),
     queryFn: ({ signal }) =>
-      apiGet<PanFilePage>('/api/pan/files', { directory_id: directoryID, page }, signal),
-    retry: false,
-    refetchOnWindowFocus: false
+      apiGet<PanFilePage>('/api/pan/files', { directory_id: directoryID, page }, signal)
   })
   useEffect(() => {
     if (query.error instanceof ApiError && query.error.status === 401) {

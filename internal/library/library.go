@@ -199,7 +199,7 @@ func (s *Service) Movies(ctx context.Context, page, limit int) (Page, error) {
 		item := Movie{
 			ID: record.ID, Code: record.Code, Title: record.Title,
 			JavDBID: record.JavdbID, Cover: record.Cover, Poster: record.Poster,
-			Duration: valueOrZero(record.Duration), Rating: valueOrZero(record.Rating),
+			Duration: domain.ValueOrZero(record.Duration), Rating: domain.ValueOrZero(record.Rating),
 			Director: libraryEntity(record.DirectorID, record.DirectorName),
 			Maker:    libraryEntity(record.MakerID, record.MakerName), Series: libraryEntity(record.SeriesID, record.SeriesName),
 			Actors: make([]Entity, 0, len(record.Edges.Actors)),
@@ -227,13 +227,5 @@ func libraryEntity(id, name *string) *Entity {
 	if name == nil || *name == "" {
 		return nil
 	}
-	return &Entity{ID: valueOrZero(id), Name: *name}
-}
-
-func valueOrZero[T any](value *T) T {
-	if value != nil {
-		return *value
-	}
-	var zero T
-	return zero
+	return &Entity{ID: domain.ValueOrZero(id), Name: *name}
 }

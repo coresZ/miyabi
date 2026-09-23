@@ -58,11 +58,11 @@ func MovieNFO(record *ent.Movie) nfo.Movie {
 	doc := nfo.Movie{
 		Title:    record.Title,
 		Code:     record.Code,
-		Runtime:  valueOrZero(record.Duration),
-		Rating:   valueOrZero(record.Rating),
-		Director: nfo.Entity{ID: valueOrZero(record.DirectorID), Name: valueOrZero(record.DirectorName)},
-		Studio:   nfo.Entity{ID: valueOrZero(record.MakerID), Name: valueOrZero(record.MakerName)},
-		Set:      nfo.Series{ID: valueOrZero(record.SeriesID), Name: valueOrZero(record.SeriesName)},
+		Runtime:  domain.ValueOrZero(record.Duration),
+		Rating:   domain.ValueOrZero(record.Rating),
+		Director: nfo.Entity{ID: domain.ValueOrZero(record.DirectorID), Name: domain.ValueOrZero(record.DirectorName)},
+		Studio:   nfo.Entity{ID: domain.ValueOrZero(record.MakerID), Name: domain.ValueOrZero(record.MakerName)},
+		Set:      nfo.Series{ID: domain.ValueOrZero(record.SeriesID), Name: domain.ValueOrZero(record.SeriesName)},
 	}
 	if record.JavdbID != nil {
 		doc.IDs = []nfo.UniqueID{{Type: "javdb", Default: true, Value: *record.JavdbID}}
@@ -74,16 +74,16 @@ func MovieNFO(record *ent.Movie) nfo.Movie {
 		doc.Actors = append(doc.Actors, nfo.Actor{
 			ID:      person.JavdbID,
 			Name:    person.Name,
-			NameZHT: valueOrZero(person.NameZht),
+			NameZHT: domain.ValueOrZero(person.NameZht),
 			Gender:  string(person.Gender),
-			Thumb:   valueOrZero(person.Avatar),
+			Thumb:   domain.ValueOrZero(person.Avatar),
 		})
 	}
 	for _, item := range record.Edges.Tags {
 		doc.Tags = append(doc.Tags, nfo.Tag{
 			ID:         item.JavdbID,
 			Name:       item.Name,
-			NameZHT:    valueOrZero(item.NameZht),
+			NameZHT:    domain.ValueOrZero(item.NameZht),
 			CategoryID: item.CategoryID,
 		})
 		doc.Genres = append(doc.Genres, item.Name)
@@ -174,12 +174,4 @@ func SaveMovieMetadata(ctx context.Context, tx *ent.Tx, id int, doc nfo.Movie) e
 		update.AddTagIDs(ids...)
 	}
 	return update.Exec(ctx)
-}
-
-func valueOrZero[T any](value *T) T {
-	if value != nil {
-		return *value
-	}
-	var zero T
-	return zero
 }

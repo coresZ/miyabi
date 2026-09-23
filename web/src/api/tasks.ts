@@ -63,9 +63,7 @@ export function useTasks() {
     queryKey: taskKeys.all,
     queryFn: ({ signal }) => apiGet<Task[]>('/api/tasks', undefined, signal),
     staleTime: Infinity,
-    refetchOnMount: 'always',
-    retry: false,
-    refetchOnWindowFocus: false
+    refetchOnMount: 'always'
   })
 }
 

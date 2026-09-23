@@ -397,7 +397,7 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 	for _, kind := range kinds {
 		for _, record := range fixture.tasksOfType(t, kind) {
 			if record.Status != task.StatusDone {
-				t.Fatalf("%s task %d = %s: %v", kind, record.ID, record.Status, valueOrZero(record.Error))
+				t.Fatalf("%s task %d = %s: %v", kind, record.ID, record.Status, domain.ValueOrZero(record.Error))
 			}
 		}
 	}
@@ -411,13 +411,13 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if valueOrZero(record.JavdbID) != "movie-exact" || record.Title != "Localized title" || record.ScrapeStatus != movie.ScrapeStatusDone {
+	if domain.ValueOrZero(record.JavdbID) != "movie-exact" || record.Title != "Localized title" || record.ScrapeStatus != movie.ScrapeStatusDone {
 		t.Fatalf("movie = %+v", record)
 	}
-	if valueOrZero(record.Duration) != 120 || valueOrZero(record.Rating) != 4.5 || record.ReleaseDate == nil || record.ReleaseDate.Format("2006-01-02") != "2026-08-01" {
+	if domain.ValueOrZero(record.Duration) != 120 || domain.ValueOrZero(record.Rating) != 4.5 || record.ReleaseDate == nil || record.ReleaseDate.Format("2006-01-02") != "2026-08-01" {
 		t.Fatalf("movie metadata = duration %v rating %v release %v", record.Duration, record.Rating, record.ReleaseDate)
 	}
-	if valueOrZero(record.DirectorName) != "Director" || valueOrZero(record.MakerName) != "Maker" || valueOrZero(record.SeriesName) != "Series" {
+	if domain.ValueOrZero(record.DirectorName) != "Director" || domain.ValueOrZero(record.MakerName) != "Maker" || domain.ValueOrZero(record.SeriesName) != "Series" {
 		t.Fatalf("movie entities = %+v", record)
 	}
 	if len(record.Edges.Actors) != 2 || len(record.Edges.Tags) != 1 || len(record.Edges.Files) != 1 || record.Edges.Files[0].FileID != video.ID {
@@ -508,7 +508,7 @@ func TestPipelineReusesUserNFOInsteadOfCatalogue(t *testing.T) {
 	for _, kind := range []string{"scan", "scrape", "cover"} {
 		for _, record := range fixture.tasksOfType(t, kind) {
 			if record.Status != task.StatusDone {
-				t.Fatalf("%s task %d = %s: %v", kind, record.ID, record.Status, valueOrZero(record.Error))
+				t.Fatalf("%s task %d = %s: %v", kind, record.ID, record.Status, domain.ValueOrZero(record.Error))
 			}
 		}
 	}
@@ -519,7 +519,7 @@ func TestPipelineReusesUserNFOInsteadOfCatalogue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if record.Title != "User title" || valueOrZero(record.JavdbID) != "movie-user" || len(record.Edges.Actors) != 1 || record.ScrapeStatus != movie.ScrapeStatusDone {
+	if record.Title != "User title" || domain.ValueOrZero(record.JavdbID) != "movie-user" || len(record.Edges.Actors) != 1 || record.ScrapeStatus != movie.ScrapeStatusDone {
 		t.Fatalf("movie from NFO = %+v actors %d", record, len(record.Edges.Actors))
 	}
 	if uploads := fixture.drive.uploadedNames("11"); len(uploads) != 0 {
@@ -541,7 +541,7 @@ func TestPipelineMarksMovieFailedWhenCatalogueLacksIt(t *testing.T) {
 		t.Fatalf("executed %v", executed)
 	}
 	scrapes := fixture.tasksOfType(t, "scrape")
-	if len(scrapes) != 1 || scrapes[0].Status != task.StatusFailed || !strings.Contains(valueOrZero(scrapes[0].Error), "ZZZ-999") {
+	if len(scrapes) != 1 || scrapes[0].Status != task.StatusFailed || !strings.Contains(domain.ValueOrZero(scrapes[0].Error), "ZZZ-999") {
 		t.Fatalf("scrape task = %+v", scrapes)
 	}
 	record, err := fixture.store.Client.Movie.Query().Where(movie.CodeEQ("ZZZ-999")).Only(ctx)

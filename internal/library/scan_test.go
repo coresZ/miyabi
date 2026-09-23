@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
@@ -139,7 +140,7 @@ func TestMetadataCanonicalizesLegacyAliasBeforeRescan(t *testing.T) {
 		t.Fatal(err)
 	}
 	record := lib.database.Movie.Query().OnlyX(ctx)
-	if record.ID != legacy.ID || record.Code != doc.Code || record.Title != doc.Title || valueOrZero(record.JavdbID) != doc.JavDBID() {
+	if record.ID != legacy.ID || record.Code != doc.Code || record.Title != doc.Title || domain.ValueOrZero(record.JavdbID) != doc.JavDBID() {
 		t.Fatalf("metadata normalization changed the movie identity on rescan: %#v", record)
 	}
 }
@@ -170,7 +171,7 @@ func TestOfflineScanUsesCatalogueIdentityAndKeepsItOnRescan(t *testing.T) {
 		t.Fatal(err)
 	}
 	record := lib.database.Movie.Query().OnlyX(ctx)
-	if record.Code != payload.Code || valueOrZero(record.JavdbID) != payload.JavDBID {
+	if record.Code != payload.Code || domain.ValueOrZero(record.JavdbID) != payload.JavDBID {
 		t.Fatalf("download identity was not persisted: %#v", record)
 	}
 	if err := reconcileScan(ctx, lib, queued.ID, "download", &payload, nil); err != nil {
@@ -269,10 +270,10 @@ func TestDownloadedMovieBindingPreservesKnownIdentityAndRejectsConflicts(t *test
 				t.Fatalf("binding replaced existing metadata: %#v", record)
 			}
 			if scenario.conflict {
-				if valueOrZero(record.JavdbID) != scenario.javdbID {
+				if domain.ValueOrZero(record.JavdbID) != scenario.javdbID {
 					t.Fatal("binding overwrote another catalogue identity")
 				}
-			} else if id != record.ID || valueOrZero(record.JavdbID) != payload.JavDBID {
+			} else if id != record.ID || domain.ValueOrZero(record.JavdbID) != payload.JavDBID {
 				t.Fatalf("binding did not reuse the existing movie: %#v", record)
 			}
 		})

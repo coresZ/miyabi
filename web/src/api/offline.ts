@@ -35,9 +35,7 @@ const activityOptions = queryOptions({
   queryKey: offlineKeys.activity,
   queryFn: ({ signal }) => apiGet<OfflineActivity>('/api/offline/tasks', undefined, signal),
   staleTime: Infinity,
-  retry: false,
-  refetchOnMount: 'always',
-  refetchOnWindowFocus: false
+  refetchOnMount: 'always'
 })
 
 export function useOfflineActivity() {
@@ -65,7 +63,6 @@ export function useAddOffline(movieID: string) {
       apiPost<OfflineSubmission>(`/api/discover/movies/${encodeURIComponent(movieID)}/offline`, {
         hash
       }),
-    retry: false,
     onSuccess: async submission => {
       await queryClient.cancelQueries({ queryKey: offlineKeys.activity, exact: true })
       const account = queryClient.getQueryData<PanAccountStatus>(panKeys.account)

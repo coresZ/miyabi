@@ -1,9 +1,6 @@
-export type Size = { width: number; height: number }
+import { clamp } from '../../lib/math.ts'
 
-function clamp(value: number, min: number, max: number) {
-  const clamped = Math.min(Math.max(value, min), max)
-  return clamped === 0 ? 0 : clamped
-}
+export type Size = { width: number; height: number }
 
 /** A point measured from the center of the stage. */
 export type Point = { x: number; y: number }
