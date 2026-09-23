@@ -20,6 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { cn } from '@/lib/utils'
 
 export function SubtitleMenu({
   movieID,
@@ -121,41 +122,42 @@ export function SubtitleMenu({
       }}
     >
       <DropdownMenuTrigger asChild>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           aria-label="字幕设置"
-          className={`relative inline-flex items-center justify-center rounded-lg p-2 text-xs transition-colors hover:bg-white/10 ${
-            activeTrackId !== null ? 'font-medium text-primary' : 'text-white/80 hover:text-white'
-          }`}
+          className={cn(
+            'text-white/80 hover:bg-white/10 hover:text-white',
+            activeTrackId !== null && 'text-primary hover:text-primary'
+          )}
         >
           <Captions className="size-4.5" />
-          {activeTrackId !== null && (
-            <span className="absolute right-1 bottom-1 size-1.5 rounded-full bg-primary" />
-          )}
-        </button>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         container={player?.el}
         side="top"
         align="end"
         sideOffset={8}
-        className="max-h-[30rem] w-76 space-y-1 overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950/95 p-2 text-white shadow-2xl backdrop-blur-2xl"
+        className="max-h-[30rem] w-80 space-y-1 overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950/95 p-2 text-white shadow-2xl backdrop-blur-2xl"
       >
         {/* Track Selection */}
-        <DropdownMenuLabel className="flex items-center justify-between px-2 py-1 text-[11px] font-medium text-white/50">
+        <DropdownMenuLabel className="flex items-center justify-between px-2 py-1 text-xs text-white/50">
           <span>字幕轨</span>
-          <span className="text-[10px] text-white/40">{subtitles.length} 个可用</span>
+          <span>{subtitles.length} 个可用</span>
         </DropdownMenuLabel>
 
         <DropdownMenuRadioGroup
           value={activeTrackId !== null ? String(activeTrackId) : 'off'}
           onValueChange={val => onSelectTrack(val === 'off' ? null : Number(val))}
+          className="max-h-48 space-y-0.5 overflow-y-auto scroll-fade-y pr-1"
         >
           <DropdownMenuRadioItem
             value="off"
             className="cursor-pointer rounded-lg py-1.5 text-white/80 focus:bg-white/10 focus:text-white"
           >
-            <span>关闭字幕</span>
+            <span className="text-xs font-medium">关闭字幕</span>
           </DropdownMenuRadioItem>
 
           {subtitles.map(sub => (
@@ -164,11 +166,18 @@ export function SubtitleMenu({
               value={String(sub.id)}
               className="cursor-pointer rounded-lg py-1.5 text-white/80 focus:bg-white/10 focus:text-white"
             >
-              <div className="flex min-w-0 flex-col pr-2">
-                <span className="truncate">{sub.display_name}</span>
-                <span className="truncate text-[10px] text-white/40">
-                  {sub.source === 'local' ? '本地内置' : sub.source}
-                </span>
+              <div className="flex min-w-0 flex-col pr-1">
+                <span className="truncate text-xs font-medium">{sub.display_name}</span>
+                <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-white/40">
+                  <span className="rounded bg-white/10 px-1 py-0.5 text-[9px] uppercase text-white/70">
+                    {sub.source === 'local' ? '本地内置' : sub.source}
+                  </span>
+                  {sub.name ? (
+                    <span className="max-w-[130px] truncate text-[10px] text-white/50">
+                      {sub.name}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </DropdownMenuRadioItem>
           ))}
@@ -179,9 +188,9 @@ export function SubtitleMenu({
           <>
             <DropdownMenuSeparator className="my-1 bg-white/10" />
             <div className="space-y-1.5 px-2 py-1">
-              <div className="flex items-center justify-between text-[11px] text-white/60">
+              <div className="flex items-center justify-between text-xs text-white/60">
                 <span>时间轴微调</span>
-                <span className="font-mono text-[11px] font-medium text-white">
+                <span className="text-[11px] font-medium text-white">
                   {activeTrack.offset_ms > 0 ? '+' : ''}
                   {(activeTrack.offset_ms / 1000).toFixed(1)}s
                 </span>
@@ -243,7 +252,7 @@ export function SubtitleMenu({
         >
           <div className="flex items-center gap-2">
             <Globe className="size-3.5 text-primary" />
-            <span>跨源检索在线字幕</span>
+            <span className="text-xs">跨源检索在线字幕</span>
           </div>
           {searching ? (
             <Loader2 className="size-3.5 animate-spin text-primary" />
@@ -256,12 +265,12 @@ export function SubtitleMenu({
         {showSearch && (
           <div className="space-y-1.5 border-t border-white/10 px-1 pt-1 pb-1">
             {searching ? (
-              <div className="flex flex-col items-center justify-center gap-1.5 py-4 text-[11px] text-white/50">
+              <div className="flex flex-col items-center justify-center gap-1.5 py-4 text-xs text-white/50">
                 <Loader2 className="size-4 animate-spin text-primary" />
                 <span>正在跨源聚合检索 (迅雷 + SubtitleCat)…</span>
               </div>
             ) : candidates.length > 0 ? (
-              <div className="max-h-48 space-y-1 overflow-y-auto">
+              <div className="max-h-48 space-y-1 overflow-y-auto scroll-fade-y pr-1">
                 {candidates.map((cand, idx) => {
                   const isApplying = applyingUrl === cand.url
                   return (
@@ -270,14 +279,16 @@ export function SubtitleMenu({
                       className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-white/5 p-2 hover:bg-white/10"
                     >
                       <div className="flex min-w-0 flex-col">
-                        <span className="truncate text-[11px] font-medium text-white">
+                        <span className="truncate text-xs font-medium text-white">
                           {cand.display_name}
                         </span>
-                        <div className="mt-0.5 flex items-center gap-1 text-[9px] text-white/40">
-                          <span className="py-0.2 rounded bg-white/10 px-1 text-white/70 uppercase">
+                        <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-white/40">
+                          <span className="rounded bg-white/10 px-1 py-0.5 text-[9px] uppercase text-white/70">
                             {cand.source}
                           </span>
-                          <span className="max-w-[110px] truncate">{cand.name}</span>
+                          <span className="max-w-[130px] truncate text-[10px] text-white/50">
+                            {cand.name}
+                          </span>
                         </div>
                       </div>
                       <Button
@@ -294,7 +305,7 @@ export function SubtitleMenu({
                 })}
               </div>
             ) : (
-              <div className="py-3 text-center text-[11px] text-white/40">
+              <div className="py-3 text-center text-xs text-white/40">
                 未检索到匹配的在线字幕
               </div>
             )}

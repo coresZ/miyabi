@@ -148,6 +148,7 @@ export function PlaybackPlayer({
             slots={{
               bufferingIndicator: null,
               googleCastButton: null,
+              captionButton: null,
               timeSlider: <PlayerTimeSlider />,
               volumeSlider: <PlayerVolumeSlider />,
               topControlsGroupStart: <PlayerTitle title={title} />,
