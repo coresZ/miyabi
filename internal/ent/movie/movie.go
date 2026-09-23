@@ -61,6 +61,8 @@ const (
 	EdgeFiles = "files"
 	// EdgeWatchHistory holds the string denoting the watch_history edge name in mutations.
 	EdgeWatchHistory = "watch_history"
+	// EdgeSubtitles holds the string denoting the subtitles edge name in mutations.
+	EdgeSubtitles = "subtitles"
 	// Table holds the table name of the movie in the database.
 	Table = "movies"
 	// ActorsTable is the table that holds the actors relation/edge. The primary key declared below.
@@ -87,6 +89,13 @@ const (
 	WatchHistoryInverseTable = "watch_histories"
 	// WatchHistoryColumn is the table column denoting the watch_history relation/edge.
 	WatchHistoryColumn = "movie_id"
+	// SubtitlesTable is the table that holds the subtitles relation/edge.
+	SubtitlesTable = "subtitles"
+	// SubtitlesInverseTable is the table name for the Subtitle entity.
+	// It exists in this package in order to avoid circular dependency with the "subtitle" package.
+	SubtitlesInverseTable = "subtitles"
+	// SubtitlesColumn is the table column denoting the subtitles relation/edge.
+	SubtitlesColumn = "movie_id"
 )
 
 // Columns holds all SQL columns for movie fields.
@@ -329,6 +338,20 @@ func ByWatchHistory(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newWatchHistoryStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// BySubtitlesCount orders the results by subtitles count.
+func BySubtitlesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newSubtitlesStep(), opts...)
+	}
+}
+
+// BySubtitles orders the results by subtitles terms.
+func BySubtitles(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newSubtitlesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newActorsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -355,5 +378,12 @@ func newWatchHistoryStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(WatchHistoryInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, WatchHistoryTable, WatchHistoryColumn),
+	)
+}
+func newSubtitlesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(SubtitlesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, SubtitlesTable, SubtitlesColumn),
 	)
 }

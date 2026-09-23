@@ -75,5 +75,6 @@ func (Movie) Edges() []ent.Edge {
 		edge.To("tags", Tag.Type),
 		edge.To("files", File.Type),
 		edge.To("watch_history", WatchHistory.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.To("subtitles", Subtitle.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }

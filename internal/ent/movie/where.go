@@ -1297,6 +1297,29 @@ func HasWatchHistoryWith(preds ...predicate.WatchHistory) predicate.Movie {
 	})
 }
 
+// HasSubtitles applies the HasEdge predicate on the "subtitles" edge.
+func HasSubtitles() predicate.Movie {
+	return predicate.Movie(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, SubtitlesTable, SubtitlesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasSubtitlesWith applies the HasEdge predicate on the "subtitles" edge with a given conditions (other predicates).
+func HasSubtitlesWith(preds ...predicate.Subtitle) predicate.Movie {
+	return predicate.Movie(func(s *sql.Selector) {
+		step := newSubtitlesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.Movie) predicate.Movie {
 	return predicate.Movie(sql.AndPredicates(predicates...))

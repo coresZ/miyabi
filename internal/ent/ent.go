@@ -17,6 +17,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/ent/subscription"
+	"github.com/ppxb/miyabi/internal/ent/subtitle"
 	"github.com/ppxb/miyabi/internal/ent/tag"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/ent/viewedmovie"
@@ -86,6 +87,7 @@ func checkColumn(t, c string) error {
 			movie.Table:        movie.ValidColumn,
 			setting.Table:      setting.ValidColumn,
 			subscription.Table: subscription.ValidColumn,
+			subtitle.Table:     subtitle.ValidColumn,
 			tag.Table:          tag.ValidColumn,
 			task.Table:         task.ValidColumn,
 			viewedmovie.Table:  viewedmovie.ValidColumn,

@@ -59,11 +59,13 @@ function MoviePlayback({
   return (
     <PlaybackPlayer
       title={title}
+      code={files.code}
       movieID={movieID}
       openingID={openingID}
       source={source}
       fileID={file.id}
       history={history}
+      initialSubtitles={files.subtitles}
     />
   )
 }

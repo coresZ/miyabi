@@ -72,9 +72,11 @@ type MovieEdges struct {
 	Files []*File `json:"files,omitempty"`
 	// WatchHistory holds the value of the watch_history edge.
 	WatchHistory []*WatchHistory `json:"watch_history,omitempty"`
+	// Subtitles holds the value of the subtitles edge.
+	Subtitles []*Subtitle `json:"subtitles,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [4]bool
+	loadedTypes [5]bool
 }
 
 // ActorsOrErr returns the Actors value or an error if the edge
@@ -111,6 +113,15 @@ func (e MovieEdges) WatchHistoryOrErr() ([]*WatchHistory, error) {
 		return e.WatchHistory, nil
 	}
 	return nil, &NotLoadedError{edge: "watch_history"}
+}
+
+// SubtitlesOrErr returns the Subtitles value or an error if the edge
+// was not loaded in eager-loading.
+func (e MovieEdges) SubtitlesOrErr() ([]*Subtitle, error) {
+	if e.loadedTypes[4] {
+		return e.Subtitles, nil
+	}
+	return nil, &NotLoadedError{edge: "subtitles"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -310,6 +321,11 @@ func (_m *Movie) QueryFiles() *FileQuery {
 // QueryWatchHistory queries the "watch_history" edge of the Movie entity.
 func (_m *Movie) QueryWatchHistory() *WatchHistoryQuery {
 	return NewMovieClient(_m.config).QueryWatchHistory(_m)
+}
+
+// QuerySubtitles queries the "subtitles" edge of the Movie entity.
+func (_m *Movie) QuerySubtitles() *SubtitleQuery {
+	return NewMovieClient(_m.config).QuerySubtitles(_m)
 }
 
 // Update returns a builder for updating this Movie.

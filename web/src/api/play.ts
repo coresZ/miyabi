@@ -1,9 +1,35 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
-import { apiDelete, apiGet } from '@/api/client'
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/api/client'
 import type { LibraryFile } from '@/api/library'
 import type { WatchHistoryScope, WatchResume } from '@/api/watch-history'
+
+export type SubtitleTrack = {
+  id: number
+  movie_id: number
+  file_id?: string
+  name: string
+  display_name: string
+  language: string
+  format: string
+  version_tag: string
+  source: string
+  offset_ms: number
+  is_default: boolean
+  src: string
+}
+
+export type SubtitleCandidate = {
+  source: string
+  name: string
+  display_name: string
+  language: string
+  version: string
+  url: string
+  ext: string
+  score: number
+}
 
 export type PlayFiles = {
   code: string
@@ -11,6 +37,7 @@ export type PlayFiles = {
   files: LibraryFile[]
   source: WatchHistoryScope
   resume?: WatchResume
+  subtitles?: SubtitleTrack[]
 }
 
 export type PlaySource = {
@@ -59,4 +86,30 @@ export function usePlayback(fileID: string, openingID: string) {
   }, [id])
 
   return query
+}
+
+export function searchSubtitles(code: string, uncensored?: boolean, signal?: AbortSignal) {
+  return apiGet<SubtitleCandidate[]>(
+    '/api/subtitles/search',
+    { code, uncensored: uncensored ? 'true' : undefined },
+    signal
+  )
+}
+
+export function applySubtitle(movieID: number, candidate: SubtitleCandidate) {
+  return apiPost<SubtitleTrack>('/api/subtitles/apply', { movie_id: movieID, candidate })
+}
+
+export function updateSubtitleOffset(id: number, offsetMs: number) {
+  return apiPatch<{ updated: boolean; offset_ms: number }>(`/api/subtitles/${id}/offset`, {
+    offset_ms: offsetMs
+  })
+}
+
+export function setDefaultSubtitle(id: number, movieID: number) {
+  return apiPut<{ updated: boolean }>(`/api/subtitles/${id}/default`, { movie_id: movieID })
+}
+
+export function deleteSubtitle(id: number) {
+  return apiDelete<{ deleted: boolean }>(`/api/subtitles/${id}`)
 }

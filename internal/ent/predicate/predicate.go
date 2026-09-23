@@ -21,6 +21,9 @@ type Setting func(*sql.Selector)
 // Subscription is the predicate function for subscription builders.
 type Subscription func(*sql.Selector)
 
+// Subtitle is the predicate function for subtitle builders.
+type Subtitle func(*sql.Selector)
+
 // Tag is the predicate function for tag builders.
 type Tag func(*sql.Selector)
 

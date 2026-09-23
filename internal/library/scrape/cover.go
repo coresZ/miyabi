@@ -136,6 +136,19 @@ func (service *Service) processCover(ctx context.Context, job tasks.Job, input C
 	}); err != nil {
 		return fmt.Errorf("save movie artwork: %w", err)
 	}
+
+	if service.subtitles != nil && len(directories) > 0 {
+		isUncensored := false
+		for _, v := range videos {
+			low := strings.ToLower(v.Name)
+			if strings.Contains(low, "uncensored") || strings.Contains(v.Name, "无码") {
+				isUncensored = true
+				break
+			}
+		}
+		_ = service.subtitles.AutoFetchAndUpload(ctx, sess, directories[0].ID, input.MovieID, input.Code, isUncensored)
+	}
+
 	if service.notifier != nil {
 		service.notifier.NotifyLibraryChanged()
 	}

@@ -112,6 +112,17 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 				return err
 			}
 			observed.Add(info.ParentID, entries)
+			var targetSubs []pan.File
+			for _, e := range entries {
+				if domain.IsSubtitle(e.Name) {
+					targetSubs = append(targetSubs, e)
+				}
+			}
+			if len(targetSubs) > 0 {
+				_ = sess.Commit(ctx, func(tx *ent.Tx) error {
+					return IndexDirectorySubtitles(ctx, tx, []Video{{File: info.File, Code: payload.Code}}, targetSubs)
+				})
+			}
 			return reconcile()
 		}
 		start = Directory{ID: info.ID, Path: payload.TargetPath}
@@ -133,6 +144,7 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 		}
 		var directoryVideos []Video
 		var sidecars []pan.File
+		var subtitles []pan.File
 
 		err := drive.WalkFilePages(ctx, func(offset int) (pan.FilePage, error) {
 			page, err := sess.List(ctx, directory.ID, offset)
@@ -158,6 +170,9 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 				payload.Scan.FilesScanned++
 				if strings.EqualFold(path.Ext(entry.Name), ".nfo") {
 					sidecars = append(sidecars, entry)
+				}
+				if domain.IsSubtitle(entry.Name) {
+					subtitles = append(subtitles, entry)
 				}
 				if !domain.IsVideo(entry.Name) {
 					continue
@@ -193,6 +208,14 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 				}
 				payload.Scan.Movies = len(codes)
 				return identified
+			}); err != nil {
+				return err
+			}
+		}
+
+		if len(subtitles) > 0 && len(directoryVideos) > 0 {
+			if err := sess.Commit(ctx, func(tx *ent.Tx) error {
+				return IndexDirectorySubtitles(ctx, tx, directoryVideos, subtitles)
 			}); err != nil {
 				return err
 			}

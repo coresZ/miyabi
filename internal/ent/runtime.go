@@ -12,6 +12,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/schema"
 	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/ent/subscription"
+	"github.com/ppxb/miyabi/internal/ent/subtitle"
 	"github.com/ppxb/miyabi/internal/ent/tag"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/ent/viewedmovie"
@@ -207,6 +208,73 @@ func init() {
 	subscription.DefaultChecks = subscriptionDescChecks.Default.(int)
 	// subscription.ChecksValidator is a validator for the "checks" field. It is called by the builders before save.
 	subscription.ChecksValidator = subscriptionDescChecks.Validators[0].(func(int) error)
+	subtitleMixin := schema.Subtitle{}.Mixin()
+	subtitleMixinFields0 := subtitleMixin[0].Fields()
+	_ = subtitleMixinFields0
+	subtitleFields := schema.Subtitle{}.Fields()
+	_ = subtitleFields
+	// subtitleDescCreatedAt is the schema descriptor for created_at field.
+	subtitleDescCreatedAt := subtitleMixinFields0[0].Descriptor()
+	// subtitle.DefaultCreatedAt holds the default value on creation for the created_at field.
+	subtitle.DefaultCreatedAt = subtitleDescCreatedAt.Default.(func() time.Time)
+	// subtitleDescUpdatedAt is the schema descriptor for updated_at field.
+	subtitleDescUpdatedAt := subtitleMixinFields0[1].Descriptor()
+	// subtitle.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	subtitle.DefaultUpdatedAt = subtitleDescUpdatedAt.Default.(func() time.Time)
+	// subtitle.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	subtitle.UpdateDefaultUpdatedAt = subtitleDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// subtitleDescMovieID is the schema descriptor for movie_id field.
+	subtitleDescMovieID := subtitleFields[0].Descriptor()
+	// subtitle.MovieIDValidator is a validator for the "movie_id" field. It is called by the builders before save.
+	subtitle.MovieIDValidator = subtitleDescMovieID.Validators[0].(func(int) error)
+	// subtitleDescFileID is the schema descriptor for file_id field.
+	subtitleDescFileID := subtitleFields[1].Descriptor()
+	// subtitle.DefaultFileID holds the default value on creation for the file_id field.
+	subtitle.DefaultFileID = subtitleDescFileID.Default.(string)
+	// subtitleDescPickCode is the schema descriptor for pick_code field.
+	subtitleDescPickCode := subtitleFields[2].Descriptor()
+	// subtitle.DefaultPickCode holds the default value on creation for the pick_code field.
+	subtitle.DefaultPickCode = subtitleDescPickCode.Default.(string)
+	// subtitleDescName is the schema descriptor for name field.
+	subtitleDescName := subtitleFields[3].Descriptor()
+	// subtitle.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	subtitle.NameValidator = subtitleDescName.Validators[0].(func(string) error)
+	// subtitleDescDisplayName is the schema descriptor for display_name field.
+	subtitleDescDisplayName := subtitleFields[4].Descriptor()
+	// subtitle.DisplayNameValidator is a validator for the "display_name" field. It is called by the builders before save.
+	subtitle.DisplayNameValidator = subtitleDescDisplayName.Validators[0].(func(string) error)
+	// subtitleDescLanguage is the schema descriptor for language field.
+	subtitleDescLanguage := subtitleFields[5].Descriptor()
+	// subtitle.DefaultLanguage holds the default value on creation for the language field.
+	subtitle.DefaultLanguage = subtitleDescLanguage.Default.(string)
+	// subtitleDescFormat is the schema descriptor for format field.
+	subtitleDescFormat := subtitleFields[6].Descriptor()
+	// subtitle.DefaultFormat holds the default value on creation for the format field.
+	subtitle.DefaultFormat = subtitleDescFormat.Default.(string)
+	// subtitleDescVersionTag is the schema descriptor for version_tag field.
+	subtitleDescVersionTag := subtitleFields[7].Descriptor()
+	// subtitle.DefaultVersionTag holds the default value on creation for the version_tag field.
+	subtitle.DefaultVersionTag = subtitleDescVersionTag.Default.(string)
+	// subtitleDescSource is the schema descriptor for source field.
+	subtitleDescSource := subtitleFields[8].Descriptor()
+	// subtitle.DefaultSource holds the default value on creation for the source field.
+	subtitle.DefaultSource = subtitleDescSource.Default.(string)
+	// subtitleDescSourceURL is the schema descriptor for source_url field.
+	subtitleDescSourceURL := subtitleFields[9].Descriptor()
+	// subtitle.DefaultSourceURL holds the default value on creation for the source_url field.
+	subtitle.DefaultSourceURL = subtitleDescSourceURL.Default.(string)
+	// subtitleDescOffsetMs is the schema descriptor for offset_ms field.
+	subtitleDescOffsetMs := subtitleFields[10].Descriptor()
+	// subtitle.DefaultOffsetMs holds the default value on creation for the offset_ms field.
+	subtitle.DefaultOffsetMs = subtitleDescOffsetMs.Default.(int)
+	// subtitleDescIsDefault is the schema descriptor for is_default field.
+	subtitleDescIsDefault := subtitleFields[11].Descriptor()
+	// subtitle.DefaultIsDefault holds the default value on creation for the is_default field.
+	subtitle.DefaultIsDefault = subtitleDescIsDefault.Default.(bool)
+	// subtitleDescStoragePath is the schema descriptor for storage_path field.
+	subtitleDescStoragePath := subtitleFields[12].Descriptor()
+	// subtitle.DefaultStoragePath holds the default value on creation for the storage_path field.
+	subtitle.DefaultStoragePath = subtitleDescStoragePath.Default.(string)
 	tagMixin := schema.Tag{}.Mixin()
 	tagMixinFields0 := tagMixin[0].Fields()
 	_ = tagMixinFields0

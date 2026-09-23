@@ -18,6 +18,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/predicate"
 	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/ent/subscription"
+	"github.com/ppxb/miyabi/internal/ent/subtitle"
 	"github.com/ppxb/miyabi/internal/ent/tag"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/ent/viewedmovie"
@@ -38,6 +39,7 @@ const (
 	TypeMovie        = "Movie"
 	TypeSetting      = "Setting"
 	TypeSubscription = "Subscription"
+	TypeSubtitle     = "Subtitle"
 	TypeTag          = "Tag"
 	TypeTask         = "Task"
 	TypeViewedMovie  = "ViewedMovie"
@@ -1955,6 +1957,9 @@ type MovieMutation struct {
 	watch_history        map[int]struct{}
 	removedwatch_history map[int]struct{}
 	clearedwatch_history bool
+	subtitles            map[int]struct{}
+	removedsubtitles     map[int]struct{}
+	clearedsubtitles     bool
 	done                 bool
 	oldValue             func(context.Context) (*Movie, error)
 	predicates           []predicate.Movie
@@ -3171,6 +3176,60 @@ func (m *MovieMutation) ResetWatchHistory() {
 	m.removedwatch_history = nil
 }
 
+// AddSubtitleIDs adds the "subtitles" edge to the Subtitle entity by ids.
+func (m *MovieMutation) AddSubtitleIDs(ids ...int) {
+	if m.subtitles == nil {
+		m.subtitles = make(map[int]struct{})
+	}
+	for i := range ids {
+		m.subtitles[ids[i]] = struct{}{}
+	}
+}
+
+// ClearSubtitles clears the "subtitles" edge to the Subtitle entity.
+func (m *MovieMutation) ClearSubtitles() {
+	m.clearedsubtitles = true
+}
+
+// SubtitlesCleared reports if the "subtitles" edge to the Subtitle entity was cleared.
+func (m *MovieMutation) SubtitlesCleared() bool {
+	return m.clearedsubtitles
+}
+
+// RemoveSubtitleIDs removes the "subtitles" edge to the Subtitle entity by IDs.
+func (m *MovieMutation) RemoveSubtitleIDs(ids ...int) {
+	if m.removedsubtitles == nil {
+		m.removedsubtitles = make(map[int]struct{})
+	}
+	for i := range ids {
+		delete(m.subtitles, ids[i])
+		m.removedsubtitles[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedSubtitles returns the removed IDs of the "subtitles" edge to the Subtitle entity.
+func (m *MovieMutation) RemovedSubtitlesIDs() (ids []int) {
+	for id := range m.removedsubtitles {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// SubtitlesIDs returns the "subtitles" edge IDs in the mutation.
+func (m *MovieMutation) SubtitlesIDs() (ids []int) {
+	for id := range m.subtitles {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetSubtitles resets all changes to the "subtitles" edge.
+func (m *MovieMutation) ResetSubtitles() {
+	m.subtitles = nil
+	m.clearedsubtitles = false
+	m.removedsubtitles = nil
+}
+
 // Where appends a list predicates to the MovieMutation builder.
 func (m *MovieMutation) Where(ps ...predicate.Movie) {
 	m.predicates = append(m.predicates, ps...)
@@ -3712,7 +3771,7 @@ func (m *MovieMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *MovieMutation) AddedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.actors != nil {
 		edges = append(edges, movie.EdgeActors)
 	}
@@ -3724,6 +3783,9 @@ func (m *MovieMutation) AddedEdges() []string {
 	}
 	if m.watch_history != nil {
 		edges = append(edges, movie.EdgeWatchHistory)
+	}
+	if m.subtitles != nil {
+		edges = append(edges, movie.EdgeSubtitles)
 	}
 	return edges
 }
@@ -3756,13 +3818,19 @@ func (m *MovieMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case movie.EdgeSubtitles:
+		ids := make([]ent.Value, 0, len(m.subtitles))
+		for id := range m.subtitles {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *MovieMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.removedactors != nil {
 		edges = append(edges, movie.EdgeActors)
 	}
@@ -3774,6 +3842,9 @@ func (m *MovieMutation) RemovedEdges() []string {
 	}
 	if m.removedwatch_history != nil {
 		edges = append(edges, movie.EdgeWatchHistory)
+	}
+	if m.removedsubtitles != nil {
+		edges = append(edges, movie.EdgeSubtitles)
 	}
 	return edges
 }
@@ -3806,13 +3877,19 @@ func (m *MovieMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case movie.EdgeSubtitles:
+		ids := make([]ent.Value, 0, len(m.removedsubtitles))
+		for id := range m.removedsubtitles {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *MovieMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.clearedactors {
 		edges = append(edges, movie.EdgeActors)
 	}
@@ -3824,6 +3901,9 @@ func (m *MovieMutation) ClearedEdges() []string {
 	}
 	if m.clearedwatch_history {
 		edges = append(edges, movie.EdgeWatchHistory)
+	}
+	if m.clearedsubtitles {
+		edges = append(edges, movie.EdgeSubtitles)
 	}
 	return edges
 }
@@ -3840,6 +3920,8 @@ func (m *MovieMutation) EdgeCleared(name string) bool {
 		return m.clearedfiles
 	case movie.EdgeWatchHistory:
 		return m.clearedwatch_history
+	case movie.EdgeSubtitles:
+		return m.clearedsubtitles
 	}
 	return false
 }
@@ -3867,6 +3949,9 @@ func (m *MovieMutation) ResetEdge(name string) error {
 		return nil
 	case movie.EdgeWatchHistory:
 		m.ResetWatchHistory()
+		return nil
+	case movie.EdgeSubtitles:
+		m.ResetSubtitles()
 		return nil
 	}
 	return fmt.Errorf("unknown Movie edge %s", name)
@@ -5874,6 +5959,1178 @@ func (m *SubscriptionMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *SubscriptionMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Subscription edge %s", name)
+}
+
+// SubtitleMutation represents an operation that mutates the Subtitle nodes in the graph.
+type SubtitleMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int
+	created_at    *time.Time
+	updated_at    *time.Time
+	file_id       *string
+	pick_code     *string
+	name          *string
+	display_name  *string
+	language      *string
+	format        *string
+	version_tag   *string
+	source        *string
+	source_url    *string
+	offset_ms     *int
+	addoffset_ms  *int
+	is_default    *bool
+	storage_path  *string
+	clearedFields map[string]struct{}
+	movie         *int
+	clearedmovie  bool
+	done          bool
+	oldValue      func(context.Context) (*Subtitle, error)
+	predicates    []predicate.Subtitle
+}
+
+var _ ent.Mutation = (*SubtitleMutation)(nil)
+
+// subtitleOption allows management of the mutation configuration using functional options.
+type subtitleOption func(*SubtitleMutation)
+
+// newSubtitleMutation creates new mutation for the Subtitle entity.
+func newSubtitleMutation(c config, op Op, opts ...subtitleOption) *SubtitleMutation {
+	m := &SubtitleMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSubtitle,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSubtitleID sets the ID field of the mutation.
+func withSubtitleID(id int) subtitleOption {
+	return func(m *SubtitleMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Subtitle
+		)
+		m.oldValue = func(ctx context.Context) (*Subtitle, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Subtitle.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSubtitle sets the old Subtitle of the mutation.
+func withSubtitle(node *Subtitle) subtitleOption {
+	return func(m *SubtitleMutation) {
+		m.oldValue = func(context.Context) (*Subtitle, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SubtitleMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SubtitleMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SubtitleMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SubtitleMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Subtitle.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SubtitleMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SubtitleMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SubtitleMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SubtitleMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SubtitleMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SubtitleMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetMovieID sets the "movie_id" field.
+func (m *SubtitleMutation) SetMovieID(i int) {
+	m.movie = &i
+}
+
+// MovieID returns the value of the "movie_id" field in the mutation.
+func (m *SubtitleMutation) MovieID() (r int, exists bool) {
+	v := m.movie
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMovieID returns the old "movie_id" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldMovieID(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMovieID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMovieID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMovieID: %w", err)
+	}
+	return oldValue.MovieID, nil
+}
+
+// ResetMovieID resets all changes to the "movie_id" field.
+func (m *SubtitleMutation) ResetMovieID() {
+	m.movie = nil
+}
+
+// SetFileID sets the "file_id" field.
+func (m *SubtitleMutation) SetFileID(s string) {
+	m.file_id = &s
+}
+
+// FileID returns the value of the "file_id" field in the mutation.
+func (m *SubtitleMutation) FileID() (r string, exists bool) {
+	v := m.file_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFileID returns the old "file_id" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldFileID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFileID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFileID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFileID: %w", err)
+	}
+	return oldValue.FileID, nil
+}
+
+// ResetFileID resets all changes to the "file_id" field.
+func (m *SubtitleMutation) ResetFileID() {
+	m.file_id = nil
+}
+
+// SetPickCode sets the "pick_code" field.
+func (m *SubtitleMutation) SetPickCode(s string) {
+	m.pick_code = &s
+}
+
+// PickCode returns the value of the "pick_code" field in the mutation.
+func (m *SubtitleMutation) PickCode() (r string, exists bool) {
+	v := m.pick_code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPickCode returns the old "pick_code" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldPickCode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPickCode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPickCode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPickCode: %w", err)
+	}
+	return oldValue.PickCode, nil
+}
+
+// ResetPickCode resets all changes to the "pick_code" field.
+func (m *SubtitleMutation) ResetPickCode() {
+	m.pick_code = nil
+}
+
+// SetName sets the "name" field.
+func (m *SubtitleMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *SubtitleMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *SubtitleMutation) ResetName() {
+	m.name = nil
+}
+
+// SetDisplayName sets the "display_name" field.
+func (m *SubtitleMutation) SetDisplayName(s string) {
+	m.display_name = &s
+}
+
+// DisplayName returns the value of the "display_name" field in the mutation.
+func (m *SubtitleMutation) DisplayName() (r string, exists bool) {
+	v := m.display_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisplayName returns the old "display_name" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldDisplayName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisplayName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisplayName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisplayName: %w", err)
+	}
+	return oldValue.DisplayName, nil
+}
+
+// ResetDisplayName resets all changes to the "display_name" field.
+func (m *SubtitleMutation) ResetDisplayName() {
+	m.display_name = nil
+}
+
+// SetLanguage sets the "language" field.
+func (m *SubtitleMutation) SetLanguage(s string) {
+	m.language = &s
+}
+
+// Language returns the value of the "language" field in the mutation.
+func (m *SubtitleMutation) Language() (r string, exists bool) {
+	v := m.language
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLanguage returns the old "language" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldLanguage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLanguage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLanguage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLanguage: %w", err)
+	}
+	return oldValue.Language, nil
+}
+
+// ResetLanguage resets all changes to the "language" field.
+func (m *SubtitleMutation) ResetLanguage() {
+	m.language = nil
+}
+
+// SetFormat sets the "format" field.
+func (m *SubtitleMutation) SetFormat(s string) {
+	m.format = &s
+}
+
+// Format returns the value of the "format" field in the mutation.
+func (m *SubtitleMutation) Format() (r string, exists bool) {
+	v := m.format
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFormat returns the old "format" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldFormat(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFormat is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFormat requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFormat: %w", err)
+	}
+	return oldValue.Format, nil
+}
+
+// ResetFormat resets all changes to the "format" field.
+func (m *SubtitleMutation) ResetFormat() {
+	m.format = nil
+}
+
+// SetVersionTag sets the "version_tag" field.
+func (m *SubtitleMutation) SetVersionTag(s string) {
+	m.version_tag = &s
+}
+
+// VersionTag returns the value of the "version_tag" field in the mutation.
+func (m *SubtitleMutation) VersionTag() (r string, exists bool) {
+	v := m.version_tag
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersionTag returns the old "version_tag" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldVersionTag(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersionTag is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersionTag requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersionTag: %w", err)
+	}
+	return oldValue.VersionTag, nil
+}
+
+// ResetVersionTag resets all changes to the "version_tag" field.
+func (m *SubtitleMutation) ResetVersionTag() {
+	m.version_tag = nil
+}
+
+// SetSource sets the "source" field.
+func (m *SubtitleMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *SubtitleMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *SubtitleMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetSourceURL sets the "source_url" field.
+func (m *SubtitleMutation) SetSourceURL(s string) {
+	m.source_url = &s
+}
+
+// SourceURL returns the value of the "source_url" field in the mutation.
+func (m *SubtitleMutation) SourceURL() (r string, exists bool) {
+	v := m.source_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceURL returns the old "source_url" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldSourceURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceURL: %w", err)
+	}
+	return oldValue.SourceURL, nil
+}
+
+// ResetSourceURL resets all changes to the "source_url" field.
+func (m *SubtitleMutation) ResetSourceURL() {
+	m.source_url = nil
+}
+
+// SetOffsetMs sets the "offset_ms" field.
+func (m *SubtitleMutation) SetOffsetMs(i int) {
+	m.offset_ms = &i
+	m.addoffset_ms = nil
+}
+
+// OffsetMs returns the value of the "offset_ms" field in the mutation.
+func (m *SubtitleMutation) OffsetMs() (r int, exists bool) {
+	v := m.offset_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOffsetMs returns the old "offset_ms" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldOffsetMs(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOffsetMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOffsetMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOffsetMs: %w", err)
+	}
+	return oldValue.OffsetMs, nil
+}
+
+// AddOffsetMs adds i to the "offset_ms" field.
+func (m *SubtitleMutation) AddOffsetMs(i int) {
+	if m.addoffset_ms != nil {
+		*m.addoffset_ms += i
+	} else {
+		m.addoffset_ms = &i
+	}
+}
+
+// AddedOffsetMs returns the value that was added to the "offset_ms" field in this mutation.
+func (m *SubtitleMutation) AddedOffsetMs() (r int, exists bool) {
+	v := m.addoffset_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetOffsetMs resets all changes to the "offset_ms" field.
+func (m *SubtitleMutation) ResetOffsetMs() {
+	m.offset_ms = nil
+	m.addoffset_ms = nil
+}
+
+// SetIsDefault sets the "is_default" field.
+func (m *SubtitleMutation) SetIsDefault(b bool) {
+	m.is_default = &b
+}
+
+// IsDefault returns the value of the "is_default" field in the mutation.
+func (m *SubtitleMutation) IsDefault() (r bool, exists bool) {
+	v := m.is_default
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsDefault returns the old "is_default" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldIsDefault(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsDefault is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsDefault requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsDefault: %w", err)
+	}
+	return oldValue.IsDefault, nil
+}
+
+// ResetIsDefault resets all changes to the "is_default" field.
+func (m *SubtitleMutation) ResetIsDefault() {
+	m.is_default = nil
+}
+
+// SetStoragePath sets the "storage_path" field.
+func (m *SubtitleMutation) SetStoragePath(s string) {
+	m.storage_path = &s
+}
+
+// StoragePath returns the value of the "storage_path" field in the mutation.
+func (m *SubtitleMutation) StoragePath() (r string, exists bool) {
+	v := m.storage_path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStoragePath returns the old "storage_path" field's value of the Subtitle entity.
+// If the Subtitle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubtitleMutation) OldStoragePath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStoragePath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStoragePath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStoragePath: %w", err)
+	}
+	return oldValue.StoragePath, nil
+}
+
+// ResetStoragePath resets all changes to the "storage_path" field.
+func (m *SubtitleMutation) ResetStoragePath() {
+	m.storage_path = nil
+}
+
+// ClearMovie clears the "movie" edge to the Movie entity.
+func (m *SubtitleMutation) ClearMovie() {
+	m.clearedmovie = true
+	m.clearedFields[subtitle.FieldMovieID] = struct{}{}
+}
+
+// MovieCleared reports if the "movie" edge to the Movie entity was cleared.
+func (m *SubtitleMutation) MovieCleared() bool {
+	return m.clearedmovie
+}
+
+// MovieIDs returns the "movie" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// MovieID instead. It exists only for internal usage by the builders.
+func (m *SubtitleMutation) MovieIDs() (ids []int) {
+	if id := m.movie; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetMovie resets all changes to the "movie" edge.
+func (m *SubtitleMutation) ResetMovie() {
+	m.movie = nil
+	m.clearedmovie = false
+}
+
+// Where appends a list predicates to the SubtitleMutation builder.
+func (m *SubtitleMutation) Where(ps ...predicate.Subtitle) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SubtitleMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SubtitleMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Subtitle, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SubtitleMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SubtitleMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Subtitle).
+func (m *SubtitleMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SubtitleMutation) Fields() []string {
+	fields := make([]string, 0, 15)
+	if m.created_at != nil {
+		fields = append(fields, subtitle.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, subtitle.FieldUpdatedAt)
+	}
+	if m.movie != nil {
+		fields = append(fields, subtitle.FieldMovieID)
+	}
+	if m.file_id != nil {
+		fields = append(fields, subtitle.FieldFileID)
+	}
+	if m.pick_code != nil {
+		fields = append(fields, subtitle.FieldPickCode)
+	}
+	if m.name != nil {
+		fields = append(fields, subtitle.FieldName)
+	}
+	if m.display_name != nil {
+		fields = append(fields, subtitle.FieldDisplayName)
+	}
+	if m.language != nil {
+		fields = append(fields, subtitle.FieldLanguage)
+	}
+	if m.format != nil {
+		fields = append(fields, subtitle.FieldFormat)
+	}
+	if m.version_tag != nil {
+		fields = append(fields, subtitle.FieldVersionTag)
+	}
+	if m.source != nil {
+		fields = append(fields, subtitle.FieldSource)
+	}
+	if m.source_url != nil {
+		fields = append(fields, subtitle.FieldSourceURL)
+	}
+	if m.offset_ms != nil {
+		fields = append(fields, subtitle.FieldOffsetMs)
+	}
+	if m.is_default != nil {
+		fields = append(fields, subtitle.FieldIsDefault)
+	}
+	if m.storage_path != nil {
+		fields = append(fields, subtitle.FieldStoragePath)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SubtitleMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case subtitle.FieldCreatedAt:
+		return m.CreatedAt()
+	case subtitle.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case subtitle.FieldMovieID:
+		return m.MovieID()
+	case subtitle.FieldFileID:
+		return m.FileID()
+	case subtitle.FieldPickCode:
+		return m.PickCode()
+	case subtitle.FieldName:
+		return m.Name()
+	case subtitle.FieldDisplayName:
+		return m.DisplayName()
+	case subtitle.FieldLanguage:
+		return m.Language()
+	case subtitle.FieldFormat:
+		return m.Format()
+	case subtitle.FieldVersionTag:
+		return m.VersionTag()
+	case subtitle.FieldSource:
+		return m.Source()
+	case subtitle.FieldSourceURL:
+		return m.SourceURL()
+	case subtitle.FieldOffsetMs:
+		return m.OffsetMs()
+	case subtitle.FieldIsDefault:
+		return m.IsDefault()
+	case subtitle.FieldStoragePath:
+		return m.StoragePath()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SubtitleMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case subtitle.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case subtitle.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case subtitle.FieldMovieID:
+		return m.OldMovieID(ctx)
+	case subtitle.FieldFileID:
+		return m.OldFileID(ctx)
+	case subtitle.FieldPickCode:
+		return m.OldPickCode(ctx)
+	case subtitle.FieldName:
+		return m.OldName(ctx)
+	case subtitle.FieldDisplayName:
+		return m.OldDisplayName(ctx)
+	case subtitle.FieldLanguage:
+		return m.OldLanguage(ctx)
+	case subtitle.FieldFormat:
+		return m.OldFormat(ctx)
+	case subtitle.FieldVersionTag:
+		return m.OldVersionTag(ctx)
+	case subtitle.FieldSource:
+		return m.OldSource(ctx)
+	case subtitle.FieldSourceURL:
+		return m.OldSourceURL(ctx)
+	case subtitle.FieldOffsetMs:
+		return m.OldOffsetMs(ctx)
+	case subtitle.FieldIsDefault:
+		return m.OldIsDefault(ctx)
+	case subtitle.FieldStoragePath:
+		return m.OldStoragePath(ctx)
+	}
+	return nil, fmt.Errorf("unknown Subtitle field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SubtitleMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case subtitle.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case subtitle.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case subtitle.FieldMovieID:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMovieID(v)
+		return nil
+	case subtitle.FieldFileID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFileID(v)
+		return nil
+	case subtitle.FieldPickCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPickCode(v)
+		return nil
+	case subtitle.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case subtitle.FieldDisplayName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisplayName(v)
+		return nil
+	case subtitle.FieldLanguage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLanguage(v)
+		return nil
+	case subtitle.FieldFormat:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFormat(v)
+		return nil
+	case subtitle.FieldVersionTag:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersionTag(v)
+		return nil
+	case subtitle.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case subtitle.FieldSourceURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceURL(v)
+		return nil
+	case subtitle.FieldOffsetMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOffsetMs(v)
+		return nil
+	case subtitle.FieldIsDefault:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsDefault(v)
+		return nil
+	case subtitle.FieldStoragePath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStoragePath(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Subtitle field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SubtitleMutation) AddedFields() []string {
+	var fields []string
+	if m.addoffset_ms != nil {
+		fields = append(fields, subtitle.FieldOffsetMs)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SubtitleMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case subtitle.FieldOffsetMs:
+		return m.AddedOffsetMs()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SubtitleMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case subtitle.FieldOffsetMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOffsetMs(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Subtitle numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SubtitleMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SubtitleMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SubtitleMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Subtitle nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SubtitleMutation) ResetField(name string) error {
+	switch name {
+	case subtitle.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case subtitle.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case subtitle.FieldMovieID:
+		m.ResetMovieID()
+		return nil
+	case subtitle.FieldFileID:
+		m.ResetFileID()
+		return nil
+	case subtitle.FieldPickCode:
+		m.ResetPickCode()
+		return nil
+	case subtitle.FieldName:
+		m.ResetName()
+		return nil
+	case subtitle.FieldDisplayName:
+		m.ResetDisplayName()
+		return nil
+	case subtitle.FieldLanguage:
+		m.ResetLanguage()
+		return nil
+	case subtitle.FieldFormat:
+		m.ResetFormat()
+		return nil
+	case subtitle.FieldVersionTag:
+		m.ResetVersionTag()
+		return nil
+	case subtitle.FieldSource:
+		m.ResetSource()
+		return nil
+	case subtitle.FieldSourceURL:
+		m.ResetSourceURL()
+		return nil
+	case subtitle.FieldOffsetMs:
+		m.ResetOffsetMs()
+		return nil
+	case subtitle.FieldIsDefault:
+		m.ResetIsDefault()
+		return nil
+	case subtitle.FieldStoragePath:
+		m.ResetStoragePath()
+		return nil
+	}
+	return fmt.Errorf("unknown Subtitle field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SubtitleMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.movie != nil {
+		edges = append(edges, subtitle.EdgeMovie)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SubtitleMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case subtitle.EdgeMovie:
+		if id := m.movie; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SubtitleMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SubtitleMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SubtitleMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedmovie {
+		edges = append(edges, subtitle.EdgeMovie)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SubtitleMutation) EdgeCleared(name string) bool {
+	switch name {
+	case subtitle.EdgeMovie:
+		return m.clearedmovie
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SubtitleMutation) ClearEdge(name string) error {
+	switch name {
+	case subtitle.EdgeMovie:
+		m.ClearMovie()
+		return nil
+	}
+	return fmt.Errorf("unknown Subtitle unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SubtitleMutation) ResetEdge(name string) error {
+	switch name {
+	case subtitle.EdgeMovie:
+		m.ResetMovie()
+		return nil
+	}
+	return fmt.Errorf("unknown Subtitle edge %s", name)
 }
 
 // TagMutation represents an operation that mutates the Tag nodes in the graph.

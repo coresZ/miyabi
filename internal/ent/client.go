@@ -20,6 +20,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/setting"
 	"github.com/ppxb/miyabi/internal/ent/subscription"
+	"github.com/ppxb/miyabi/internal/ent/subtitle"
 	"github.com/ppxb/miyabi/internal/ent/tag"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/ent/viewedmovie"
@@ -41,6 +42,8 @@ type Client struct {
 	Setting *SettingClient
 	// Subscription is the client for interacting with the Subscription builders.
 	Subscription *SubscriptionClient
+	// Subtitle is the client for interacting with the Subtitle builders.
+	Subtitle *SubtitleClient
 	// Tag is the client for interacting with the Tag builders.
 	Tag *TagClient
 	// Task is the client for interacting with the Task builders.
@@ -65,6 +68,7 @@ func (c *Client) init() {
 	c.Movie = NewMovieClient(c.config)
 	c.Setting = NewSettingClient(c.config)
 	c.Subscription = NewSubscriptionClient(c.config)
+	c.Subtitle = NewSubtitleClient(c.config)
 	c.Tag = NewTagClient(c.config)
 	c.Task = NewTaskClient(c.config)
 	c.ViewedMovie = NewViewedMovieClient(c.config)
@@ -166,6 +170,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Movie:        NewMovieClient(cfg),
 		Setting:      NewSettingClient(cfg),
 		Subscription: NewSubscriptionClient(cfg),
+		Subtitle:     NewSubtitleClient(cfg),
 		Tag:          NewTagClient(cfg),
 		Task:         NewTaskClient(cfg),
 		ViewedMovie:  NewViewedMovieClient(cfg),
@@ -194,6 +199,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Movie:        NewMovieClient(cfg),
 		Setting:      NewSettingClient(cfg),
 		Subscription: NewSubscriptionClient(cfg),
+		Subtitle:     NewSubtitleClient(cfg),
 		Tag:          NewTagClient(cfg),
 		Task:         NewTaskClient(cfg),
 		ViewedMovie:  NewViewedMovieClient(cfg),
@@ -227,7 +233,7 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Actor, c.File, c.Movie, c.Setting, c.Subscription, c.Tag, c.Task,
+		c.Actor, c.File, c.Movie, c.Setting, c.Subscription, c.Subtitle, c.Tag, c.Task,
 		c.ViewedMovie, c.WatchHistory,
 	} {
 		n.Use(hooks...)
@@ -238,7 +244,7 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Actor, c.File, c.Movie, c.Setting, c.Subscription, c.Tag, c.Task,
+		c.Actor, c.File, c.Movie, c.Setting, c.Subscription, c.Subtitle, c.Tag, c.Task,
 		c.ViewedMovie, c.WatchHistory,
 	} {
 		n.Intercept(interceptors...)
@@ -258,6 +264,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Setting.mutate(ctx, m)
 	case *SubscriptionMutation:
 		return c.Subscription.mutate(ctx, m)
+	case *SubtitleMutation:
+		return c.Subtitle.mutate(ctx, m)
 	case *TagMutation:
 		return c.Tag.mutate(ctx, m)
 	case *TaskMutation:
@@ -741,6 +749,22 @@ func (c *MovieClient) QueryWatchHistory(_m *Movie) *WatchHistoryQuery {
 	return query
 }
 
+// QuerySubtitles queries the subtitles edge of a Movie.
+func (c *MovieClient) QuerySubtitles(_m *Movie) *SubtitleQuery {
+	query := (&SubtitleClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(movie.Table, movie.FieldID, id),
+			sqlgraph.To(subtitle.Table, subtitle.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, movie.SubtitlesTable, movie.SubtitlesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *MovieClient) Hooks() []Hook {
 	return c.hooks.Movie
@@ -1029,6 +1053,155 @@ func (c *SubscriptionClient) mutate(ctx context.Context, m *SubscriptionMutation
 		return (&SubscriptionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Subscription mutation op: %q", m.Op())
+	}
+}
+
+// SubtitleClient is a client for the Subtitle schema.
+type SubtitleClient struct {
+	config
+}
+
+// NewSubtitleClient returns a client for the Subtitle from the given config.
+func NewSubtitleClient(c config) *SubtitleClient {
+	return &SubtitleClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `subtitle.Hooks(f(g(h())))`.
+func (c *SubtitleClient) Use(hooks ...Hook) {
+	c.hooks.Subtitle = append(c.hooks.Subtitle, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `subtitle.Intercept(f(g(h())))`.
+func (c *SubtitleClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Subtitle = append(c.inters.Subtitle, interceptors...)
+}
+
+// Create returns a builder for creating a Subtitle entity.
+func (c *SubtitleClient) Create() *SubtitleCreate {
+	mutation := newSubtitleMutation(c.config, OpCreate)
+	return &SubtitleCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Subtitle entities.
+func (c *SubtitleClient) CreateBulk(builders ...*SubtitleCreate) *SubtitleCreateBulk {
+	return &SubtitleCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SubtitleClient) MapCreateBulk(slice any, setFunc func(*SubtitleCreate, int)) *SubtitleCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SubtitleCreateBulk{err: fmt.Errorf("calling to SubtitleClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SubtitleCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SubtitleCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Subtitle.
+func (c *SubtitleClient) Update() *SubtitleUpdate {
+	mutation := newSubtitleMutation(c.config, OpUpdate)
+	return &SubtitleUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SubtitleClient) UpdateOne(_m *Subtitle) *SubtitleUpdateOne {
+	mutation := newSubtitleMutation(c.config, OpUpdateOne, withSubtitle(_m))
+	return &SubtitleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SubtitleClient) UpdateOneID(id int) *SubtitleUpdateOne {
+	mutation := newSubtitleMutation(c.config, OpUpdateOne, withSubtitleID(id))
+	return &SubtitleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Subtitle.
+func (c *SubtitleClient) Delete() *SubtitleDelete {
+	mutation := newSubtitleMutation(c.config, OpDelete)
+	return &SubtitleDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SubtitleClient) DeleteOne(_m *Subtitle) *SubtitleDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SubtitleClient) DeleteOneID(id int) *SubtitleDeleteOne {
+	builder := c.Delete().Where(subtitle.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SubtitleDeleteOne{builder}
+}
+
+// Query returns a query builder for Subtitle.
+func (c *SubtitleClient) Query() *SubtitleQuery {
+	return &SubtitleQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSubtitle},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Subtitle entity by its id.
+func (c *SubtitleClient) Get(ctx context.Context, id int) (*Subtitle, error) {
+	return c.Query().Where(subtitle.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SubtitleClient) GetX(ctx context.Context, id int) *Subtitle {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryMovie queries the movie edge of a Subtitle.
+func (c *SubtitleClient) QueryMovie(_m *Subtitle) *MovieQuery {
+	query := (&MovieClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(subtitle.Table, subtitle.FieldID, id),
+			sqlgraph.To(movie.Table, movie.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, subtitle.MovieTable, subtitle.MovieColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *SubtitleClient) Hooks() []Hook {
+	return c.hooks.Subtitle
+}
+
+// Interceptors returns the client interceptors.
+func (c *SubtitleClient) Interceptors() []Interceptor {
+	return c.inters.Subtitle
+}
+
+func (c *SubtitleClient) mutate(ctx context.Context, m *SubtitleMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SubtitleCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SubtitleUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SubtitleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SubtitleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Subtitle mutation op: %q", m.Op())
 	}
 }
 
@@ -1599,11 +1772,11 @@ func (c *WatchHistoryClient) mutate(ctx context.Context, m *WatchHistoryMutation
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Actor, File, Movie, Setting, Subscription, Tag, Task, ViewedMovie,
+		Actor, File, Movie, Setting, Subscription, Subtitle, Tag, Task, ViewedMovie,
 		WatchHistory []ent.Hook
 	}
 	inters struct {
-		Actor, File, Movie, Setting, Subscription, Tag, Task, ViewedMovie,
+		Actor, File, Movie, Setting, Subscription, Subtitle, Tag, Task, ViewedMovie,
 		WatchHistory []ent.Interceptor
 	}
 )

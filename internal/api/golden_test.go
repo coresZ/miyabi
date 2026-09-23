@@ -242,10 +242,21 @@ func (goldenData) Info(context.Context) (maintenance.Info, error) {
 		Cache: mediaimage.CacheStats{SizeBytes: 3 << 20, EntryCount: 12, UnusedSizeBytes: 1 << 20, UnusedEntryCount: 2}}, nil
 }
 
+type goldenSubtitle struct {
+	SubtitleManager
+}
+
+func (goldenSubtitle) Search(context.Context, string, bool) ([]domain.SubtitleCandidate, error) {
+	return []domain.SubtitleCandidate{
+		{Source: "xunlei", Name: "ABP-123.chs.srt", DisplayName: "简体中文", Language: "zh-CN", Version: "standard", URL: "http://example.com/abp123.srt", Ext: "srt", Score: 100},
+	}, nil
+}
+
 func goldenRouter() http.Handler {
 	return NewRouter(Dependencies{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Catalogue: goldenDiscover{}, Library: goldenLibrary{},
 		Tasks: goldenTasks{}, Offline: goldenOffline{}, Monitor: goldenSubscription{}, Drive: goldenPan{}, Play: goldenPlay{}, Maintenance: goldenData{},
+		Subtitle: goldenSubtitle{},
 	})
 }
 

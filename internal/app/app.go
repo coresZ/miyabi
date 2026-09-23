@@ -24,6 +24,7 @@ import (
 	"github.com/ppxb/miyabi/internal/monitor"
 	"github.com/ppxb/miyabi/internal/offline"
 	"github.com/ppxb/miyabi/internal/playback"
+	"github.com/ppxb/miyabi/internal/subtitle"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
@@ -96,6 +97,17 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("initialize maintenance service: %w", err)
 	}
 
+	subtitleAggregator := subtitle.NewAggregator(network.ProxyManager())
+	subtitleSvc, err := subtitle.NewService(store.Client, subtitleAggregator, driveSvc, cfg.DataDir)
+	if err != nil {
+		playSvc.Close()
+		catalogueSvc.Close()
+		driveSvc.Close()
+		_ = store.Close()
+		return nil, fmt.Errorf("initialize subtitle service: %w", err)
+	}
+	scrapeSvc.SetSubtitles(subtitleSvc)
+
 	taskRegistry.Register(tasks.NewHandler(tasks.KindScan, libSvc.Scan, libSvc.Finished))
 	taskRegistry.Register(tasks.NewHandler(tasks.KindScrape, scrapeSvc.Scrape, scrapeSvc.Finished))
 	taskRegistry.Register(tasks.NewHandler(tasks.KindCover, scrapeSvc.Cover, scrapeSvc.Finished))
@@ -117,6 +129,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		Artwork:     scrapeSvc,
 		Maintenance: maintenanceSvc,
 		Network:     network,
+		Subtitle:    subtitleSvc,
 		Frontend:    miyabi.Frontend(),
 	})
 

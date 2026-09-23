@@ -16,6 +16,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/predicate"
+	"github.com/ppxb/miyabi/internal/ent/subtitle"
 	"github.com/ppxb/miyabi/internal/ent/tag"
 	"github.com/ppxb/miyabi/internal/ent/watchhistory"
 )
@@ -421,6 +422,21 @@ func (_u *MovieUpdate) AddWatchHistory(v ...*WatchHistory) *MovieUpdate {
 	return _u.AddWatchHistoryIDs(ids...)
 }
 
+// AddSubtitleIDs adds the "subtitles" edge to the Subtitle entity by IDs.
+func (_u *MovieUpdate) AddSubtitleIDs(ids ...int) *MovieUpdate {
+	_u.mutation.AddSubtitleIDs(ids...)
+	return _u
+}
+
+// AddSubtitles adds the "subtitles" edges to the Subtitle entity.
+func (_u *MovieUpdate) AddSubtitles(v ...*Subtitle) *MovieUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddSubtitleIDs(ids...)
+}
+
 // Mutation returns the MovieMutation object of the builder.
 func (_u *MovieUpdate) Mutation() *MovieMutation {
 	return _u.mutation
@@ -508,6 +524,27 @@ func (_u *MovieUpdate) RemoveWatchHistory(v ...*WatchHistory) *MovieUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveWatchHistoryIDs(ids...)
+}
+
+// ClearSubtitles clears all "subtitles" edges to the Subtitle entity.
+func (_u *MovieUpdate) ClearSubtitles() *MovieUpdate {
+	_u.mutation.ClearSubtitles()
+	return _u
+}
+
+// RemoveSubtitleIDs removes the "subtitles" edge to Subtitle entities by IDs.
+func (_u *MovieUpdate) RemoveSubtitleIDs(ids ...int) *MovieUpdate {
+	_u.mutation.RemoveSubtitleIDs(ids...)
+	return _u
+}
+
+// RemoveSubtitles removes "subtitles" edges to Subtitle entities.
+func (_u *MovieUpdate) RemoveSubtitles(v ...*Subtitle) *MovieUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveSubtitleIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -847,6 +884,51 @@ func (_u *MovieUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(watchhistory.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.SubtitlesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   movie.SubtitlesTable,
+			Columns: []string{movie.SubtitlesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(subtitle.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedSubtitlesIDs(); len(nodes) > 0 && !_u.mutation.SubtitlesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   movie.SubtitlesTable,
+			Columns: []string{movie.SubtitlesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(subtitle.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.SubtitlesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   movie.SubtitlesTable,
+			Columns: []string{movie.SubtitlesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(subtitle.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
@@ -1262,6 +1344,21 @@ func (_u *MovieUpdateOne) AddWatchHistory(v ...*WatchHistory) *MovieUpdateOne {
 	return _u.AddWatchHistoryIDs(ids...)
 }
 
+// AddSubtitleIDs adds the "subtitles" edge to the Subtitle entity by IDs.
+func (_u *MovieUpdateOne) AddSubtitleIDs(ids ...int) *MovieUpdateOne {
+	_u.mutation.AddSubtitleIDs(ids...)
+	return _u
+}
+
+// AddSubtitles adds the "subtitles" edges to the Subtitle entity.
+func (_u *MovieUpdateOne) AddSubtitles(v ...*Subtitle) *MovieUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddSubtitleIDs(ids...)
+}
+
 // Mutation returns the MovieMutation object of the builder.
 func (_u *MovieUpdateOne) Mutation() *MovieMutation {
 	return _u.mutation
@@ -1349,6 +1446,27 @@ func (_u *MovieUpdateOne) RemoveWatchHistory(v ...*WatchHistory) *MovieUpdateOne
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveWatchHistoryIDs(ids...)
+}
+
+// ClearSubtitles clears all "subtitles" edges to the Subtitle entity.
+func (_u *MovieUpdateOne) ClearSubtitles() *MovieUpdateOne {
+	_u.mutation.ClearSubtitles()
+	return _u
+}
+
+// RemoveSubtitleIDs removes the "subtitles" edge to Subtitle entities by IDs.
+func (_u *MovieUpdateOne) RemoveSubtitleIDs(ids ...int) *MovieUpdateOne {
+	_u.mutation.RemoveSubtitleIDs(ids...)
+	return _u
+}
+
+// RemoveSubtitles removes "subtitles" edges to Subtitle entities.
+func (_u *MovieUpdateOne) RemoveSubtitles(v ...*Subtitle) *MovieUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveSubtitleIDs(ids...)
 }
 
 // Where appends a list predicates to the MovieUpdate builder.
@@ -1718,6 +1836,51 @@ func (_u *MovieUpdateOne) sqlSave(ctx context.Context) (_node *Movie, err error)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(watchhistory.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.SubtitlesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   movie.SubtitlesTable,
+			Columns: []string{movie.SubtitlesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(subtitle.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedSubtitlesIDs(); len(nodes) > 0 && !_u.mutation.SubtitlesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   movie.SubtitlesTable,
+			Columns: []string{movie.SubtitlesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(subtitle.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.SubtitlesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   movie.SubtitlesTable,
+			Columns: []string{movie.SubtitlesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(subtitle.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

@@ -69,6 +69,18 @@ func (f SubscriptionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SubscriptionMutation", m)
 }
 
+// The SubtitleFunc type is an adapter to allow the use of ordinary
+// function as Subtitle mutator.
+type SubtitleFunc func(context.Context, *ent.SubtitleMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SubtitleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SubtitleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SubtitleMutation", m)
+}
+
 // The TagFunc type is an adapter to allow the use of ordinary
 // function as Tag mutator.
 type TagFunc func(context.Context, *ent.TagMutation) (ent.Value, error)

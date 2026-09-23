@@ -10,11 +10,12 @@ import (
 )
 
 type PlayFiles struct {
-	Code   string                   `json:"code"`
-	Title  string                   `json:"title"`
-	Files  []domain.LibraryFile     `json:"files"`
-	Source domain.WatchHistoryScope `json:"source"`
-	Resume *domain.WatchResume      `json:"resume,omitempty"`
+	Code      string                   `json:"code"`
+	Title     string                   `json:"title"`
+	Files     []domain.LibraryFile     `json:"files"`
+	Source    domain.WatchHistoryScope `json:"source"`
+	Resume    *domain.WatchResume      `json:"resume,omitempty"`
+	Subtitles []domain.SubtitleTrack   `json:"subtitles,omitempty"`
 }
 
 type MediaSource struct {

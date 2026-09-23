@@ -29,6 +29,7 @@ type Dependencies struct {
 	Artwork     ArtworkReader
 	Maintenance MaintenanceManager
 	Network     NetworkManager
+	Subtitle    SubtitleManager
 	Frontend    fs.FS
 }
 
@@ -66,10 +67,17 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.GET("/library/artwork/:key", libraryArtworkHandler(deps.Artwork))
 	playAPI := api.Group("/play", noStore())
 	playAPI.GET("/files", playFilesHandler(deps.Play))
+	playAPI.GET("/subtitles/:id", subtitleVTTHandler(deps.Subtitle))
 	playAPI.GET("/:id", playStartHandler(deps.Play))
 	playAPI.DELETE("/:id", playReleaseHandler(deps.Play))
 	playAPI.GET("/:id/stream/:resource", playStreamHandler(deps.Play))
 	playAPI.HEAD("/:id/stream/:resource", playStreamHandler(deps.Play))
+	subtitlesAPI := api.Group("/subtitles", noStore())
+	subtitlesAPI.GET("/search", subtitleSearchHandler(deps.Subtitle))
+	subtitlesAPI.POST("/apply", subtitleApplyHandler(deps.Subtitle))
+	subtitlesAPI.PATCH("/:id/offset", subtitleOffsetHandler(deps.Subtitle))
+	subtitlesAPI.PUT("/:id/default", subtitleSetDefaultHandler(deps.Subtitle))
+	subtitlesAPI.DELETE("/:id", subtitleDeleteHandler(deps.Subtitle))
 	api.GET("/tasks", noStore(), tasksHandler(deps.Tasks))
 	api.GET("/tasks/events", taskEventsHandler(deps.Tasks))
 	api.GET("/offline/tasks", noStore(), offlineActivityHandler(deps.Offline))

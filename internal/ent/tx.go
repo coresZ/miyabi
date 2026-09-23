@@ -22,6 +22,8 @@ type Tx struct {
 	Setting *SettingClient
 	// Subscription is the client for interacting with the Subscription builders.
 	Subscription *SubscriptionClient
+	// Subtitle is the client for interacting with the Subtitle builders.
+	Subtitle *SubtitleClient
 	// Tag is the client for interacting with the Tag builders.
 	Tag *TagClient
 	// Task is the client for interacting with the Task builders.
@@ -166,6 +168,7 @@ func (tx *Tx) init() {
 	tx.Movie = NewMovieClient(tx.config)
 	tx.Setting = NewSettingClient(tx.config)
 	tx.Subscription = NewSubscriptionClient(tx.config)
+	tx.Subtitle = NewSubtitleClient(tx.config)
 	tx.Tag = NewTagClient(tx.config)
 	tx.Task = NewTaskClient(tx.config)
 	tx.ViewedMovie = NewViewedMovieClient(tx.config)

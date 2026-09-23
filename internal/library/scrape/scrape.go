@@ -40,14 +40,20 @@ type Notifier interface {
 	NotifyLibraryChanged()
 }
 
+// SubtitleFetcher handles automated subtitle discovery and upload.
+type SubtitleFetcher interface {
+	AutoFetchAndUpload(ctx context.Context, sess drive.Session, directoryID string, movieID int, code string, isUncensored bool) error
+}
+
 // Service manages movie metadata scraping and artwork caching.
 type Service struct {
-	db       *ent.Client
-	drive    *drive.Drive
-	discover Discoverer
-	images   *mediaimage.Cache
-	notifier Notifier
-	artwork  syncx.ContextLock
+	db        *ent.Client
+	drive     *drive.Drive
+	discover  Discoverer
+	images    *mediaimage.Cache
+	notifier  Notifier
+	subtitles SubtitleFetcher
+	artwork   syncx.ContextLock
 }
 
 // New creates a new scrape Service.
@@ -59,6 +65,11 @@ func New(db *ent.Client, d *drive.Drive, discover Discoverer, images *mediaimage
 		images:   images,
 		notifier: notifier,
 	}
+}
+
+// SetSubtitles sets the optional subtitle fetcher.
+func (service *Service) SetSubtitles(subtitles SubtitleFetcher) {
+	service.subtitles = subtitles
 }
 
 // Images returns the underlying image cache.

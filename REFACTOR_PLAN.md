@@ -392,10 +392,10 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 | M5 | API 与配置收口 | B9、3.8 后端清单 | ✅ 2026-09-22 | M4 |
 | M6 | 磁力聚合与订阅 | 工作线 C | ✅ 2026-09-22（`217e28b`、`e0de46b` 及收口） | M1、M2 |
 | M8 | 前端结构清理 | 3.9 清单、`/api/discover/viewed` 增量 | ✅ 2026-09-22（`8da0c34` 收口） | 可与 M5 并行 |
-| M9 | 字幕自动化与播放集成 | 工作线 E | **正在进行**（4 到 5 天，优先实施） | M2、M5 |
+| M9 | 字幕自动化与播放集成 | 工作线 E | ✅ 2026-09-23 | M2、M5 |
 | M7 | JavDB 接口补齐 | 工作线 D（排行、评论、实体详情） | 待做（番号容差已于 2026-09-23 提前落地） | M2 |
 
-下一步：优先攻坚 M9（工作线 E：字幕自动化与播放集成）。
+下一步：实施 M7（工作线 D：JavDB 接口补齐 - 排行、评论、实体详情）。
 
 ---
 
@@ -453,3 +453,5 @@ func (e *Error) Error() string; Unwrap() error; PublicMessage() string
 - 分页器（2026-09-21，`562f49d`、`58622d6`、`1b64d52`、`09e1b6f`）：`ListPagination` 改为 shadcn `PaginationLink / PaginationEllipsis` 页码链接，库页面移除"共 N 部影片 · 每页 20 部"文案，单页时隐藏。页码算法在 `lib/pagination.ts`：连续窗口 3 页（当前页 ±1），首尾页始终可点，总页数 ≤7 时全列，省略号不用于只遮一页。当前页 `aria-current="page"` 不可点，禁用态 `aria-disabled` + `pointer-events-none`；上一页/下一页保持原生 `Button`。传 `totalPages` 的页面（库、观看历史）渲染完整页码，发现页只渲染当前页占位。`562f49d` 的页码输入框已被页码链接替代。
 - 订阅页（2026-09-22，M6 收口）：新页面只组合现有 `MovieCard / Badge / Button / Checkbox / Avatar / Switch / Tooltip / Dialog / Tabs / Skeleton`，卡片选择态沿用历史页的 `ring-2 ring-success` 与右上角 `Checkbox`；演员条目是 `rounded-2xl border p-2` 容器内的 `Avatar` 加 `Button`，没有新增 Badge 变体与动效。每日检查时间用 shadcn `Input type="time"` 并隐藏原生日历指示器。
 - 番号格式等价与补零容差（2026-09-23）：在 `internal/codeid` 新增 `IsFormatEquivalent` 与 `UnpaddedNumericCandidate`，纯字符结构与算法推导，无硬编码字典；`ResolveMovieID` 实行严格全等优先、格式等价兜底、去零退避搜索，多等价候选严格拒绝防串片。
+- 字幕引擎与自动化播放（2026-09-23，M9）：跨源聚合（迅雷云字幕 API + SubtitleCat HTML 解析），基于 15,000 字符简繁特征频次加权识别中文；自动转码为标准 WebVTT 并支持毫秒级时间轴偏移；本地 115 目录同级字幕自动索引关联；刮削完成自动触发在线最优字幕下载、转码、回传 115 媒体文件夹与本地缓存；播放器控制栏采用参考 jm-boom 风格的磨砂暗黑下拉菜单（`DropdownMenu`），支持字幕轨即时切换、±0.5s/±1.0s 微调持久化与在线候选热检索加载。
+

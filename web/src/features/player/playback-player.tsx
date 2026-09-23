@@ -3,12 +3,14 @@ import {
   isHLSProvider,
   MediaPlayer,
   MediaProvider,
+  Track,
   useMediaPlayer,
   useMediaState,
   type MediaPlayerInstance
 } from '@vidstack/react'
 import { DefaultVideoLayout } from '@vidstack/react/player/layouts/default'
 
+import type { SubtitleTrack } from '@/api/play'
 import type { WatchHistoryScope, WatchResume } from '@/api/watch-history'
 import {
   Select,
@@ -26,6 +28,7 @@ import {
   PlayerLoadingIndicator,
   PlayerTitle
 } from './player-status'
+import { SubtitleMenu } from './subtitle-menu'
 import { playerTranslations } from './translations'
 import { PlayerTimeSlider, PlayerVolumeSlider } from './sliders'
 import { useHoldSpeed } from './use-hold-speed'
@@ -34,20 +37,29 @@ import { useWatchProgress } from './use-watch-progress'
 
 export function PlaybackPlayer({
   title,
+  code,
   movieID,
   openingID,
   source: watchSource,
   fileID,
-  history
+  history,
+  initialSubtitles = []
 }: {
   title: string
+  code: string
   movieID: number
   openingID: string
   source: WatchHistoryScope
   fileID: string
   history?: WatchResume
+  initialSubtitles?: SubtitleTrack[]
 }) {
   const [player, setPlayer] = useState<MediaPlayerInstance | null>(null)
+  const [subtitles, setSubtitles] = useState<SubtitleTrack[]>(initialSubtitles)
+  const defaultTrack = subtitles.find(s => s.is_default) ?? subtitles[0]
+  const [activeTrackId, setActiveTrackId] = useState<number | null>(
+    defaultTrack ? defaultTrack.id : null
+  )
   const holdSpeed = useHoldSpeed(player)
   const progress = useWatchProgress(movieID, watchSource, fileID, history)
 
@@ -68,6 +80,12 @@ export function PlaybackPlayer({
     handleEnded,
     handleError
   } = usePlaybackSource({ fileID, openingID, history, progress })
+
+  useEffect(() => {
+    if (player) {
+      syncTextTracks(player, activeTrackId, subtitles)
+    }
+  }, [player, activeTrackId, subtitles])
 
   return (
     <MediaPlayer
@@ -91,7 +109,19 @@ export function PlaybackPlayer({
       }}
     >
       <PlayerControlsVisibility />
-      <MediaProvider />
+      <MediaProvider>
+        {subtitles.map(sub => (
+          <Track
+            key={`${sub.id}-${sub.offset_ms}`}
+            src={`${sub.src}?t=${sub.offset_ms}`}
+            kind="subtitles"
+            label={sub.display_name}
+            language={sub.language}
+            default={activeTrackId === sub.id}
+            type="vtt"
+          />
+        ))}
+      </MediaProvider>
       {holdSpeed ? <div className="miyabi-player-feedback">倍速播放中</div> : null}
       {loading || playback.isError || failed ? (
         <div className="absolute inset-0 z-20 cursor-auto">
@@ -122,20 +152,31 @@ export function PlaybackPlayer({
               topControlsGroupStart: <PlayerTitle title={title} />,
               topControlsGroupEnd: <PlayerCloseButton />,
               chapterTitle: <div className="vds-controls-spacer" />,
-              beforeSettingsMenu:
-                sources.length > 1 && source ? (
-                  <PlaybackQualitySelect
-                    player={player}
-                    value={source.src}
-                    onValueChange={value => changeQuality(value, player)}
-                  >
-                    {sources.map(item => (
-                      <SelectItem key={item.src} value={item.src}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </PlaybackQualitySelect>
-                ) : null
+              beforeSettingsMenu: (
+                <div className="flex items-center gap-1">
+                  <SubtitleMenu
+                    movieID={movieID}
+                    code={code}
+                    subtitles={subtitles}
+                    activeTrackId={activeTrackId}
+                    onSelectTrack={setActiveTrackId}
+                    onUpdateTracks={setSubtitles}
+                  />
+                  {sources.length > 1 && source ? (
+                    <PlaybackQualitySelect
+                      player={player}
+                      value={source.src}
+                      onValueChange={value => changeQuality(value, player)}
+                    >
+                      {sources.map(item => (
+                        <SelectItem key={item.src} value={item.src}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </PlaybackQualitySelect>
+                  ) : null}
+                </div>
+              )
             }}
           >
             <PlayerBufferingIndicator />
@@ -218,4 +259,21 @@ function PlaybackQualitySelect({
       </SelectContent>
     </Select>
   )
+}
+
+function syncTextTracks(
+  player: MediaPlayerInstance,
+  activeTrackId: number | null,
+  subtitles: SubtitleTrack[]
+) {
+  const active = subtitles.find(s => s.id === activeTrackId)
+  for (const track of player.textTracks) {
+    if (track.kind === 'subtitles' || track.kind === 'captions') {
+      if (active && track.label === active.display_name) {
+        track.mode = 'showing'
+      } else {
+        track.mode = 'disabled'
+      }
+    }
+  }
 }

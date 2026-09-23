@@ -12,6 +12,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
+	"github.com/ppxb/miyabi/internal/ent/subtitle"
 	"github.com/ppxb/miyabi/internal/ent/watchhistory"
 	"github.com/ppxb/miyabi/internal/pan"
 )
@@ -43,6 +44,29 @@ func (service *Service) Files(ctx context.Context, movieID int) (PlayFiles, erro
 	}
 	if history != nil {
 		result.Resume = &domain.WatchResume{ID: history.ID, FileID: history.FileID, Position: history.Position, Duration: history.Duration}
+	}
+	subtitles, err := service.database.Subtitle.Query().
+		Where(subtitle.MovieIDEQ(movieID)).
+		Order(ent.Desc(subtitle.FieldIsDefault), ent.Asc(subtitle.FieldID)).
+		All(ctx)
+	if err == nil && len(subtitles) > 0 {
+		result.Subtitles = make([]domain.SubtitleTrack, 0, len(subtitles))
+		for _, sub := range subtitles {
+			result.Subtitles = append(result.Subtitles, domain.SubtitleTrack{
+				ID:          sub.ID,
+				MovieID:     sub.MovieID,
+				FileID:      sub.FileID,
+				Name:        sub.Name,
+				DisplayName: sub.DisplayName,
+				Language:    sub.Language,
+				Format:      sub.Format,
+				VersionTag:  sub.VersionTag,
+				Source:      sub.Source,
+				OffsetMs:    sub.OffsetMs,
+				IsDefault:   sub.IsDefault,
+				Src:         fmt.Sprintf("/api/play/subtitles/%d.vtt", sub.ID),
+			})
+		}
 	}
 	return result, nil
 }

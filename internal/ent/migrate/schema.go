@@ -152,6 +152,56 @@ var (
 			},
 		},
 	}
+	// SubtitlesColumns holds the columns for the "subtitles" table.
+	SubtitlesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "file_id", Type: field.TypeString, Default: ""},
+		{Name: "pick_code", Type: field.TypeString, Default: ""},
+		{Name: "name", Type: field.TypeString},
+		{Name: "display_name", Type: field.TypeString},
+		{Name: "language", Type: field.TypeString, Default: "zh-CN"},
+		{Name: "format", Type: field.TypeString, Default: "vtt"},
+		{Name: "version_tag", Type: field.TypeString, Default: "standard"},
+		{Name: "source", Type: field.TypeString, Default: "local"},
+		{Name: "source_url", Type: field.TypeString, Default: ""},
+		{Name: "offset_ms", Type: field.TypeInt, Default: 0},
+		{Name: "is_default", Type: field.TypeBool, Default: false},
+		{Name: "storage_path", Type: field.TypeString, Default: ""},
+		{Name: "movie_id", Type: field.TypeInt},
+	}
+	// SubtitlesTable holds the schema information for the "subtitles" table.
+	SubtitlesTable = &schema.Table{
+		Name:       "subtitles",
+		Columns:    SubtitlesColumns,
+		PrimaryKey: []*schema.Column{SubtitlesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "subtitles_movies_subtitles",
+				Columns:    []*schema.Column{SubtitlesColumns[15]},
+				RefColumns: []*schema.Column{MoviesColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "subtitle_movie_id",
+				Unique:  false,
+				Columns: []*schema.Column{SubtitlesColumns[15]},
+			},
+			{
+				Name:    "subtitle_file_id",
+				Unique:  false,
+				Columns: []*schema.Column{SubtitlesColumns[3]},
+			},
+			{
+				Name:    "subtitle_movie_id_is_default",
+				Unique:  false,
+				Columns: []*schema.Column{SubtitlesColumns[15], SubtitlesColumns[13]},
+			},
+		},
+	}
 	// TagsColumns holds the columns for the "tags" table.
 	TagsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -317,6 +367,7 @@ var (
 		MoviesTable,
 		SettingsTable,
 		SubscriptionsTable,
+		SubtitlesTable,
 		TagsTable,
 		TasksTable,
 		ViewedMoviesTable,
@@ -328,6 +379,7 @@ var (
 
 func init() {
 	FilesTable.ForeignKeys[0].RefTable = MoviesTable
+	SubtitlesTable.ForeignKeys[0].RefTable = MoviesTable
 	WatchHistoriesTable.ForeignKeys[0].RefTable = MoviesTable
 	MovieActorsTable.ForeignKeys[0].RefTable = MoviesTable
 	MovieActorsTable.ForeignKeys[1].RefTable = ActorsTable
