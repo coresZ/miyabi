@@ -3,6 +3,13 @@
   --video-border-radius: var(--radius-2xl);
   --video-font-family: var(--font-sans);
   --media-font-family: var(--font-sans);
+  --media-user-font-family: var(--font-sans);
+  --media-cue-font-family: var(--font-sans);
+  --media-cue-border-radius: var(--radius-xl, 8px);
+  --video-captions-offset: 78px;
+  --video-sm-captions-offset: 48px;
+  --video-lg-fullscreen-captions-offset: 78px;
+  --media-cue-font-size: calc(var(--overlay-height) / 100 * 3.6);
   --miyabi-feedback-top: 0.75rem;
   --video-brand: var(--primary);
   --video-controls-color: var(--foreground);
@@ -237,4 +244,34 @@
   .miyabi-player {
     --miyabi-feedback-top: 1rem;
   }
+}
+
+/* Subtitles & WebVTT styling */
+.miyabi-player .vds-captions {
+  font-family: var(--font-sans);
+}
+
+/* Prevent layout resizing / jumping on toolbar toggle by locking bottom to 0 and translating via GPU */
+.miyabi-player .vds-video-layout .vds-captions {
+  bottom: 0 !important;
+  transform: translateY(0);
+  transition: transform 250ms ease-out;
+}
+
+.miyabi-player[data-controls] .vds-video-layout .vds-captions {
+  bottom: 0 !important;
+  transform: translateY(calc(-1 * var(--video-captions-offset, 78px)));
+  transition: transform 180ms ease-out;
+}
+
+.miyabi-player[data-controls] .vds-video-layout[data-sm] .vds-captions {
+  transform: translateY(calc(-1 * var(--video-sm-captions-offset, 48px)));
+}
+
+.miyabi-player .vds-captions [data-part='cue'] {
+  font-family: var(--font-sans);
+  letter-spacing: 0.015em;
+  border-radius: var(--media-cue-border-radius, var(--radius-xl, 8px));
+  backdrop-filter: blur(12px);
+  background-color: rgb(0 0 0 / 0.5);
 }

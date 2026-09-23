@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Captions, Globe, Loader2, Minus, Plus, RotateCcw, Search } from 'lucide-react'
-import { useMediaPlayer } from '@vidstack/react'
+import { useMediaPlayer, useMediaState } from '@vidstack/react'
 
 import {
   applySubtitle,
@@ -20,7 +20,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { PlayerTooltipContent } from './tooltip'
 
 export function SubtitleMenu({
   movieID,
@@ -38,7 +40,9 @@ export function SubtitleMenu({
   onUpdateTracks: (updater: (prev: SubtitleTrack[]) => SubtitleTrack[]) => void
 }) {
   const player = useMediaPlayer()
+  const controlsVisible = useMediaState('controlsVisible')
   const [open, setOpen] = useState(false)
+  const [tooltipOpen, setTooltipOpen] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const [searching, setSearching] = useState(false)
   const [candidates, setCandidates] = useState<SubtitleCandidate[]>([])
@@ -115,26 +119,36 @@ export function SubtitleMenu({
       onOpenChange={nextOpen => {
         setOpen(nextOpen)
         if (nextOpen) {
+          setTooltipOpen(false)
           player?.controls.pause()
         } else {
           player?.controls.resume()
         }
       }}
     >
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="字幕设置"
-          className={cn(
-            'text-white/80 hover:bg-white/10 hover:text-white',
-            activeTrackId !== null && 'text-primary hover:text-primary'
-          )}
-        >
-          <Captions className="size-4.5" />
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip
+        open={controlsVisible && tooltipOpen && !open}
+        onOpenChange={setTooltipOpen}
+        delayDuration={0}
+      >
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="字幕设置"
+              className={cn(
+                'text-white/80 hover:bg-white/10 hover:text-white',
+                activeTrackId !== null && 'text-primary hover:text-primary'
+              )}
+            >
+              <Captions className="size-4.5" />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <PlayerTooltipContent>字幕设置</PlayerTooltipContent>
+      </Tooltip>
       <DropdownMenuContent
         container={player?.el}
         side="top"
@@ -210,16 +224,6 @@ export function SubtitleMenu({
                   variant="outline"
                   size="xs"
                   className="h-7 border-white/15 bg-white/5 text-[11px] text-white hover:bg-white/15"
-                  onClick={() => void handleResetOffset()}
-                  disabled={offsetBusy || activeTrack.offset_ms === 0}
-                >
-                  <RotateCcw className="mr-0.5 size-2.5" />
-                  重置
-                </Button>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  className="h-7 border-white/15 bg-white/5 text-[11px] text-white hover:bg-white/15"
                   onClick={() => void handleAdjustOffset(500)}
                   disabled={offsetBusy}
                 >
@@ -235,6 +239,16 @@ export function SubtitleMenu({
                 >
                   <Plus className="mr-0.5 size-2.5" />
                   1.0s
+                </Button>
+                <Button
+                  variant="outline"
+                  size="xs"
+                  className="h-7 border-white/15 bg-white/5 text-[11px] text-white hover:bg-white/15"
+                  onClick={() => void handleResetOffset()}
+                  disabled={offsetBusy || activeTrack.offset_ms === 0}
+                >
+                  <RotateCcw className="mr-0.5 size-2.5" />
+                  重置
                 </Button>
               </div>
             </div>
