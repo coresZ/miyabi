@@ -80,8 +80,11 @@ func movieReferencesFromWire(ctx context.Context, movieID, field string, source 
 	return result
 }
 
-// ResolveMovieID finds the single distinct movie ID matching the normalized
-// catalogue number. Duplicate rows are allowed; similar search hits are not.
+// ResolveMovieID finds the single distinct movie ID matching the catalogue number
+// under format equivalence rules (accepting delimiter variations and numeric padding zero
+// differences, e.g. ABC00123 vs ABC-123 or ABP-001 vs ABP-1).
+// Duplicate rows for the same ID are allowed; multiple distinct matching candidates are
+// strictly rejected to prevent ambiguity.
 func (c *Client) ResolveMovieID(ctx context.Context, number string) (string, error) {
 	wanted := codeid.Normalize(number)
 	if wanted == "" {
@@ -97,20 +100,72 @@ func (c *Client) ResolveMovieID(ctx context.Context, number string) (string, err
 		return "", err
 	}
 
-	var matched string
+	matched, err := matchCandidate(movies, wanted)
+	if err != nil {
+		return "", err
+	}
+	if matched != "" {
+		return matched, nil
+	}
+
+	// If initial search produced no exact or format-equivalent match, attempt fallback
+	// search when wanted has leading zeros in a numeric sequence (e.g. "ABC-00123" -> search "ABC-123").
+	if unpadded, ok := codeid.UnpaddedNumericCandidate(wanted); ok {
+		fallbackMovies, err := c.Search(ctx, unpadded, domain.SearchOptions{
+			Zone:  domain.ZoneAll,
+			Page:  1,
+			Limit: 100,
+		})
+		if err == nil {
+			fallbackMatched, err := matchCandidate(fallbackMovies, wanted)
+			if err != nil {
+				return "", err
+			}
+			if fallbackMatched != "" {
+				return fallbackMatched, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("catalogue number %s was not found on JavDB", wanted)
+}
+
+func matchCandidate(movies []domain.Movie, wanted string) (string, error) {
+	var exactMatched string
+	exactIDs := make(map[string]struct{})
 	for _, movie := range movies {
-		if codeid.Normalize(movie.Code) != wanted {
-			continue
+		if codeid.Normalize(movie.Code) == wanted {
+			if _, ok := exactIDs[movie.ID]; !ok {
+				exactIDs[movie.ID] = struct{}{}
+				exactMatched = movie.ID
+			}
 		}
-		if matched != "" && matched != movie.ID {
-			return "", fmt.Errorf("catalogue number %s has multiple exact JavDB matches", wanted)
+	}
+	if len(exactIDs) > 1 {
+		return "", fmt.Errorf("catalogue number %s has multiple exact JavDB matches", wanted)
+	}
+	if len(exactIDs) == 1 {
+		return exactMatched, nil
+	}
+
+	var equivMatched string
+	equivIDs := make(map[string]struct{})
+	for _, movie := range movies {
+		if codeid.IsFormatEquivalent(movie.Code, wanted) {
+			if _, ok := equivIDs[movie.ID]; !ok {
+				equivIDs[movie.ID] = struct{}{}
+				equivMatched = movie.ID
+			}
 		}
-		matched = movie.ID
 	}
-	if matched == "" {
-		return "", fmt.Errorf("catalogue number %s was not found on JavDB", wanted)
+	if len(equivIDs) > 1 {
+		return "", fmt.Errorf("catalogue number %s has multiple format-equivalent JavDB matches", wanted)
 	}
-	return matched, nil
+	if len(equivIDs) == 1 {
+		return equivMatched, nil
+	}
+
+	return "", nil
 }
 
 func moviesFromWire(ctx context.Context, source []wireMovie) ([]domain.Movie, error) {

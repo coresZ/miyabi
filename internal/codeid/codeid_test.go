@@ -260,3 +260,61 @@ func TestIsEquivalent(t *testing.T) {
 		})
 	}
 }
+
+func TestIsFormatEquivalent(t *testing.T) {
+	tests := []struct {
+		name string
+		a    string
+		b    string
+		want bool
+	}{
+		{name: "identical", a: "SSIS-589", b: "SSIS-589", want: true},
+		{name: "compact vs hyphenated with leading zeros", a: "ABC00123", b: "ABC-123", want: true},
+		{name: "different padding zeros", a: "ABP-001", b: "ABP-1", want: true},
+		{name: "three digit padding vs two digit", a: "IPX-052", b: "IPX-52", want: true},
+		{name: "delimiter underscore", a: "IPX_052", b: "ipx-52", want: true},
+		{name: "zero value sequence", a: "ABC-000", b: "ABC-0", want: true},
+		{name: "reject different numbers", a: "ABC-123", b: "ABC-124", want: false},
+		{name: "reject substring number truncated", a: "ABC-12", b: "ABC-123", want: false},
+		{name: "reject letter suffix variant", a: "FJIN-106", b: "FJIN-106A", want: false},
+		{name: "reject different letter variants", a: "FJIN-106A", b: "FJIN-106B", want: false},
+		{name: "reject alphanumeric serial truncation", a: "KNB-M01", b: "KNB-M014", want: false},
+		{name: "reject different studios same number", a: "ABC-123", b: "DEF-123", want: false},
+		{name: "reject distributor prefix difference", a: "200GANA-3458", b: "GANA-3458", want: false},
+		{name: "reject empty", a: "", b: "ABC-123", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsFormatEquivalent(tt.a, tt.b); got != tt.want {
+				t.Errorf("IsFormatEquivalent(%q, %q) = %v; want %v", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUnpaddedNumericCandidate(t *testing.T) {
+	tests := []struct {
+		input     string
+		want      string
+		wantMatch bool
+	}{
+		{input: "ABC-00123", want: "ABC-123", wantMatch: true},
+		{input: "IPX-052", want: "IPX-52", wantMatch: true},
+		{input: "ABC-123", want: "", wantMatch: false},
+		{input: "ABC-0", want: "", wantMatch: false},
+		{input: "ABC-00", want: "ABC-0", wantMatch: true},
+		{input: "FJIN-106A", want: "", wantMatch: false},
+		{input: "CARIB-060326-001", want: "", wantMatch: false},
+		{input: "", want: "", wantMatch: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, ok := UnpaddedNumericCandidate(tt.input)
+			if got != tt.want || ok != tt.wantMatch {
+				t.Errorf("UnpaddedNumericCandidate(%q) = (%q, %v); want (%q, %v)", tt.input, got, ok, tt.want, tt.wantMatch)
+			}
+		})
+	}
+}

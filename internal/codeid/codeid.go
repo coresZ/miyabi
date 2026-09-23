@@ -190,3 +190,67 @@ func splitCode(norm string) (string, string) {
 	}
 	return "", norm
 }
+
+// IsFormatEquivalent reports whether two catalogue numbers identify the same movie
+// under format tolerance rules, including delimiter variations and padding zero variations
+// in purely numeric sequences (e.g. "ABC00123" vs "ABC-123", "ABP-001" vs "ABP-1", "IPX-052" vs "IPX-52").
+// It strictly requires identical catalogue prefixes and rejects letter serial variants
+// (e.g. "FJIN-106" vs "FJIN-106A") or partial truncated codes.
+func IsFormatEquivalent(a, b string) bool {
+	normA := Normalize(a)
+	normB := Normalize(b)
+	if normA == "" || normB == "" {
+		return false
+	}
+	if normA == normB {
+		return true
+	}
+
+	prefixA, seqA := splitCode(normA)
+	prefixB, seqB := splitCode(normB)
+
+	// Prefixes must be non-empty and strictly identical.
+	if prefixA == "" || prefixA != prefixB {
+		return false
+	}
+
+	// Sequences must both be purely numeric and equal when stripped of leading zeros.
+	if isDigits(seqA) && isDigits(seqB) {
+		trimmedA := strings.TrimLeft(seqA, "0")
+		trimmedB := strings.TrimLeft(seqB, "0")
+		if trimmedA == "" {
+			trimmedA = "0"
+		}
+		if trimmedB == "" {
+			trimmedB = "0"
+		}
+		return trimmedA == trimmedB
+	}
+
+	return false
+}
+
+// UnpaddedNumericCandidate returns a catalogue candidate with leading zeros stripped
+// from a purely numeric sequence (e.g. "ABC-00123" -> "ABC-123", "IPX-052" -> "IPX-52").
+// It returns false if no padding zeros were present or if the sequence is non-numeric.
+func UnpaddedNumericCandidate(raw string) (string, bool) {
+	norm := Normalize(raw)
+	if norm == "" {
+		return "", false
+	}
+	prefix, seq := splitCode(norm)
+	if prefix == "" || seq == "" || !isDigits(seq) {
+		return "", false
+	}
+	if !strings.HasPrefix(seq, "0") {
+		return "", false
+	}
+	trimmed := strings.TrimLeft(seq, "0")
+	if trimmed == "" {
+		trimmed = "0"
+	}
+	if trimmed == seq {
+		return "", false
+	}
+	return prefix + "-" + trimmed, true
+}

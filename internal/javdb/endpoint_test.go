@@ -375,6 +375,132 @@ func TestResolveMovieIDDuplicateMatches(t *testing.T) {
 	}
 }
 
+func TestResolveMovieIDFormatEquivalence(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		movies  string
+		wantID  string
+		wantErr string
+	}{
+		{
+			name:  "compact input with padding zeros resolves to unpadded hyphenated",
+			input: "abc00123",
+			movies: `[
+				{"id":"movie-abc","number":"ABC-123"},
+				{"id":"movie-other","number":"ABC-1234"}
+			]`,
+			wantID: "movie-abc",
+		},
+		{
+			name:  "three-digit padded input resolves to single digit sequence",
+			input: "ABP-001",
+			movies: `[
+				{"id":"movie-abp1","number":"ABP-1"},
+				{"id":"movie-abp10","number":"ABP-10"}
+			]`,
+			wantID: "movie-abp1",
+		},
+		{
+			name:  "hyphenated two digit resolves from three digit padding",
+			input: "IPX-52",
+			movies: `[
+				{"id":"movie-ipx52","number":"IPX-052"},
+				{"id":"movie-ipx520","number":"IPX-520"}
+			]`,
+			wantID: "movie-ipx52",
+		},
+		{
+			name:  "exact match wins over format-equivalent match",
+			input: "ABC-123",
+			movies: `[
+				{"id":"movie-exact","number":"ABC-123"},
+				{"id":"movie-equiv","number":"ABC-0123"}
+			]`,
+			wantID: "movie-exact",
+		},
+		{
+			name:  "multiple distinct equivalent candidates are strictly rejected",
+			input: "ABC00123",
+			movies: `[
+				{"id":"movie-first","number":"ABC-123"},
+				{"id":"movie-second","number":"ABC-0123"}
+			]`,
+			wantErr: "catalogue number ABC-00123 has multiple format-equivalent JavDB matches",
+		},
+		{
+			name:  "duplicate rows for the same equivalent ID are deduplicated and accepted",
+			input: "ABC00123",
+			movies: `[
+				{"id":"movie-same","number":"ABC-123"},
+				{"id":"movie-same","number":"ABC-123"}
+			]`,
+			wantID: "movie-same",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport := &fixtureTransport{responses: map[string][]byte{
+				"/api/v2/search|zh-TW": []byte(`{"success":1,"data":{"movies":` + tt.movies + `}}`),
+			}}
+			client := clientWithTransport(transport)
+			id, err := client.ResolveMovieID(t.Context(), tt.input)
+			if tt.wantErr != "" {
+				if err == nil || err.Error() != tt.wantErr || id != "" {
+					t.Fatalf("id = %q, error = %v; want empty ID and error %q", id, err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil || id != tt.wantID {
+				t.Fatalf("id = %q, error = %v; want %q", id, err, tt.wantID)
+			}
+		})
+	}
+}
+
+type queryFixtureTransport struct {
+	responses map[string][]byte
+	calls     []fixtureCall
+}
+
+func (transport *queryFixtureTransport) getJSON(
+	_ context.Context,
+	path string,
+	params url.Values,
+	language string,
+	destination any,
+) error {
+	transport.calls = append(transport.calls, fixtureCall{path: path, params: params, language: language})
+	q := params.Get("q")
+	body, ok := transport.responses[q]
+	if !ok {
+		return fmt.Errorf("missing fixture for query %q", q)
+	}
+	return decodeEnvelope(body, destination)
+}
+
+func (*queryFixtureTransport) closeIdleConnections() {}
+
+func TestResolveMovieIDFallbackSearch(t *testing.T) {
+	// Simulate empty result when searching padded "ABC-00123", but succeeding
+	// when fallback search queries unpadded "ABC-123".
+	transport := &queryFixtureTransport{responses: map[string][]byte{
+		"ABC-00123": []byte(`{"success":1,"data":{"movies":[]}}`),
+		"ABC-123": []byte(`{"success":1,"data":{"movies":[
+			{"id":"movie-fallback","number":"ABC-123"}
+		]}}`),
+	}}
+	client := clientWithTransport(transport)
+	id, err := client.ResolveMovieID(t.Context(), "ABC-00123")
+	if err != nil || id != "movie-fallback" {
+		t.Fatalf("id = %q, error = %v; want %q", id, err, "movie-fallback")
+	}
+	if len(transport.calls) != 2 {
+		t.Fatalf("expected 2 calls (initial + fallback), got %d: %#v", len(transport.calls), transport.calls)
+	}
+}
+
 func TestAnimeDetailAndCatalogueQueriesUseTheAnimeSection(t *testing.T) {
 	transport := &fixtureTransport{responses: map[string][]byte{
 		"/api/v4/movies/anime|zh-TW": []byte(`{"success":1,"data":{"movie":{"id":"anime","number":"GLOD-0436","type":4}}}`),
