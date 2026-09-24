@@ -11,11 +11,20 @@ const SettingKey = "emby.config"
 
 // Config represents Emby integration settings.
 type Config struct {
-	Enabled   bool   `json:"enabled"`
-	ServerURL string `json:"server_url"`
-	APIKey    string `json:"api_key"`
-	MediaPath string `json:"media_path"`
-	LocalDir  string `json:"local_dir"`
+	Enabled    bool   `json:"enabled"`
+	ServerURL  string `json:"server_url"`
+	APIKey     string `json:"api_key"`
+	MediaPath  string `json:"media_path"`
+	LocalDir   string `json:"local_dir"`
+	SyncActors *bool  `json:"sync_actors,omitempty"`
+}
+
+// IsSyncActors returns whether actor avatar synchronization is enabled (defaults to true).
+func (c *Config) IsSyncActors() bool {
+	if c.SyncActors == nil {
+		return true
+	}
+	return *c.SyncActors
 }
 
 // Normalize trims inputs and validates required fields when enabled.
@@ -24,6 +33,10 @@ func (c *Config) Normalize() error {
 	c.APIKey = strings.TrimSpace(c.APIKey)
 	c.MediaPath = strings.TrimSpace(c.MediaPath)
 	c.LocalDir = strings.TrimSpace(c.LocalDir)
+	if c.SyncActors == nil {
+		defaultSync := true
+		c.SyncActors = &defaultSync
+	}
 
 	if c.Enabled {
 		if c.ServerURL == "" {

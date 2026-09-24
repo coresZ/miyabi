@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/ppxb/miyabi/internal/database"
+	"github.com/ppxb/miyabi/internal/gfriends"
 )
 
 func TestEmbyConfig_Normalize(t *testing.T) {
@@ -167,5 +169,114 @@ func TestEmbyService_NotifyUpdatedBatch(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for batched updates")
+	}
+}
+
+func TestEmbyService_SyncActorAvatars(t *testing.T) {
+	uploadedAvatars := make(chan string, 1)
+
+	embyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/Persons" && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"Items": []map[string]any{
+					{
+						"Id":   "person-1",
+						"Name": "三上悠亜",
+						// missing avatar
+					},
+					{
+						"Id":              "person-2",
+						"Name":            "相沢みなみ",
+						"PrimaryImageTag": "has-tag", // already has avatar
+					},
+				},
+				"TotalRecordCount": 2,
+			})
+			return
+		}
+		if r.URL.Path == "/Items/person-1/Images/Primary" && r.Method == http.MethodPost {
+			if r.Header.Get("Content-Type") != "image/jpeg" {
+				t.Errorf("expected image/jpeg content type, got %s", r.Header.Get("Content-Type"))
+			}
+			uploadedAvatars <- "person-1"
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer embyServer.Close()
+
+	// GFriends mock server
+	gfriendsImage := []byte("gfriends-jpeg-data")
+	tree := map[string]any{
+		"Content": map[string]any{
+			"S": map[string]string{
+				"三上悠亜.jpg": "三上悠亜.jpg?t=1",
+			},
+		},
+	}
+	treeBytes, _ := json.Marshal(tree)
+
+	gfriendsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/Filetree.json" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(treeBytes)
+			return
+		}
+		if r.URL.Path == "/Content/S/三上悠亜.jpg" {
+			w.Header().Set("Content-Type", "image/jpeg")
+			_, _ = w.Write(gfriendsImage)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer gfriendsServer.Close()
+
+	store, err := database.Open(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("database.Open failed: %v", err)
+	}
+	defer store.Close()
+
+	syncActors := true
+	svc, err := NewService(context.Background(), store.Client, Config{
+		Enabled:    true,
+		ServerURL:  embyServer.URL,
+		APIKey:     "valid-token",
+		SyncActors: &syncActors,
+	})
+	if err != nil {
+		t.Fatalf("NewService failed: %v", err)
+	}
+	defer svc.Close()
+
+	// Configure gfriends client with custom fastly URL via test cache
+	cacheDir := t.TempDir()
+	_ = os.WriteFile(cacheDir+"/gfriends_tree.json", treeBytes, 0644)
+	gClient := gfriends.New(cacheDir, gfriendsServer.Client())
+	svc.SetGFriends(gClient)
+
+	// Test ListPersonsWithoutAvatar
+	missing, err := svc.ListPersonsWithoutAvatar(t.Context())
+	if err != nil {
+		t.Fatalf("ListPersonsWithoutAvatar failed: %v", err)
+	}
+	if len(missing) != 1 || missing[0].Name != "三上悠亜" {
+		t.Fatalf("expected 1 missing person '三上悠亜', got: %+v", missing)
+	}
+
+	// Test UploadPersonAvatar directly
+	if err := svc.UploadPersonAvatar(t.Context(), "person-1", gfriendsImage); err != nil {
+		t.Fatalf("UploadPersonAvatar failed: %v", err)
+	}
+
+	select {
+	case id := <-uploadedAvatars:
+		if id != "person-1" {
+			t.Errorf("expected upload for person-1, got %s", id)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for avatar upload")
 	}
 }

@@ -24,6 +24,7 @@ type Config struct {
 	EmbyServerURL  string
 	EmbyAPIKey     string
 	EmbyMediaPath  string
+	EmbySyncActors bool
 }
 
 func Load() (Config, error) {
@@ -52,6 +53,8 @@ func Load() (Config, error) {
 	if embyEnabledStr == "" && (embyServerURL != "" || embyAPIKey != "") {
 		embyEnabled = true
 	}
+	embySyncActorsStr := strings.ToLower(strings.TrimSpace(os.Getenv("MIYABI_EMBY_SYNC_ACTORS")))
+	embySyncActors := embySyncActorsStr != "false" && embySyncActorsStr != "0"
 
 	cfg := Config{
 		Listen:         listen,
@@ -66,6 +69,7 @@ func Load() (Config, error) {
 		EmbyServerURL:  embyServerURL,
 		EmbyAPIKey:     embyAPIKey,
 		EmbyMediaPath:  embyMediaPath,
+		EmbySyncActors: embySyncActors,
 	}
 	if err := cfg.validate(); err != nil {
 		return Config{}, err

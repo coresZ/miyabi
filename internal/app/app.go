@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/emby"
+	"github.com/ppxb/miyabi/internal/gfriends"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/javdb"
 	"github.com/ppxb/miyabi/internal/library"
@@ -114,12 +116,14 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		_ = store.Close()
 		return nil, fmt.Errorf("initialize subtitle service: %w", err)
 	}
+	syncActors := cfg.EmbySyncActors
 	embySvc, err := emby.NewService(ctx, store.Client, emby.Config{
-		Enabled:   cfg.EmbyEnabled,
-		ServerURL: cfg.EmbyServerURL,
-		APIKey:    cfg.EmbyAPIKey,
-		MediaPath: cfg.EmbyMediaPath,
-		LocalDir:  cfg.EmbyDir,
+		Enabled:    cfg.EmbyEnabled,
+		ServerURL:  cfg.EmbyServerURL,
+		APIKey:     cfg.EmbyAPIKey,
+		MediaPath:  cfg.EmbyMediaPath,
+		LocalDir:   cfg.EmbyDir,
+		SyncActors: &syncActors,
 	})
 	if err != nil {
 		playSvc.Close()
@@ -128,6 +132,18 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		_ = store.Close()
 		return nil, fmt.Errorf("initialize emby service: %w", err)
 	}
+
+	gfriendsTransport := http.DefaultTransport.(*http.Transport).Clone()
+	if network.ProxyManager() != nil {
+		gfriendsTransport.Proxy = func(*http.Request) (*url.URL, error) {
+			return network.ProxyManager().Resolve(), nil
+		}
+	}
+	gfriendsClient := gfriends.New(cfg.DataDir, &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: gfriendsTransport,
+	})
+	embySvc.SetGFriends(gfriendsClient)
 
 	scrapeSvc.SetEmbyExport(cfg.EmbyDir, cfg.PublicURL, cfg.STRMToken)
 	scrapeSvc.SetMediaNotifier(embySvc)

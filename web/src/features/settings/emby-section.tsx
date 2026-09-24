@@ -23,7 +23,8 @@ export function EmbySection() {
       enabled: false,
       server_url: '',
       api_key: '',
-      media_path: ''
+      media_path: '',
+      sync_actors: true
     }
 
   const isDirty =
@@ -32,7 +33,8 @@ export function EmbySection() {
     (form.enabled !== config!.enabled ||
       form.server_url !== config!.server_url ||
       form.api_key !== config!.api_key ||
-      form.media_path !== config!.media_path)
+      form.media_path !== config!.media_path ||
+      (form.sync_actors ?? true) !== (config!.sync_actors ?? true))
 
   const disabled = emby.isLoading || emby.isError || updateConfig.isPending
 
@@ -43,7 +45,8 @@ export function EmbySection() {
           enabled: false,
           server_url: '',
           api_key: '',
-          media_path: ''
+          media_path: '',
+          sync_actors: true
         }),
       [key]: value
     }))
@@ -96,7 +99,8 @@ export function EmbySection() {
       enabled: current.enabled,
       server_url: trimmedUrl,
       api_key: trimmedKey,
-      media_path: current.media_path.trim()
+      media_path: current.media_path.trim(),
+      sync_actors: current.sync_actors ?? true
     }
 
     updateConfig.mutate(payload, {
@@ -114,13 +118,25 @@ export function EmbySection() {
     <SettingsSection icon={<TvMinimalIcon className="size-4" />} title="Emby">
       <SettingRow
         title="启用 Emby"
-        description="媒体扫描与刮削完成后，主动通知 Emby 增量刷新，实现零风控实时影视墙"
+        description="媒体扫描与刮削完成后，主动通知 Emby 增量刷新"
         inline
       >
         <Switch
           checked={current.enabled}
           disabled={disabled}
           onCheckedChange={checked => updateField('enabled', checked)}
+        />
+      </SettingRow>
+
+      <SettingRow
+        title="同步演员头像"
+        description="自动匹配 GFriends 高清女优头像并同步至 Emby"
+        inline
+      >
+        <Switch
+          checked={current.sync_actors ?? true}
+          disabled={disabled || !current.enabled}
+          onCheckedChange={checked => updateField('sync_actors', checked)}
         />
       </SettingRow>
 
