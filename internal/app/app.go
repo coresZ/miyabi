@@ -49,8 +49,27 @@ type App struct {
 	embySvc   *emby.Service
 }
 
+// Option customizes how the composition root wires optional collaborators.
+type Option func(*options)
+
+type options struct {
+	desktop api.DesktopHooks
+}
+
+// WithDesktop attaches desktop-only hooks (reveal data directory, quit) to the
+// local HTTP API. Console and Docker builds leave it unset.
+func WithDesktop(hooks api.DesktopHooks) Option {
+	return func(o *options) { o.desktop = hooks }
+}
+
 // New initializes all services, database connections, and registers task handlers.
-func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
+func New(cfg *config.Config, logger *slog.Logger, opts ...Option) (*App, error) {
+	settings := options{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&settings)
+		}
+	}
 	if cfg.EmbyDir == "" {
 		cfg.EmbyDir = filepath.Join(cfg.DataDir, "emby")
 	}
@@ -176,6 +195,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		Network:     network,
 		Subtitle:    subtitleSvc,
 		Emby:        embySvc,
+		Desktop:        settings.desktop,
 		Frontend:       miyabi.Frontend(),
 		STRMToken:      cfg.STRMToken,
 		EmbyDir:        cfg.EmbyDir,
@@ -205,10 +225,21 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	}, nil
 }
 
-// Run starts the task pool, the periodic workers and the HTTP server, then
-// blocks until ctx is cancelled or one of them fails. Every exit path shuts
-// the server down gracefully and waits for the workers before returning.
+// Run listens on cfg.Listen and serves until ctx is cancelled.
 func (a *App) Run(ctx context.Context) error {
+	listener, err := net.Listen("tcp", a.cfg.Listen)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", a.cfg.Listen, err)
+	}
+	return a.RunListener(ctx, listener)
+}
+
+// RunListener starts the task pool, the periodic workers and the HTTP server on
+// the provided listener, then blocks until ctx is cancelled or one of them
+// fails. Every exit path shuts the server down gracefully and waits for the
+// workers before returning. It lets the desktop shell bind a known port up
+// front so the address baked into STRM files stays stable.
+func (a *App) RunListener(ctx context.Context, listener net.Listener) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	a.server.BaseContext = func(net.Listener) context.Context { return ctx }
@@ -231,8 +262,8 @@ func (a *App) Run(ctx context.Context) error {
 
 	serverError := make(chan error, 1)
 	go func() {
-		a.logger.Info("HTTP server started", "address", a.cfg.Listen)
-		serverError <- a.server.ListenAndServe()
+		a.logger.Info("HTTP server started", "address", listener.Addr().String())
+		serverError <- a.server.Serve(listener)
 	}()
 
 	var runError error

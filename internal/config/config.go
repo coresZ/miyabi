@@ -27,6 +27,7 @@ type Config struct {
 	EmbyMediaPath  string
 	EmbySyncActors bool
 	TrustedProxies []string
+	Mode           RuntimeMode
 }
 
 func Load() (Config, error) {
@@ -83,6 +84,7 @@ func Load() (Config, error) {
 		EmbyMediaPath:  embyMediaPath,
 		EmbySyncActors: embySyncActors,
 		TrustedProxies: trustedProxies,
+		Mode:           RuntimeServer,
 	}
 	if err := cfg.validate(); err != nil {
 		return Config{}, err

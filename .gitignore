@@ -1,6 +1,8 @@
 /miyabi
 /miyabi.exe
 /bin/
+/build/
+miyabi-desktop.exe
 *.test
 *.out
 coverage.*

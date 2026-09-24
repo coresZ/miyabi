@@ -33,6 +33,7 @@ type Dependencies struct {
 	Network     NetworkManager
 	Subtitle    SubtitleManager
 	Emby        EmbyManager
+	Desktop     DesktopHooks
 	Frontend    fs.FS
 	STRMToken      string
 	EmbyDir        string
@@ -147,6 +148,12 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	panAPI.GET("/files", panFilesHandler(deps.Drive))
 	panAPI.PUT("/directory", panSelectDirectoryHandler(deps.Drive))
 	panAPI.DELETE("/directory", panClearDirectoryHandler(deps.Drive))
+
+	if deps.Desktop != nil {
+		desktopAPI := protected.Group("/desktop", noStore())
+		desktopAPI.POST("/reveal-data", desktopRevealDataDirHandler(deps.Desktop))
+		desktopAPI.POST("/quit", desktopQuitHandler(deps.Desktop))
+	}
 
 	if deps.Frontend != nil {
 		installFrontend(router, deps.Frontend)
