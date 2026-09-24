@@ -33,6 +33,7 @@ type Dependencies struct {
 	Subtitle    SubtitleManager
 	Frontend    fs.FS
 	STRMToken   string
+	EmbyDir     string
 }
 
 func NewRouter(deps Dependencies) *gin.Engine {
@@ -66,6 +67,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.DELETE("/library/history", libraryHistoryClearHandler(deps.Library))
 	api.PUT("/library/history/:id/progress", libraryHistoryProgressHandler(deps.Library))
 	api.POST("/library/scan", libraryScanHandler(deps.Library))
+	api.POST("/library/scan/local", libraryLocalScanHandler(deps.Library, deps.EmbyDir))
 	api.GET("/library/artwork/:key", libraryArtworkHandler(deps.Artwork))
 	playAPI := api.Group("/play", noStore())
 	playAPI.GET("/files", playFilesHandler(deps.Play))

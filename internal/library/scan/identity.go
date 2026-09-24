@@ -13,9 +13,15 @@ import (
 	"github.com/ppxb/miyabi/internal/pan"
 )
 
-// CanIdentifyVideo reports whether a file meets the requirements for a feature video.
+// CanIdentifyVideo reports whether a file meets the requirements for a feature video or STRM.
 func CanIdentifyVideo(entry pan.File) bool {
-	return !entry.IsDirectory && domain.IsVideo(entry.Name) && entry.Size >= domain.MinVideoSize
+	if entry.IsDirectory {
+		return false
+	}
+	if domain.IsSTRM(entry.Name) {
+		return true
+	}
+	return domain.IsVideo(entry.Name) && entry.Size >= domain.MinVideoSize
 }
 
 // IdentifyVideo parses the filename of a single file to extract a catalogue number.

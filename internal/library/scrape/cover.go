@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ppxb/miyabi/internal/codeid"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
+	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/nfo"
@@ -121,22 +125,26 @@ func (service *Service) processCover(ctx context.Context, job tasks.Job, input C
 	if err != nil {
 		return nil, err
 	}
-	snapshot := &Snapshot{}
+	snapshot := &Snapshot{
+		LocalExport: true,
+	}
 	var videos []pan.File
 	for i, directory := range directories {
 		if err := service.verifyVideoPositions(ctx, sess, directory); err != nil {
 			return nil, err
 		}
-		state, err := service.writeSidecars(ctx, sess, input, directory, poster, fanart)
+		var dirVideos []pan.File
+		for _, entry := range directory.Files {
+			if directory.VideoIDs[entry.ID] {
+				videos = append(videos, entry)
+				dirVideos = append(dirVideos, entry)
+			}
+		}
+		state, err := service.writeSidecars(ctx, sess, input, directory, dirVideos, poster, fanart)
 		if err != nil {
 			return nil, err
 		}
 		snapshot.Directories = append(snapshot.Directories, state)
-		for _, entry := range directory.Files {
-			if directory.VideoIDs[entry.ID] {
-				videos = append(videos, entry)
-			}
-		}
 		if err := service.db.Task.UpdateOneID(job.ID).SetProgress((i + 1) * 100 / len(directories)).Exec(ctx); err != nil {
 			return nil, err
 		}
@@ -196,60 +204,122 @@ func (service *Service) originImage(ctx context.Context, sess drive.Session, ent
 	return sess.Read(ctx, info.File.PickCode, 32<<20)
 }
 
-func (service *Service) writeSidecars(ctx context.Context, sess drive.Session, input CoverPayload, directory MovieDirectory, poster, fanart []byte) (DirectorySnapshot, error) {
+func (service *Service) writeSidecars(ctx context.Context, sess drive.Session, input CoverPayload, directory MovieDirectory, dirVideos []pan.File, poster, fanart []byte) (DirectorySnapshot, error) {
 	var snapshot DirectorySnapshot
 	stem := nfo.FileStem(input.Code)
 	nfoName := stem + ".nfo"
+
+	doc := input.Document
 	// An existing matching NFO is already the source of truth. Preserve its
 	// formatting and user edits, as well as its referenced artwork.
-	if doc, origin, found, err := DirectoryNFO(ctx, sess, input.Code, directory); err != nil {
+	if existingDoc, origin, found, err := DirectoryNFO(ctx, sess, input.Code, directory); err != nil {
 		return snapshot, err
 	} else if found {
-		if err := VerifyCoverOrigin(input, directory.ID, doc, *origin, poster, fanart); err != nil {
+		if err := VerifyCoverOrigin(input, directory.ID, existingDoc, *origin, poster, fanart); err != nil {
 			return snapshot, err
 		}
-		return NewDirectorySnapshot(directory.ID, origin.NFO, origin.Poster, origin.Fanart), nil
+		doc = existingDoc
 	}
+
 	posterName, fanartName := "poster.jpg", "fanart.jpg"
-	existingPoster, posterExists := SidecarByName(directory.Files, posterName)
-	existingFanart, fanartExists := SidecarByName(directory.Files, fanartName)
-	if directory.Shared || directory.ID == input.Source.Directory.ID || (posterExists && !strings.EqualFold(existingPoster.SHA1, pan.SHA1(poster))) ||
-		(fanartExists && !strings.EqualFold(existingFanart.SHA1, pan.SHA1(fanart))) {
-		posterName, fanartName = stem+"-poster.jpg", stem+"-fanart.jpg"
-	}
-	doc := input.Document
 	doc.Thumbs = []nfo.Thumb{{Aspect: "poster", Path: posterName}}
 	doc.Fanart = fanartName
+
+	if err := service.exportLocalMedia(ctx, input, stem, doc, dirVideos, poster, fanart); err != nil {
+		return snapshot, err
+	}
+
 	body, err := nfo.Encode(doc)
 	if err != nil {
 		return snapshot, err
 	}
-	// NFO is the completion marker and is written last. A restarted job can
-	// reuse previously uploaded images without creating same-name duplicates.
-	uploaded := false
-	for _, item := range []struct {
-		name string
-		body []byte
-	}{
-		{posterName, poster}, {fanartName, fanart}, {nfoName, body},
-	} {
-		if existing, found := SidecarByName(directory.Files, item.name); found {
-			if strings.EqualFold(existing.SHA1, pan.SHA1(item.body)) {
-				continue
-			}
-			return snapshot, domain.E(domain.KindConflict, fmt.Sprintf("媒体目录已存在不同内容的 %s，已保留原文件", item.name), nil)
-		}
-		if err := UploadSidecar(ctx, sess, directory, item.name, item.body); err != nil {
-			return snapshot, fmt.Errorf("write %s to 115: %w", item.name, err)
-		}
-		uploaded = true
-	}
-	if uploaded {
-		service.InvalidateDirCache(sess.Source().AccountID, directory.ID)
-	}
-	return NewDirectorySnapshot(directory.ID, pan.File{Name: nfoName, SHA1: pan.SHA1(body)},
-		pan.File{Name: posterName, SHA1: pan.SHA1(poster)}, pan.File{Name: fanartName, SHA1: pan.SHA1(fanart)}), nil
+
+	return NewDirectorySnapshot(directory.ID,
+		pan.File{Name: nfoName, SHA1: pan.SHA1(body)},
+		pan.File{Name: posterName, SHA1: pan.SHA1(poster)},
+		pan.File{Name: fanartName, SHA1: pan.SHA1(fanart)}), nil
 }
+
+func (service *Service) exportLocalMedia(ctx context.Context, input CoverPayload, stem string, doc nfo.Movie, videos []pan.File, poster, fanart []byte) error {
+	embyDir := service.embyDir
+	if embyDir == "" {
+		embyDir = "./data/emby"
+	}
+	publicURL := service.publicURL
+	if publicURL == "" {
+		publicURL = "http://127.0.0.1:8080"
+	}
+
+	prefix := codeid.Prefix(input.Code)
+	destDir := filepath.Join(embyDir, prefix, input.Code)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return fmt.Errorf("create emby directory %s: %w", destDir, err)
+	}
+
+	tokenParam := ""
+	if service.strmToken != "" {
+		tokenParam = "?token=" + url.QueryEscape(service.strmToken)
+	}
+
+	// Resolve videos from database if empty
+	if len(videos) == 0 && service.db != nil && input.MovieID > 0 {
+		records, _ := service.db.File.Query().
+			Where(file.MovieIDEQ(input.MovieID)).
+			Order(ent.Asc(file.FieldName), ent.Asc(file.FieldID)).
+			All(ctx)
+		for _, r := range records {
+			videos = append(videos, pan.File{ID: r.FileID, Name: r.Name, Size: r.Size, PickCode: r.PickCode})
+		}
+	}
+
+	// 1. Write STRM files
+	if len(videos) == 1 {
+		strmPath := filepath.Join(destDir, stem+".strm")
+		content := fmt.Sprintf("%s/api/strm/play/%s%s\n", publicURL, videos[0].ID, tokenParam)
+		if err := os.WriteFile(strmPath, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("write strm file: %w", err)
+		}
+	} else if len(videos) > 1 {
+		for i, v := range videos {
+			strmPath := filepath.Join(destDir, fmt.Sprintf("%s-cd%d.strm", stem, i+1))
+			content := fmt.Sprintf("%s/api/strm/play/%s%s\n", publicURL, v.ID, tokenParam)
+			if err := os.WriteFile(strmPath, []byte(content), 0o644); err != nil {
+				return fmt.Errorf("write strm file: %w", err)
+			}
+		}
+	}
+
+	// 2. Write NFO file
+	posterName, fanartName := "poster.jpg", "fanart.jpg"
+	nfoName := stem + ".nfo"
+	doc.Thumbs = []nfo.Thumb{{Aspect: "poster", Path: posterName}}
+	doc.Fanart = fanartName
+	nfoBody, err := nfo.Encode(doc)
+	if err != nil {
+		return fmt.Errorf("encode nfo: %w", err)
+	}
+	nfoPath := filepath.Join(destDir, nfoName)
+	if err := os.WriteFile(nfoPath, nfoBody, 0o644); err != nil {
+		return fmt.Errorf("write nfo file: %w", err)
+	}
+
+	// 3. Write poster and fanart
+	if len(poster) > 0 {
+		posterPath := filepath.Join(destDir, posterName)
+		if err := os.WriteFile(posterPath, poster, 0o644); err != nil {
+			return fmt.Errorf("write poster: %w", err)
+		}
+	}
+	if len(fanart) > 0 {
+		fanartPath := filepath.Join(destDir, fanartName)
+		if err := os.WriteFile(fanartPath, fanart, 0o644); err != nil {
+			return fmt.Errorf("write fanart: %w", err)
+		}
+	}
+
+	return nil
+}
+
 
 // VerifyCoverOrigin validates that existing sidecars have not changed concurrently.
 func VerifyCoverOrigin(input CoverPayload, directoryID string, current nfo.Movie, origin ArtworkOrigin, poster, fanart []byte) error {

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
+	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -275,6 +277,7 @@ type pipelineFixture struct {
 	discover  *catalogue.Service
 	images    *mediaimage.Cache
 	source    domain.LibrarySource
+	embyDir   string
 }
 
 func newPipelineFixture(t *testing.T) *pipelineFixture {
@@ -306,13 +309,16 @@ func newPipelineFixture(t *testing.T) *pipelineFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	embyDir := t.TempDir()
 	scrape := scrapePkg.New(store.Client, d, discover, images, taskSvc)
+	scrape.SetEmbyExport(embyDir, "http://127.0.0.1:8080", "")
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScan, library.Scan, library.Finished))
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScrape, scrape.Scrape, scrape.Finished))
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindCover, scrape.Cover, scrape.Finished))
 	return &pipelineFixture{
 		store: store, drive: drive, catalogue: catalogueClient, tasks: taskSvc,
 		library: library, discover: discover, scrape: scrape, images: images, source: source,
+		embyDir: embyDir,
 	}
 }
 
@@ -428,11 +434,21 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 		t.Fatalf("artwork %+v cached = %t, %v", artwork, exists, err)
 	}
 
-	// Sidecars land next to the video, images first and the NFO last.
-	if names := fixture.drive.uploadedNames("11"); !slices.Equal(names, []string{"poster.jpg", "fanart.jpg", "ABP-123.nfo"}) {
-		t.Fatalf("uploaded sidecars = %v", names)
+	// Sidecars land in the local Emby directory under prefix bucket
+	embyMovieDir := filepath.Join(fixture.embyDir, "ABP", "ABP-123")
+	strmBytes, err := os.ReadFile(filepath.Join(embyMovieDir, "ABP-123.strm"))
+	if err != nil {
+		t.Fatalf("local strm file not found: %v", err)
 	}
-	doc, err := nfo.Decode(fixture.drive.uploads[2].body)
+	if !strings.Contains(string(strmBytes), "/api/strm/play/101") {
+		t.Fatalf("strm content unexpected: %s", string(strmBytes))
+	}
+
+	nfoBytes, err := os.ReadFile(filepath.Join(embyMovieDir, "ABP-123.nfo"))
+	if err != nil {
+		t.Fatalf("local nfo file not found: %v", err)
+	}
+	doc, err := nfo.Decode(nfoBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,9 +458,14 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 	if doc.Poster() != "poster.jpg" || doc.Fanart != "fanart.jpg" || len(doc.Actors) != 2 || len(doc.Tags) != 1 || doc.Studio.Name != "Maker" {
 		t.Fatalf("nfo references = poster %q fanart %q actors %d tags %d studio %+v", doc.Poster(), doc.Fanart, len(doc.Actors), len(doc.Tags), doc.Studio)
 	}
-	poster, err := fixture.images.ReadURL(artwork.Poster)
-	if err != nil || !bytes.Equal(poster, fixture.drive.uploads[0].body) {
-		t.Fatalf("uploaded poster differs from cached poster: %v", err)
+	posterBytes, err := os.ReadFile(filepath.Join(embyMovieDir, "poster.jpg"))
+	poster, err2 := fixture.images.ReadURL(artwork.Poster)
+	if err != nil || err2 != nil || !bytes.Equal(poster, posterBytes) {
+		t.Fatalf("local poster differs from cached poster: %v, %v", err, err2)
+	}
+	// Verify no sidecars were uploaded to 115
+	if names := fixture.drive.uploadedNames("11"); len(names) != 0 {
+		t.Fatalf("expected 0 uploads to 115, got %v", names)
 	}
 
 	// The scan workflow reports the metadata chain as complete.

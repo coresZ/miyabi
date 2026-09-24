@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ppxb/miyabi/internal/codeid"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
@@ -23,6 +24,7 @@ type Service struct {
 	aggregator *Aggregator
 	drive      *drive.Drive
 	cacheDir   string
+	embyDir    string
 }
 
 // NewService creates a new subtitle service.
@@ -37,6 +39,11 @@ func NewService(db *ent.Client, aggregator *Aggregator, driveSvc *drive.Drive, d
 		drive:      driveSvc,
 		cacheDir:   cacheDir,
 	}, nil
+}
+
+// SetEmbyDir sets the directory for exporting subtitles to local Emby media library.
+func (s *Service) SetEmbyDir(embyDir string) {
+	s.embyDir = embyDir
 }
 
 // ToTrack converts an ent.Subtitle record to a domain.SubtitleTrack.
@@ -294,6 +301,14 @@ func (s *Service) AutoFetchAndUpload(ctx context.Context, sess drive.Session, di
 	subUploadName := fmt.Sprintf("%s.%s.vtt", code, best.Language)
 	if best.Version != VersionStandard {
 		subUploadName = fmt.Sprintf("%s.%s.%s.vtt", code, best.Version, best.Language)
+	}
+
+	if s.embyDir != "" {
+		prefix := codeid.Prefix(code)
+		destDir := filepath.Join(s.embyDir, prefix, code)
+		if err := os.MkdirAll(destDir, 0o755); err == nil {
+			_ = os.WriteFile(filepath.Join(destDir, subUploadName), []byte(vttContent), 0o644)
+		}
 	}
 
 	var fileID string

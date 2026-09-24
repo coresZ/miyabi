@@ -47,7 +47,8 @@ func NewDirectorySnapshot(id string, nfo, poster, fanart pan.File) DirectorySnap
 // Later scans compare their directory listings without downloading unchanged NFOs or images.
 type Snapshot struct {
 	Videos      string              `json:"videos"`
-	Directories []DirectorySnapshot `json:"directories"`
+	Directories []DirectorySnapshot `json:"directories,omitempty"`
+	LocalExport bool                `json:"local_export,omitempty"`
 }
 
 // ObservedFile represents a file observed during a scan in a directory.
@@ -114,7 +115,13 @@ func (snapshot Snapshot) Matches(record *ent.Movie, directories DirectoryObserva
 		files = append(files, pan.File{ID: entry.FileID, ParentID: entry.ParentID, Name: entry.Name, SHA1: entry.Sha1, Size: entry.Size})
 		ids[entry.FileID] = true
 	}
-	if snapshot.Videos != VideoFingerprint(files) || len(snapshot.Directories) == 0 {
+	if snapshot.Videos != VideoFingerprint(files) {
+		return false
+	}
+	if snapshot.LocalExport {
+		return true
+	}
+	if len(snapshot.Directories) == 0 {
 		return false
 	}
 	for _, saved := range snapshot.Directories {

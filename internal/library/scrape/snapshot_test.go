@@ -73,3 +73,46 @@ func TestSnapshotMatches(t *testing.T) {
 		t.Fatal("expected snapshot not to match when NFO SHA1 changes")
 	}
 }
+
+func TestSnapshotMatchesLocalExport(t *testing.T) {
+	video := pan.File{ID: "v1", ParentID: "dir-1", Name: "ABP-001.mp4", SHA1: "sha-video", Size: 1 << 30}
+	snapshot := Snapshot{
+		Videos:      VideoFingerprint([]pan.File{video}),
+		LocalExport: true,
+	}
+
+	record := &ent.Movie{
+		ID:   1,
+		Code: "ABP-001",
+		Edges: ent.MovieEdges{
+			Files: []*ent.File{
+				{FileID: video.ID, ParentID: video.ParentID, Name: video.Name, Sha1: video.SHA1, Size: video.Size},
+			},
+		},
+	}
+
+	// LocalExport should match even if 115 directory has no sidecars at all
+	observations := DirectoryObservations{
+		"dir-1": ObservedDirectory{
+			{Sidecar: Sidecar{Name: video.Name, SHA1: video.SHA1}, VideoID: video.ID},
+		},
+	}
+	if !snapshot.Matches(record, observations) {
+		t.Fatal("expected LocalExport snapshot to match unchanged video even without sidecars in 115")
+	}
+
+	// If video changed, LocalExport snapshot should NOT match
+	modifiedRecord := &ent.Movie{
+		ID:   1,
+		Code: "ABP-001",
+		Edges: ent.MovieEdges{
+			Files: []*ent.File{
+				{FileID: video.ID, ParentID: video.ParentID, Name: video.Name, Sha1: "changed-sha", Size: video.Size},
+			},
+		},
+	}
+	if snapshot.Matches(modifiedRecord, observations) {
+		t.Fatal("expected LocalExport snapshot not to match when video files changed")
+	}
+}
+

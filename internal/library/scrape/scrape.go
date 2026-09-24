@@ -70,6 +70,10 @@ type Service struct {
 	dirMu    sync.RWMutex
 	dirCache map[string]dirCacheEntry
 	dirTTL   time.Duration
+
+	embyDir   string
+	publicURL string
+	strmToken string
 }
 
 // New creates a new scrape Service.
@@ -85,6 +89,13 @@ func New(db *ent.Client, d *drive.Drive, discover Discoverer, images *mediaimage
 	}
 	service.subtitleQueue = newSubtitleQueue(service, defaultSubtitleConcurrency, defaultSubtitleQueueCapacity, nil)
 	return service
+}
+
+// SetEmbyExport configures the local Emby export directory, public playback URL, and optional STRM token.
+func (service *Service) SetEmbyExport(embyDir, publicURL, strmToken string) {
+	service.embyDir = embyDir
+	service.publicURL = publicURL
+	service.strmToken = strmToken
 }
 
 // Close releases resources and terminates background workers.

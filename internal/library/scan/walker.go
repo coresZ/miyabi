@@ -3,28 +3,49 @@ package scan
 import (
 	"context"
 	"fmt"
+	"encoding/json"
+	"math/rand/v2"
+	"net/url"
+	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
-
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ppxb/miyabi/internal/codeid"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/drive"
 	"github.com/ppxb/miyabi/internal/ent"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/library/scrape"
+	"github.com/ppxb/miyabi/internal/nfo"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
+// DefaultPacing provides ~2-3 req/s with 150ms jitter for 115 cold-start traversal.
+func DefaultPacing(ctx context.Context) error {
+	delay := 350*time.Millisecond + time.Duration(rand.N(150))*time.Millisecond
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(delay):
+		return nil
+	}
+}
+
 // Scanner encapsulates the dependencies required to execute library scan jobs.
 type Scanner struct {
-	driveSvc *drive.Drive
-	db       *ent.Client
-	images   *mediaimage.Cache
-	tasksSvc *tasks.Service
+	driveSvc  *drive.Drive
+	db        *ent.Client
+	images    *mediaimage.Cache
+	tasksSvc  *tasks.Service
+	embyDir   string
+	publicURL string
+	strmToken string
+	pace      func(context.Context) error
 }
 
 // New creates a new Scanner with the provided dependencies.
@@ -35,6 +56,44 @@ func New(driveSvc *drive.Drive, db *ent.Client, images *mediaimage.Cache, tasksS
 		images:   images,
 		tasksSvc: tasksSvc,
 	}
+}
+
+func (s *Scanner) SetEmbyExport(embyDir, publicURL, strmToken string) {
+	s.embyDir = embyDir
+	s.publicURL = publicURL
+	s.strmToken = strmToken
+}
+
+func (s *Scanner) SetPacing(pace func(context.Context) error) {
+	s.pace = pace
+}
+
+func (s *Scanner) writeFastSTRM(video Video) {
+	if s.embyDir == "" || video.Code == "" || !domain.IsVideo(video.Name) {
+		return
+	}
+	prefix := codeid.Prefix(video.Code)
+	destDir := filepath.Join(s.embyDir, prefix, video.Code)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return
+	}
+
+	stem := nfo.FileStem(video.Code)
+	strmPath := filepath.Join(destDir, stem+".strm")
+	if _, err := os.Stat(strmPath); err == nil {
+		return
+	}
+
+	publicURL := s.publicURL
+	if publicURL == "" {
+		publicURL = "http://127.0.0.1:8080"
+	}
+	tokenParam := ""
+	if s.strmToken != "" {
+		tokenParam = "?token=" + url.QueryEscape(s.strmToken)
+	}
+	content := fmt.Sprintf("%s/api/strm/play/%s%s\n", publicURL, video.ID, tokenParam)
+	_ = os.WriteFile(strmPath, []byte(content), 0o644)
 }
 
 // Run executes a library scan job: it walks the media directories, matches NFOs
@@ -100,6 +159,7 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 			if err := savePage(path.Dir(payload.TargetPath), []Video{{File: info.File}}, func(videos []Video) []Video {
 				if videos[0].Code != "" {
 					payload.Scan.MatchedFiles, payload.Scan.Movies = 1, 1
+					s.writeFastSTRM(videos[0])
 				} else {
 					payload.Scan.UnmatchedFiles = 1
 				}
@@ -128,8 +188,18 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 		start = Directory{ID: info.ID, Path: payload.TargetPath}
 	}
 
-	directories := []Directory{start}
-	seen := map[string]bool{start.ID: true}
+	var directories []Directory
+	seen := make(map[string]bool)
+	if payload.Checkpoint != "" {
+		_ = json.Unmarshal([]byte(payload.Checkpoint), &directories)
+		for _, d := range directories {
+			seen[d.ID] = true
+		}
+	}
+	if len(directories) == 0 {
+		directories = []Directory{start}
+		seen[start.ID] = true
+	}
 	codes := make(map[string]bool)
 	lastReport := time.Time{}
 
@@ -137,6 +207,10 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 		directory := directories[next]
 		payload.Scan.CurrentPath = directory.Path
 		if time.Since(lastReport) >= 500*time.Millisecond || next == len(directories)-1 {
+			if remaining := directories[next:]; len(remaining) > 0 {
+				data, _ := json.Marshal(remaining)
+				payload.Checkpoint = string(data)
+			}
 			if err := ReportScan(ctx, db.Task, job.ID, payload, tasksSvc); err != nil {
 				return err
 			}
@@ -147,6 +221,11 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 		var subtitles []pan.File
 
 		err := drive.WalkFilePages(ctx, func(offset int) (pan.FilePage, error) {
+			if s.pace != nil {
+				if err := s.pace(ctx); err != nil {
+					return pan.FilePage{}, err
+				}
+			}
 			page, err := sess.List(ctx, directory.ID, offset)
 			if err != nil {
 				return pan.FilePage{}, err
@@ -202,6 +281,7 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 					if video.Code != "" {
 						payload.Scan.MatchedFiles++
 						codes[video.Code] = true
+						s.writeFastSTRM(video)
 					} else {
 						payload.Scan.UnmatchedFiles++
 					}
@@ -222,6 +302,7 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 		}
 	}
 
+	payload.Checkpoint = ""
 	payload.Scan.Stage = "reconciling"
 	payload.Scan.CurrentPath = source.Directory.Path
 	if err := ReportScan(ctx, db.Task, job.ID, payload, tasksSvc); err != nil {

@@ -318,3 +318,21 @@ func TestUnpaddedNumericCandidate(t *testing.T) {
 		})
 	}
 }
+
+func TestPrefix(t *testing.T) {
+	for _, tt := range []struct {
+		input string
+		want  string
+	}{
+		{"IPX-123", "IPX"},
+		{"ssis-456", "SSIS"},
+		{"FC2-PPV-12345", "FC2"},
+		{"060326-001", "OTHERS"},
+		{"", "OTHERS"},
+	} {
+		if got := Prefix(tt.input); got != tt.want {
+			t.Errorf("Prefix(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+

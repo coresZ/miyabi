@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,16 +23,25 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	listen := envOrDefault("MIYABI_LISTEN", ":8080")
 	dataDir := envOrDefault("MIYABI_DATA_DIR", "./data")
 	embyDir := strings.TrimSpace(os.Getenv("MIYABI_EMBY_DIR"))
 	if embyDir == "" {
 		embyDir = filepath.Join(dataDir, "emby")
 	}
+	publicURL := strings.TrimRight(strings.TrimSpace(os.Getenv("MIYABI_PUBLIC_URL")), "/")
+	if publicURL == "" {
+		port := "8080"
+		if _, p, err := net.SplitHostPort(strings.TrimSpace(listen)); err == nil && p != "" {
+			port = p
+		}
+		publicURL = "http://127.0.0.1:" + port
+	}
 	cfg := Config{
-		Listen:         envOrDefault("MIYABI_LISTEN", ":8080"),
+		Listen:         listen,
 		DataDir:        dataDir,
 		EmbyDir:        embyDir,
-		PublicURL:      strings.TrimRight(strings.TrimSpace(os.Getenv("MIYABI_PUBLIC_URL")), "/"),
+		PublicURL:      publicURL,
 		STRMToken:      strings.TrimSpace(os.Getenv("MIYABI_STRM_TOKEN")),
 		LogLevel:       envOrDefault("MIYABI_LOG_LEVEL", "info"),
 		AccessPassword: os.Getenv("MIYABI_ACCESS_PASSWORD"),

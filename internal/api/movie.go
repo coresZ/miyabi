@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/ppxb/miyabi/internal/domain"
 	lib "github.com/ppxb/miyabi/internal/library"
+	"github.com/ppxb/miyabi/internal/library/scan"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
@@ -19,6 +20,7 @@ type LibraryManager interface {
 	RemoveWatchHistory(context.Context, domain.WatchHistoryScope, []int) (int, error)
 	ClearWatchHistory(context.Context, domain.WatchHistoryScope) (int, error)
 	StartScan(context.Context) (tasks.TaskInfo, error)
+	ScanLocal(context.Context, string) (*scan.LocalScanResult, error)
 }
 
 type ArtworkReader interface {
@@ -82,3 +84,24 @@ func libraryScanHandler(library LibraryManager) gin.HandlerFunc {
 		accepted(c, task, err)
 	}
 }
+
+type localScanRequest struct {
+	Path string `json:"path"`
+}
+
+func libraryLocalScanHandler(library LibraryManager, defaultDir string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		req, _ := bindJSON[localScanRequest](c)
+		scanPath := req.Path
+		if scanPath == "" {
+			scanPath = defaultDir
+		}
+		if scanPath == "" {
+			c.Error(domain.E(domain.KindInvalid, "未指定扫描目录且未配置 Emby 目录", nil))
+			return
+		}
+		res, err := library.ScanLocal(c.Request.Context(), scanPath)
+		respond(c, res, err)
+	}
+}
+

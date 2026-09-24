@@ -10,4 +10,5 @@ type ScanPayload struct {
 	OfflineTaskID int           `json:"offline_task_id,omitempty"`
 	Code          string        `json:"code,omitempty"`
 	JavDBID       string        `json:"javdb_id,omitempty"`
+	Checkpoint    string        `json:"checkpoint,omitempty"`
 }

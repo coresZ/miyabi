@@ -254,3 +254,15 @@ func UnpaddedNumericCandidate(raw string) (string, bool) {
 	}
 	return prefix + "-" + trimmed, true
 }
+
+// Prefix extracts the catalogue bucket prefix for a code (e.g. "IPX" from "IPX-123").
+// If no prefix is identifiable, it returns "OTHERS".
+func Prefix(code string) string {
+	norm := Normalize(code)
+	prefix, _ := splitCode(norm)
+	if prefix != "" {
+		return prefix
+	}
+	return "OTHERS"
+}
+

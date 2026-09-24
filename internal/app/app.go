@@ -20,6 +20,7 @@ import (
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/javdb"
 	"github.com/ppxb/miyabi/internal/library"
+	"github.com/ppxb/miyabi/internal/library/scan"
 	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/maintenance"
 	"github.com/ppxb/miyabi/internal/monitor"
@@ -111,7 +112,11 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		_ = store.Close()
 		return nil, fmt.Errorf("initialize subtitle service: %w", err)
 	}
+	scrapeSvc.SetEmbyExport(cfg.EmbyDir, cfg.PublicURL, cfg.STRMToken)
 	scrapeSvc.SetSubtitles(subtitleSvc)
+	subtitleSvc.SetEmbyDir(cfg.EmbyDir)
+	libSvc.SetEmbyExport(cfg.EmbyDir, cfg.PublicURL, cfg.STRMToken)
+	libSvc.SetPacing(scan.DefaultPacing)
 
 	taskRegistry.Register(tasks.NewHandler(tasks.KindScan, libSvc.Scan, libSvc.Finished))
 	taskRegistry.Register(tasks.NewHandler(tasks.KindScrape, scrapeSvc.Scrape, scrapeSvc.Finished))
@@ -137,6 +142,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		Subtitle:    subtitleSvc,
 		Frontend:    miyabi.Frontend(),
 		STRMToken:   cfg.STRMToken,
+		EmbyDir:     cfg.EmbyDir,
 	})
 
 	server := &http.Server{

@@ -13,6 +13,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/actor"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
+	"github.com/ppxb/miyabi/internal/ent/predicate"
 	"github.com/ppxb/miyabi/internal/ent/tag"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/library/scan"
@@ -59,20 +60,22 @@ type Page struct {
 }
 
 type Service struct {
-	images   *mediaimage.Cache
-	database *ent.Client
-	drive    *drive.Drive
-	tasks    *tasks.Service
-	scanner  *scan.Scanner
+	images       *mediaimage.Cache
+	database     *ent.Client
+	drive        *drive.Drive
+	tasks        *tasks.Service
+	scanner      *scan.Scanner
+	localScanner *scan.LocalScanner
 }
 
 func New(database *ent.Client, d *drive.Drive, tasks *tasks.Service, images *mediaimage.Cache) *Service {
 	svc := &Service{
-		database: database,
-		drive:    d,
-		tasks:    tasks,
-		images:   images,
-		scanner:  scan.New(d, database, images, tasks),
+		database:     database,
+		drive:        d,
+		tasks:        tasks,
+		images:       images,
+		scanner:      scan.New(d, database, images, tasks),
+		localScanner: scan.NewLocalScanner(database, images),
 	}
 	if d != nil && tasks != nil {
 		d.SubscribeMount(func(ctx context.Context, event drive.MountEvent) error {
@@ -105,15 +108,21 @@ func (s *Service) Source() *domain.LibrarySource {
 }
 
 // MatchingMovies queries local movies matching any of the given JavDB IDs or normalized codes
-// that possess indexed files in the currently mounted library source.
+// that possess indexed files in the currently mounted library source or local library.
 func (s *Service) MatchingMovies(ctx context.Context, javdbIDs []string, codes []string) ([]domain.LocalMovie, error) {
-	source := s.Source()
-	if source == nil || (len(javdbIDs) == 0 && len(codes) == 0) {
+	if len(javdbIDs) == 0 && len(codes) == 0 {
 		return nil, nil
+	}
+	source := s.Source()
+	var filePredicate predicate.File
+	if source != nil {
+		filePredicate = file.Or(database.LibraryFiles(*source), file.AccountIDEQ("local"))
+	} else {
+		filePredicate = file.AccountIDEQ("local")
 	}
 	records, err := s.database.Movie.Query().Where(
 		movie.Or(movie.JavdbIDIn(javdbIDs...), movie.And(movie.JavdbIDIsNil(), movie.CodeIn(codes...))),
-		movie.HasFilesWith(database.LibraryFiles(*source)),
+		movie.HasFilesWith(filePredicate),
 	).Select(movie.FieldID, movie.FieldCode, movie.FieldJavdbID).All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("query matching movies: %w", err)
@@ -127,6 +136,26 @@ func (s *Service) MatchingMovies(ctx context.Context, javdbIDs []string, codes [
 		}
 	}
 	return result, nil
+}
+
+// ScanLocal scans a local directory for media and sidecars and imports them.
+func (s *Service) ScanLocal(ctx context.Context, rootDir string) (*scan.LocalScanResult, error) {
+	result, err := s.localScanner.Scan(ctx, rootDir)
+	if err != nil {
+		return nil, err
+	}
+	if s.tasks != nil {
+		s.tasks.NotifyLibraryChanged()
+	}
+	return result, nil
+}
+
+func (s *Service) SetEmbyExport(embyDir, publicURL, strmToken string) {
+	s.scanner.SetEmbyExport(embyDir, publicURL, strmToken)
+}
+
+func (s *Service) SetPacing(pace func(context.Context) error) {
+	s.scanner.SetPacing(pace)
 }
 
 func (s *Service) Scan(ctx context.Context, job tasks.Job) error {
@@ -163,11 +192,13 @@ func (s *Service) EnqueueTargetedScan(ctx context.Context, tx *ent.Tx, source do
 func (s *Service) Movies(ctx context.Context, page, limit int) (Page, error) {
 	result := Page{Movies: []Movie{}, Page: page}
 	source := s.drive.Source()
-	if source == nil {
-		return result, nil
+	var scope predicate.File
+	if source != nil {
+		result.Source = source
+		scope = file.Or(database.LibraryFiles(*source), file.AccountIDEQ("local"))
+	} else {
+		scope = file.AccountIDEQ("local")
 	}
-	result.Source = source
-	scope := database.LibraryFiles(*source)
 	var err error
 	result.Total, err = s.database.File.Query().Where(scope).Aggregate(func(selector *sql.Selector) string {
 		return sql.As("COUNT(DISTINCT "+selector.C(file.FieldMovieID)+")", "total")
