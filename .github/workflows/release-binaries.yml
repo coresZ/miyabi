@@ -25,6 +25,15 @@ jobs:
             goos: linux
             goarch: amd64
             ext: ""
+          # 需要 arm64 时取消下面注释
+          # - name: windows-arm64
+          #   goos: windows
+          #   goarch: arm64
+          #   ext: .exe
+          # - name: linux-arm64
+          #   goos: linux
+          #   goarch: arm64
+          #   ext: ""
 
     steps:
       - name: Checkout
@@ -64,44 +73,41 @@ jobs:
             -o "miyabi${{ matrix.ext }}" \
             ./cmd/miyabi
 
-      - name: Package Windows (解压即用)
+      - name: Package Windows
         if: matrix.goos == 'windows'
         run: |
           mkdir -p "dist/miyabi-${{ matrix.name }}"
-          cp miyabi.exe "dist/miyabi-${{ matrix.name }}/"
+          cp "miyabi.exe" "dist/miyabi-${{ matrix.name }}/"
 
-          cat > "dist/miyabi-${{ matrix.name }}/start.bat" << 'EOF'
-          @echo off
-          chcp 65001 >nul
-          title Miyabi
-          set MIYABI_ACCESS_PASSWORD=change-me
-          set MIYABI_DATA_DIR=%~dp0data
-          set MIYABI_LISTEN=:8080
-          set MIYABI_PUBLIC_URL=http://127.0.0.1:8080
-          set MIYABI_LOG_LEVEL=info
+          # 强制 CRLF，避免 Windows cmd 把 bat 拆坏
+          printf '%s\r\n' \
+            '@echo off' \
+            'chcp 65001 >nul' \
+            'title Miyabi' \
+            'set "MIYABI_ACCESS_PASSWORD=change-me"' \
+            'set "MIYABI_DATA_DIR=%~dp0data"' \
+            'set "MIYABI_LISTEN=:8080"' \
+            'set "MIYABI_PUBLIC_URL=http://127.0.0.1:8080"' \
+            'set "MIYABI_LOG_LEVEL=info"' \
+            'echo.' \
+            'echo Miyabi starting...' \
+            'echo Browser: http://127.0.0.1:8080' \
+            'echo Password: change-me' \
+            'echo Data: %MIYABI_DATA_DIR%' \
+            'echo.' \
+            '"%~dp0miyabi.exe"' \
+            'if errorlevel 1 pause' \
+            > "dist/miyabi-${{ matrix.name }}/start.bat"
 
-          echo.
-          echo  Miyabi 正在启动...
-          echo  浏览器打开: http://127.0.0.1:8080
-          echo  默认密码: change-me  （请尽快修改 start.bat）
-          echo  数据目录: %~dp0data
-          echo.
-          miyabi.exe
-          pause
-          EOF
-
-          cat > "dist/miyabi-${{ matrix.name }}/使用说明.txt" << 'EOF'
-          Miyabi 本地版（Windows）
-
-          1. 双击 start.bat 启动
-          2. 浏览器访问 http://127.0.0.1:8080
-          3. 默认访问密码：change-me（请立刻改掉）
-
-          数据、图片缓存、Emby STRM 全部保存在 data 文件夹。
-          不要删除 data，否则会丢失库记录。
-
-          修改密码/端口：用记事本编辑 start.bat 里的环境变量即可。
-          EOF
+          printf '%s\r\n' \
+            'Miyabi local (Windows)' \
+            '' \
+            '1. Double-click start.bat' \
+            '2. Open http://127.0.0.1:8080' \
+            '3. Default password: change-me (edit start.bat to change)' \
+            '' \
+            'Data is stored in the data folder. Do not delete it.' \
+            > "dist/miyabi-${{ matrix.name }}/README.txt"
 
           cd dist
           zip -r "../miyabi-${{ matrix.name }}.zip" "miyabi-${{ matrix.name }}"
@@ -114,17 +120,21 @@ jobs:
 
           cat > "dist/miyabi-${{ matrix.name }}/start.sh" << 'EOF'
           #!/bin/bash
+          set -e
+          DIR="$(cd "$(dirname "$0")" && pwd)"
           export MIYABI_ACCESS_PASSWORD="${MIYABI_ACCESS_PASSWORD:-change-me}"
-          export MIYABI_DATA_DIR="$(cd "$(dirname "$0")" && pwd)/data"
+          export MIYABI_DATA_DIR="${MIYABI_DATA_DIR:-$DIR/data}"
           export MIYABI_LISTEN="${MIYABI_LISTEN:-:8080}"
           export MIYABI_PUBLIC_URL="${MIYABI_PUBLIC_URL:-http://127.0.0.1:8080}"
           export MIYABI_LOG_LEVEL="${MIYABI_LOG_LEVEL:-info}"
-          echo "Miyabi 启动中... 访问 http://127.0.0.1:8080  密码: change-me"
-          exec ./miyabi
+          echo "Miyabi starting..."
+          echo "Open http://127.0.0.1:8080  password: change-me"
+          exec "$DIR/miyabi"
           EOF
 
           chmod +x "dist/miyabi-${{ matrix.name }}/miyabi" \
                    "dist/miyabi-${{ matrix.name }}/start.sh"
+
           tar -C dist -czf "miyabi-${{ matrix.name }}.tar.gz" "miyabi-${{ matrix.name }}"
 
       - name: Upload artifact
@@ -136,12 +146,10 @@ jobs:
             miyabi-*.tar.gz
           if-no-files-found: error
 
-  # ========== 关键：挂到 GitHub Release ==========
   release:
     name: Attach to GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    # 只有打 tag 时才执行（手动 workflow_dispatch 不会走这里）
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Download all artifacts
@@ -150,21 +158,18 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: List files to upload
-        run: ls -lah artifacts/
+      - name: List files
+        run: find artifacts -type f -ls
 
-      - name: Attach binaries to Release
+      - name: Upload assets to Release
         uses: softprops/action-gh-release@v2
         with:
-          # 使用当前 tag
           tag_name: ${{ github.ref_name }}
-          # 如果 Release 还不存在就创建，已存在就追加文件
-          draft: false
-          prerelease: false
           files: |
             artifacts/*.zip
             artifacts/*.tar.gz
           fail_on_unmatched_files: true
           generate_release_notes: true
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
