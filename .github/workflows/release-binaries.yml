@@ -1,0 +1,167 @@
+name: Release Windows / Linux binaries
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:   # 也可以在 Actions 页面手动跑
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-amd64
+            goos: windows
+            goarch: amd64
+            ext: .exe
+            archive: zip
+          - name: linux-amd64
+            goos: linux
+            goarch: amd64
+            ext: ""
+            archive: tar.gz
+          # 需要 arm64 再加下面两行
+          # - name: windows-arm64
+          #   goos: windows
+          #   goarch: arm64
+          #   ext: .exe
+          #   archive: zip
+          # - name: linux-arm64
+          #   goos: linux
+          #   goarch: arm64
+          #   ext: ""
+          #   archive: tar.gz
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@10 --activate
+
+      - name: Build frontend
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -trimpath -ldflags="-s -w" \
+            -o "miyabi${{ matrix.ext }}" \
+            ./cmd/miyabi
+
+      - name: Package Windows (解压即用)
+        if: matrix.goos == 'windows'
+        run: |
+          mkdir -p dist/miyabi-${{ matrix.name }}
+          cp miyabi.exe dist/miyabi-${{ matrix.name }}/
+          cat > dist/miyabi-${{ matrix.name }}/start.bat << 'EOF'
+          @echo off
+          chcp 65001 >nul
+          title Miyabi
+          set MIYABI_ACCESS_PASSWORD=change-me
+          set MIYABI_DATA_DIR=%~dp0data
+          set MIYABI_LISTEN=:8080
+          set MIYABI_PUBLIC_URL=http://127.0.0.1:8080
+          set MIYABI_LOG_LEVEL=info
+
+          echo.
+          echo  Miyabi 正在启动...
+          echo  浏览器打开: http://127.0.0.1:8080
+          echo  默认密码: change-me  （请尽快修改 start.bat）
+          echo  数据目录: %~dp0data
+          echo.
+          miyabi.exe
+          pause
+          EOF
+
+          cat > dist/miyabi-${{ matrix.name }}/使用说明.txt << 'EOF'
+          Miyabi 本地版（Windows）
+
+          1. 双击 start.bat 启动
+          2. 浏览器访问 http://127.0.0.1:8080
+          3. 默认访问密码：change-me（请立刻改掉）
+
+          数据、图片缓存、Emby STRM 全部保存在 data 文件夹。
+          不要删除 data，否则会丢失库记录。
+
+          修改密码/端口：用记事本编辑 start.bat 里的环境变量即可。
+          EOF
+
+          cd dist
+          zip -r "miyabi-${{ matrix.name }}.zip" "miyabi-${{ matrix.name }}"
+          cd ..
+          mv dist/miyabi-${{ matrix.name }}.zip .
+
+      - name: Package Linux
+        if: matrix.goos == 'linux'
+        run: |
+          mkdir -p dist/miyabi-${{ matrix.name }}
+          cp miyabi dist/miyabi-${{ matrix.name }}/
+          cat > dist/miyabi-${{ matrix.name }}/start.sh << 'EOF'
+          #!/bin/bash
+          export MIYABI_ACCESS_PASSWORD="${MIYABI_ACCESS_PASSWORD:-change-me}"
+          export MIYABI_DATA_DIR="$(cd "$(dirname "$0")" && pwd)/data"
+          export MIYABI_LISTEN="${MIYABI_LISTEN:-:8080}"
+          export MIYABI_PUBLIC_URL="${MIYABI_PUBLIC_URL:-http://127.0.0.1:8080}"
+          export MIYABI_LOG_LEVEL="${MIYABI_LOG_LEVEL:-info}"
+          echo "Miyabi 启动中... 访问 http://127.0.0.1:8080  密码: change-me"
+          exec ./miyabi
+          EOF
+          chmod +x dist/miyabi-${{ matrix.name }}/miyabi \
+                   dist/miyabi-${{ matrix.name }}/start.sh
+          tar -C dist -czf "miyabi-${{ matrix.name }}.tar.gz" "miyabi-${{ matrix.name }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: miyabi-${{ matrix.name }}
+          path: |
+            miyabi-*.zip
+            miyabi-*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Attach to GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
