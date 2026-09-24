@@ -65,7 +65,7 @@ export function DataSection() {
           <RefreshCwIcon className={cn('size-4', info.isFetching && 'animate-spin')} />
         </Button>
       </SettingRow>
-      <SettingRow title="数据库" description="媒体库索引、观看记录和应用设置，包含当前日志文件">
+      <SettingRow title="数据库" description="包含媒体库索引、观看记录、应用设置以及日志">
         {info.isPending ? (
           <Skeleton className="h-5 w-24" />
         ) : (

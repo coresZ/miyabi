@@ -15,11 +15,11 @@ export function DiscoverPage() {
 
   return (
     <AppPage>
-      <PageHeader title="发现" description="浏览 JavDB 的最新发行、即将发行和分类内容" />
+      <PageHeader title="发现" description="浏览最新发行、即将发行和分类内容" />
       <div className="min-w-0 space-y-6">
         <Tabs value={view} onValueChange={value => setView(value as DiscoverView)}>
           <TabsList>
-            <TabsTrigger value="released">最新</TabsTrigger>
+            <TabsTrigger value="released">最新发行</TabsTrigger>
             <TabsTrigger value="upcoming">即将发行</TabsTrigger>
             <TabsTrigger value="category">分类浏览</TabsTrigger>
           </TabsList>
