@@ -43,7 +43,6 @@ export function PanDirectoryRow({
                   type="button"
                   variant="outline"
                   size="icon"
-
                   disabled={disabled || clear.isPending}
                 >
                   <FolderOpenIcon className="size-4" />
@@ -59,7 +58,6 @@ export function PanDirectoryRow({
                   type="button"
                   variant="outline"
                   size="icon"
-
                   disabled={disabled || clear.isPending}
                   onClick={() => clear.mutate()}
                 >

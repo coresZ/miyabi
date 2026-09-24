@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { GlobeIcon, RefreshCwIcon } from 'lucide-react'
+import { GlobeIcon, LoaderCircleIcon, RefreshCwIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -110,32 +110,20 @@ export function NetworkSection() {
       {isEnabled ? (
         <>
           <SettingRow title="代理地址" description="支持 HTTP、HTTPS 与 SOCKS5 代理协议">
-            <div className="flex w-full items-center gap-2 sm:w-auto">
-              <Input
-                ref={inputRef}
-                type="text"
-                value={url}
-                placeholder="http://127.0.0.1:7890"
-                className="w-full sm:w-80"
-                disabled={disabled}
-                onChange={e => setUserInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleSave()
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={disabled || !isDirty}
-                onClick={handleSave}
-              >
-                保存
-              </Button>
-            </div>
+            <Input
+              ref={inputRef}
+              type="text"
+              value={url}
+              placeholder="http://127.0.0.1:7890"
+              disabled={disabled}
+              onChange={e => setUserInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleSave()
+              }}
+            />
           </SettingRow>
 
-          <SettingRow title="连通性测试" description="测试当前填写的代理地址网络连通状态" inline>
+          <div className="flex items-center justify-end gap-2">
             <Button
               type="button"
               variant="outline"
@@ -146,7 +134,18 @@ export function NetworkSection() {
               <RefreshCwIcon className={cn('size-3.5', testNetwork.isPending && 'animate-spin')} />
               测试连接
             </Button>
-          </SettingRow>
+            <Button
+              type="button"
+              size="sm"
+              disabled={disabled || !isDirty}
+              onClick={handleSave}
+            >
+              {updateConfig.isPending ? (
+                <LoaderCircleIcon className="mr-1.5 size-3.5 animate-spin" />
+              ) : null}
+              保存
+            </Button>
+          </div>
         </>
       ) : null}
 

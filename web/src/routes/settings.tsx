@@ -21,7 +21,7 @@ export const Route = createFileRoute('/settings')({
 function SettingsPage() {
   return (
     <AppPage showBackTop={false}>
-      <PageHeader title="设置" description="管理 115、Emby、数据源、网络代理和本地应用选项" />
+      <PageHeader title="设置" description="管理应用选项和其他配置" />
 
       <Card>
         <CardContent className="space-y-8">

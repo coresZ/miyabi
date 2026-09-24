@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2Icon, LoaderCircleIcon, TvMinimalIcon } from 'lucide-react'
+import { LoaderCircleIcon, RefreshCwIcon, TvMinimalIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { type EmbyConfig, useEmbyConfig, useTestEmbyConfig, useUpdateEmbyConfig } from '@/api/emby'
@@ -7,6 +7,7 @@ import { InlineError } from '@/components/error-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
 import { SettingRow, SettingsSection } from './shared'
 
 export function EmbySection() {
@@ -16,7 +17,6 @@ export function EmbySection() {
 
   const config = emby.data
   const [form, setForm] = useState<EmbyConfig | null>(null)
-  const [testResult, setTestResult] = useState<{ name: string; version: string } | null>(null)
 
   const current: EmbyConfig = form ??
     config ?? {
@@ -62,13 +62,13 @@ export function EmbySection() {
       return
     }
 
-    setTestResult(null)
     testConfig.mutate(
       { server_url: trimmedUrl, api_key: trimmedKey },
       {
         onSuccess: data => {
-          setTestResult({ name: data.server_name, version: data.version })
-          toast.success(`连接成功：${data.server_name} (v${data.version})`)
+          toast.success('Emby 连接成功', {
+            description: `${data.server_name} (v${data.version})`
+          })
         },
         onError: error => {
           toast.error(error instanceof Error ? error.message : '连接 Emby 服务器失败')
@@ -124,14 +124,10 @@ export function EmbySection() {
         />
       </SettingRow>
 
-      <SettingRow
-        title="服务器地址"
-        description="Emby 服务的访问地址，例如 http://192.168.1.100:8096"
-      >
+      <SettingRow title="服务器地址" description="Emby 服务的访问地址">
         <Input
           value={current.server_url}
           placeholder="http://192.168.1.100:8096"
-          className="w-full sm:w-80"
           disabled={disabled}
           onChange={e => updateField('server_url', e.target.value)}
         />
@@ -142,7 +138,6 @@ export function EmbySection() {
           type="password"
           value={current.api_key}
           placeholder="填入 Emby API Key"
-          className="w-full sm:w-80"
           disabled={disabled}
           onChange={e => updateField('api_key', e.target.value)}
         />
@@ -155,46 +150,29 @@ export function EmbySection() {
         <Input
           value={current.media_path}
           placeholder="/media"
-          className="w-full sm:w-80"
           disabled={disabled}
           onChange={e => updateField('media_path', e.target.value)}
         />
       </SettingRow>
 
-      <SettingRow
-        title="连通性与保存"
-        description={
-          testResult ? (
-            <span className="inline-flex items-center gap-1.5 text-xs text-success">
-              <CheckCircle2Icon className="size-3.5" />
-              已连接：{testResult.name} ({testResult.version})
-            </span>
-          ) : (
-            '测试当前填写的配置是否能正常连接 Emby'
-          )
-        }
-      >
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={disabled || testConfig.isPending}
-            onClick={handleTest}
-          >
-            {testConfig.isPending ? (
-              <LoaderCircleIcon className="mr-1.5 size-3.5 animate-spin" />
-            ) : null}
-            测试连接
-          </Button>
-          <Button type="button" size="sm" disabled={disabled || !isDirty} onClick={handleSave}>
-            {updateConfig.isPending ? (
-              <LoaderCircleIcon className="mr-1.5 size-3.5 animate-spin" />
-            ) : null}
-            保存设置
-          </Button>
-        </div>
-      </SettingRow>
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled || testConfig.isPending}
+          onClick={handleTest}
+        >
+          <RefreshCwIcon className={cn('size-3.5', testConfig.isPending && 'animate-spin')} />
+          测试连接
+        </Button>
+        <Button type="button" size="sm" disabled={disabled || !isDirty} onClick={handleSave}>
+          {updateConfig.isPending ? (
+            <LoaderCircleIcon className="mr-1.5 size-3.5 animate-spin" />
+          ) : null}
+          保存
+        </Button>
+      </div>
 
       {emby.isError ? <InlineError>后端服务暂不可用，无法读取 Emby 配置。</InlineError> : null}
     </SettingsSection>
