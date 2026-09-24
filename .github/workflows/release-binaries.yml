@@ -25,27 +25,16 @@ jobs:
             goos: linux
             goarch: amd64
             ext: ""
-          # 需要 arm64 时取消下面注释
-          # - name: windows-arm64
-          #   goos: windows
-          #   goarch: arm64
-          #   ext: .exe
-          # - name: linux-arm64
-          #   goos: linux
-          #   goarch: arm64
-          #   ext: ""
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1. 先装 pnpm（关键！顺序不能反）
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
-      # 2. 再装 Node（并开启 pnpm 缓存）
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -79,7 +68,7 @@ jobs:
         if: matrix.goos == 'windows'
         run: |
           mkdir -p "dist/miyabi-${{ matrix.name }}"
-          cp "miyabi.exe" "dist/miyabi-${{ matrix.name }}/"
+          cp miyabi.exe "dist/miyabi-${{ matrix.name }}/"
 
           cat > "dist/miyabi-${{ matrix.name }}/start.bat" << 'EOF'
           @echo off
@@ -116,7 +105,6 @@ jobs:
 
           cd dist
           zip -r "../miyabi-${{ matrix.name }}.zip" "miyabi-${{ matrix.name }}"
-          cd ..
 
       - name: Package Linux
         if: matrix.goos == 'linux'
@@ -137,7 +125,6 @@ jobs:
 
           chmod +x "dist/miyabi-${{ matrix.name }}/miyabi" \
                    "dist/miyabi-${{ matrix.name }}/start.sh"
-
           tar -C dist -czf "miyabi-${{ matrix.name }}.tar.gz" "miyabi-${{ matrix.name }}"
 
       - name: Upload artifact
@@ -149,10 +136,12 @@ jobs:
             miyabi-*.tar.gz
           if-no-files-found: error
 
+  # ========== 关键：挂到 GitHub Release ==========
   release:
     name: Attach to GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    # 只有打 tag 时才执行（手动 workflow_dispatch 不会走这里）
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Download all artifacts
@@ -161,10 +150,21 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Upload to Release
+      - name: List files to upload
+        run: ls -lah artifacts/
+
+      - name: Attach binaries to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*
+          # 使用当前 tag
+          tag_name: ${{ github.ref_name }}
+          # 如果 Release 还不存在就创建，已存在就追加文件
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/*.zip
+            artifacts/*.tar.gz
+          fail_on_unmatched_files: true
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
