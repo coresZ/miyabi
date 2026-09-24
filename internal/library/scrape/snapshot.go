@@ -107,15 +107,18 @@ func VideoFingerprint(files []pan.File) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Matches checks if the snapshot matches the current movie files and directory observations.
-func (snapshot Snapshot) Matches(record *ent.Movie, directories DirectoryObservations) bool {
+// VideosMatch checks if the snapshot matches the current movie video files.
+func (snapshot Snapshot) VideosMatch(record *ent.Movie) bool {
 	files := make([]pan.File, 0, len(record.Edges.Files))
-	ids := make(map[string]bool, len(record.Edges.Files))
 	for _, entry := range record.Edges.Files {
 		files = append(files, pan.File{ID: entry.FileID, ParentID: entry.ParentID, Name: entry.Name, SHA1: entry.Sha1, Size: entry.Size})
-		ids[entry.FileID] = true
 	}
-	if snapshot.Videos != VideoFingerprint(files) {
+	return snapshot.Videos == VideoFingerprint(files)
+}
+
+// Matches checks if the snapshot matches the current movie files and directory observations.
+func (snapshot Snapshot) Matches(record *ent.Movie, directories DirectoryObservations) bool {
+	if !snapshot.VideosMatch(record) {
 		return false
 	}
 	if snapshot.LocalExport {
@@ -124,6 +127,11 @@ func (snapshot Snapshot) Matches(record *ent.Movie, directories DirectoryObserva
 	if len(snapshot.Directories) == 0 {
 		return false
 	}
+	ids := make(map[string]bool, len(record.Edges.Files))
+	for _, entry := range record.Edges.Files {
+		ids[entry.FileID] = true
+	}
+
 	for _, saved := range snapshot.Directories {
 		directory := directories[saved.ID]
 		shared := slices.ContainsFunc(directory, func(entry ObservedFile) bool { return entry.VideoID != "" && !ids[entry.VideoID] })

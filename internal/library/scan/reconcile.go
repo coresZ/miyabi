@@ -17,14 +17,24 @@ import (
 )
 
 // ReconcileScan executes reconciliation within a fresh transaction.
-func ReconcileScan(ctx context.Context, db *ent.Client, taskID int, scanID string, payload *Payload, observed scrape.DirectoryObservations, images *mediaimage.Cache, tasksSvc *tasks.Service) error {
+func ReconcileScan(ctx context.Context, db *ent.Client, taskID int, scanID string, payload *Payload, observed scrape.DirectoryObservations, images *mediaimage.Cache, tasksSvc *tasks.Service, embyOpts ...string) error {
 	return ent.WithTx(ctx, db, func(tx *ent.Tx) error {
-		return ReconcileScanTx(ctx, tx, taskID, scanID, payload, observed, images, tasksSvc)
+		return ReconcileScanTx(ctx, tx, taskID, scanID, payload, observed, images, tasksSvc, embyOpts...)
 	})
 }
 
 // ReconcileScanTx cleans up missing files, updates offline workflows, and schedules metadata scrape tasks.
-func ReconcileScanTx(ctx context.Context, tx *ent.Tx, taskID int, scanID string, payload *Payload, observed scrape.DirectoryObservations, images *mediaimage.Cache, tasksSvc *tasks.Service) error {
+func ReconcileScanTx(ctx context.Context, tx *ent.Tx, taskID int, scanID string, payload *Payload, observed scrape.DirectoryObservations, images *mediaimage.Cache, tasksSvc *tasks.Service, embyOpts ...string) error {
+	embyDir, publicURL, strmToken := "", "", ""
+	if len(embyOpts) > 0 {
+		embyDir = embyOpts[0]
+	}
+	if len(embyOpts) > 1 {
+		publicURL = embyOpts[1]
+	}
+	if len(embyOpts) > 2 {
+		strmToken = embyOpts[2]
+	}
 	stale := file.And(database.LibraryFiles(payload.Source), file.ScanIDNEQ(scanID))
 	if payload.TargetID != "" {
 		if payload.TargetFile {
@@ -73,7 +83,8 @@ func ReconcileScanTx(ctx context.Context, tx *ent.Tx, taskID int, scanID string,
 		}
 	}
 	moviesToScrape, err := tx.File.Query().Where(indexed).QueryMovie().
-		WithFiles(func(q *ent.FileQuery) { q.Where(database.LibraryFiles(payload.Source)) }).All(ctx)
+		WithFiles(func(q *ent.FileQuery) { q.Where(database.LibraryFiles(payload.Source)) }).
+		WithActors().WithTags().All(ctx)
 	if err != nil {
 		return fmt.Errorf("find scanned metadata jobs: %w", err)
 	}
@@ -95,10 +106,16 @@ func ReconcileScanTx(ctx context.Context, tx *ent.Tx, taskID int, scanID string,
 					return fmt.Errorf("check cached artwork: %w", err)
 				}
 				if cached {
+					if embyDir != "" {
+						if err := scrape.ExportLocalMovie(embyDir, publicURL, strmToken, record, images); err != nil {
+							return fmt.Errorf("export local movie %s: %w", record.Code, err)
+						}
+					}
 					continue
 				}
 			}
 		}
+
 		input := scrape.MetadataPayload{
 			Source:     payload.Source,
 			ScanTaskID: taskID,

@@ -1,0 +1,156 @@
+package scrape
+
+import (
+	"encoding/base64"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/ppxb/miyabi/internal/database"
+	"github.com/ppxb/miyabi/internal/ent/actor"
+	"github.com/ppxb/miyabi/internal/ent/movie"
+	mediaimage "github.com/ppxb/miyabi/internal/image"
+	"github.com/ppxb/miyabi/internal/nfo"
+)
+
+func TestExportLocalMovie_ScrapedRecordExportsMissingSidecars(t *testing.T) {
+	tempDir := t.TempDir()
+	embyDir := filepath.Join(tempDir, "emby")
+	imageDir := filepath.Join(tempDir, "images")
+
+	store, err := database.Open(t.Context(), filepath.Join(tempDir, "data"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	images, err := mediaimage.NewCache(imageDir)
+	if err != nil {
+		t.Fatalf("create image cache: %v", err)
+	}
+
+	// Prepare valid cached image data (1x1 PNG)
+	pngBytes, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+	artwork, err := images.Restore(pngBytes, pngBytes)
+	if err != nil {
+		t.Fatalf("restore artwork: %v", err)
+	}
+
+
+	// Create movie in database with ScrapeStatusDone
+	releaseDate := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
+	movieRecord, err := store.Client.Movie.Create().
+		SetCode("ALDN-613").
+		SetTitle("兄嫁と中出ししまくった数日間 水野優香").
+		SetScrapeStatus(movie.ScrapeStatusDone).
+		SetPoster(artwork.Poster).
+		SetFanarts([]string{artwork.Fanart}).
+		SetReleaseDate(releaseDate).
+		SetDuration(130).
+		SetRating(4.69).
+		Save(t.Context())
+	if err != nil {
+		t.Fatalf("create movie: %v", err)
+	}
+
+	actorRecord, err := store.Client.Actor.Create().
+		SetName("水野優香").
+		SetJavdbID("8VXx").
+		SetGender(actor.GenderFemale).
+		Save(t.Context())
+	if err != nil {
+		t.Fatalf("create actor: %v", err)
+	}
+
+	_, err = movieRecord.Update().AddActors(actorRecord).Save(t.Context())
+	if err != nil {
+		t.Fatalf("add actor: %v", err)
+	}
+
+	_, err = store.Client.File.Create().
+		SetFileID("3524256317969532243").
+		SetParentID("root").
+		SetName("ALDN-613.mp4").
+		SetSha1("ABC123SHA1").
+		SetSize(1024 * 1024 * 500).
+		SetAccountID("100").
+		SetScanID("scan-1").
+		SetMovie(movieRecord).
+		Save(t.Context())
+	if err != nil {
+		t.Fatalf("create file: %v", err)
+	}
+
+	// Simulate fast STRM already written, but NFO and poster missing
+	aldnDir := filepath.Join(embyDir, "ALDN", "ALDN-613")
+	if err := os.MkdirAll(aldnDir, 0o755); err != nil {
+		t.Fatalf("mkdir aldn: %v", err)
+	}
+	strmPath := filepath.Join(aldnDir, "ALDN-613.strm")
+	if err := os.WriteFile(strmPath, []byte("http://127.0.0.1:8080/api/strm/play/3524256317969532243?token=testtoken\n"), 0o644); err != nil {
+		t.Fatalf("write strm: %v", err)
+	}
+
+	// Load movie with files, actors, tags
+	loadedMovie, err := store.Client.Movie.Query().
+		Where(movie.IDEQ(movieRecord.ID)).
+		WithFiles().
+		WithActors().
+		WithTags().
+		Only(t.Context())
+	if err != nil {
+		t.Fatalf("load movie: %v", err)
+	}
+
+	// Call ExportLocalMovie
+	err = ExportLocalMovie(embyDir, "http://127.0.0.1:8080", "testtoken", loadedMovie, images)
+	if err != nil {
+		t.Fatalf("ExportLocalMovie failed: %v", err)
+	}
+
+	// 1. Verify NFO exists and contains metadata
+	nfoPath := filepath.Join(aldnDir, "ALDN-613.nfo")
+	nfoContent, err := os.ReadFile(nfoPath)
+	if err != nil {
+		t.Fatalf("nfo not found: %v", err)
+	}
+	doc, err := nfo.Decode(nfoContent)
+	if err != nil {
+		t.Fatalf("decode nfo failed: %v", err)
+	}
+	if doc.Title != "兄嫁と中出ししまくった数日間 水野優香" || doc.Code != "ALDN-613" {
+		t.Fatalf("nfo title or code mismatch: %+v", doc)
+	}
+	if len(doc.Actors) == 0 || doc.Actors[0].Name != "水野優香" {
+		t.Fatalf("nfo actor mismatch: %+v", doc.Actors)
+	}
+
+	// 2. Verify poster exists
+	posterPath := filepath.Join(aldnDir, "poster.jpg")
+	pData, err := os.ReadFile(posterPath)
+	if err != nil || len(pData) == 0 {
+		t.Fatalf("poster data missing or empty: %v", err)
+	}
+
+	// 3. Verify fanart exists
+	fanartPath := filepath.Join(aldnDir, "fanart.jpg")
+	fData, err := os.ReadFile(fanartPath)
+	if err != nil || len(fData) == 0 {
+		t.Fatalf("fanart data missing or empty: %v", err)
+	}
+
+
+	// 4. Verify STRM still exists and has token
+	sData, err := os.ReadFile(strmPath)
+	if err != nil || !strings.Contains(string(sData), "token=testtoken") {
+		t.Fatalf("strm mismatch: %s", string(sData))
+	}
+
+	// 5. Subsequent call returns nil cleanly without error (noop check)
+	err = ExportLocalMovie(embyDir, "http://127.0.0.1:8080", "testtoken", loadedMovie, images)
+	if err != nil {
+		t.Fatalf("second ExportLocalMovie failed: %v", err)
+	}
+}

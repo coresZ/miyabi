@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/ppxb/miyabi/internal/codeid"
@@ -241,26 +238,6 @@ func (service *Service) writeSidecars(ctx context.Context, sess drive.Session, i
 }
 
 func (service *Service) exportLocalMedia(ctx context.Context, input CoverPayload, stem string, doc nfo.Movie, videos []pan.File, poster, fanart []byte) error {
-	embyDir := service.embyDir
-	if embyDir == "" {
-		embyDir = "./data/emby"
-	}
-	publicURL := service.publicURL
-	if publicURL == "" {
-		publicURL = "http://127.0.0.1:8080"
-	}
-
-	prefix := codeid.Prefix(input.Code)
-	destDir := filepath.Join(embyDir, prefix, input.Code)
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return fmt.Errorf("create emby directory %s: %w", destDir, err)
-	}
-
-	tokenParam := ""
-	if service.strmToken != "" {
-		tokenParam = "?token=" + url.QueryEscape(service.strmToken)
-	}
-
 	// Resolve videos from database if empty
 	if len(videos) == 0 && service.db != nil && input.MovieID > 0 {
 		records, _ := service.db.File.Query().
@@ -272,53 +249,9 @@ func (service *Service) exportLocalMedia(ctx context.Context, input CoverPayload
 		}
 	}
 
-	// 1. Write STRM files
-	if len(videos) == 1 {
-		strmPath := filepath.Join(destDir, stem+".strm")
-		content := fmt.Sprintf("%s/api/strm/play/%s%s\n", publicURL, videos[0].ID, tokenParam)
-		if err := os.WriteFile(strmPath, []byte(content), 0o644); err != nil {
-			return fmt.Errorf("write strm file: %w", err)
-		}
-	} else if len(videos) > 1 {
-		for i, v := range videos {
-			strmPath := filepath.Join(destDir, fmt.Sprintf("%s-cd%d.strm", stem, i+1))
-			content := fmt.Sprintf("%s/api/strm/play/%s%s\n", publicURL, v.ID, tokenParam)
-			if err := os.WriteFile(strmPath, []byte(content), 0o644); err != nil {
-				return fmt.Errorf("write strm file: %w", err)
-			}
-		}
-	}
-
-	// 2. Write NFO file
-	posterName, fanartName := "poster.jpg", "fanart.jpg"
-	nfoName := stem + ".nfo"
-	doc.Thumbs = []nfo.Thumb{{Aspect: "poster", Path: posterName}}
-	doc.Fanart = fanartName
-	nfoBody, err := nfo.Encode(doc)
-	if err != nil {
-		return fmt.Errorf("encode nfo: %w", err)
-	}
-	nfoPath := filepath.Join(destDir, nfoName)
-	if err := os.WriteFile(nfoPath, nfoBody, 0o644); err != nil {
-		return fmt.Errorf("write nfo file: %w", err)
-	}
-
-	// 3. Write poster and fanart
-	if len(poster) > 0 {
-		posterPath := filepath.Join(destDir, posterName)
-		if err := os.WriteFile(posterPath, poster, 0o644); err != nil {
-			return fmt.Errorf("write poster: %w", err)
-		}
-	}
-	if len(fanart) > 0 {
-		fanartPath := filepath.Join(destDir, fanartName)
-		if err := os.WriteFile(fanartPath, fanart, 0o644); err != nil {
-			return fmt.Errorf("write fanart: %w", err)
-		}
-	}
-
-	return nil
+	return ExportEmbyMedia(service.embyDir, service.publicURL, service.strmToken, input.Code, doc, videos, poster, fanart)
 }
+
 
 
 // VerifyCoverOrigin validates that existing sidecars have not changed concurrently.

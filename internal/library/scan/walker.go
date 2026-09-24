@@ -137,9 +137,10 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 	}
 	reconcile := func() error {
 		return sess.Commit(ctx, func(tx *ent.Tx) error {
-			return ReconcileScanTx(ctx, tx, job.ID, scanID, &payload, observed, images, tasksSvc)
+			return ReconcileScanTx(ctx, tx, job.ID, scanID, &payload, observed, images, tasksSvc, s.embyDir, s.publicURL, s.strmToken)
 		})
 	}
+
 
 	if payload.TargetID != "" {
 		info, err := drive.SourceInfo(ctx, sess, payload.TargetID)
