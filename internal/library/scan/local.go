@@ -34,8 +34,9 @@ type LocalScanResult struct {
 
 // LocalScanner scans a local directory structure containing .strm and video files.
 type LocalScanner struct {
-	db     *ent.Client
-	images *mediaimage.Cache
+	db       *ent.Client
+	images   *mediaimage.Cache
+	notifier MediaNotifier
 }
 
 // NewLocalScanner creates a new LocalScanner.
@@ -44,6 +45,11 @@ func NewLocalScanner(db *ent.Client, images *mediaimage.Cache) *LocalScanner {
 		db:     db,
 		images: images,
 	}
+}
+
+// SetMediaNotifier sets the notification handler for discovered media folders.
+func (s *LocalScanner) SetMediaNotifier(notifier MediaNotifier) {
+	s.notifier = notifier
 }
 
 type dirGroup struct {
@@ -250,6 +256,9 @@ func (s *LocalScanner) ingestMedia(
 					SetStoragePath(subPath).
 					Save(ctx)
 			}
+		}
+		if s.notifier != nil {
+			s.notifier.NotifyUpdated(filepath.Dir(mediaPath))
 		}
 		return nil
 	})

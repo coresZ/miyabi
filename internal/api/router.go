@@ -31,6 +31,7 @@ type Dependencies struct {
 	Maintenance MaintenanceManager
 	Network     NetworkManager
 	Subtitle    SubtitleManager
+	Emby        EmbyManager
 	Frontend    fs.FS
 	STRMToken   string
 	EmbyDir     string
@@ -56,6 +57,9 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	settingsAPI.GET("/network", networkHandler(deps.Network))
 	settingsAPI.PUT("/network", networkUpdateHandler(deps.Network))
 	settingsAPI.POST("/network/test", networkTestHandler(deps.Network))
+	settingsAPI.GET("/emby", embyConfigHandler(deps.Emby))
+	settingsAPI.PUT("/emby", embyUpdateHandler(deps.Emby))
+	settingsAPI.POST("/emby/test", embyTestHandler(deps.Emby))
 	settingsAPI.GET("/javbus", javbusConfigHandler(deps.Catalogue))
 	settingsAPI.PUT("/javbus", javbusUpdateHandler(deps.Catalogue))
 	settingsAPI.GET("/subscription", subscriptionSettingsGetHandler(deps.Monitor))

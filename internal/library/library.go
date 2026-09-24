@@ -158,6 +158,11 @@ func (s *Service) SetPacing(pace func(context.Context) error) {
 	s.scanner.SetPacing(pace)
 }
 
+func (s *Service) SetMediaNotifier(notifier scan.MediaNotifier) {
+	s.scanner.SetMediaNotifier(notifier)
+	s.localScanner.SetMediaNotifier(notifier)
+}
+
 func (s *Service) Scan(ctx context.Context, job tasks.Job) error {
 	return s.scanner.Run(ctx, job)
 }

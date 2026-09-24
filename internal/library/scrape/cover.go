@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/ppxb/miyabi/internal/codeid"
@@ -249,7 +250,15 @@ func (service *Service) exportLocalMedia(ctx context.Context, input CoverPayload
 		}
 	}
 
-	return ExportEmbyMedia(service.embyDir, service.publicURL, service.strmToken, input.Code, doc, videos, poster, fanart)
+	if err := ExportEmbyMedia(service.embyDir, service.publicURL, service.strmToken, input.Code, doc, videos, poster, fanart); err != nil {
+		return err
+	}
+	if service.mediaNotifier != nil && service.embyDir != "" {
+		prefix := codeid.Prefix(input.Code)
+		destDir := filepath.Join(service.embyDir, prefix, input.Code)
+		service.mediaNotifier.NotifyUpdated(destDir)
+	}
+	return nil
 }
 
 

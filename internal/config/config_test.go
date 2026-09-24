@@ -13,6 +13,7 @@ func clearConfigEnvironment(t *testing.T) {
 		"MIYABI_LISTEN", "MIYABI_DATA_DIR", "MIYABI_EMBY_DIR",
 		"MIYABI_PUBLIC_URL", "MIYABI_STRM_TOKEN",
 		"MIYABI_LOG_LEVEL", "MIYABI_ACCESS_PASSWORD",
+		"MIYABI_EMBY_ENABLED", "MIYABI_EMBY_SERVER_URL", "MIYABI_EMBY_API_KEY", "MIYABI_EMBY_MEDIA_PATH",
 	} {
 		// Restore the developer's environment when the test finishes.
 		t.Setenv(key, "")
@@ -49,6 +50,10 @@ func TestLoadDefaultsAndEnvironment(t *testing.T) {
 				"MIYABI_STRM_TOKEN":     " secret-token ",
 				"MIYABI_LOG_LEVEL":      " DEBUG ",
 				"MIYABI_ACCESS_PASSWORD": " password with spaces ",
+				"MIYABI_EMBY_ENABLED":   " true ",
+				"MIYABI_EMBY_SERVER_URL": " http://192.168.1.50:8096/ ",
+				"MIYABI_EMBY_API_KEY":    " my-emby-key ",
+				"MIYABI_EMBY_MEDIA_PATH": " /media ",
 			},
 			want: Config{
 				Listen:         "127.0.0.1:9090",
@@ -59,6 +64,10 @@ func TestLoadDefaultsAndEnvironment(t *testing.T) {
 				LogLevel:       "debug",
 				AccessPassword: " password with spaces ",
 				Runtime:        DefaultRuntime(),
+				EmbyEnabled:    true,
+				EmbyServerURL:  "http://192.168.1.50:8096",
+				EmbyAPIKey:     "my-emby-key",
+				EmbyMediaPath:  "/media",
 			},
 		},
 		{

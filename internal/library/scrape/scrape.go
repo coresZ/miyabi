@@ -71,9 +71,10 @@ type Service struct {
 	dirCache map[string]dirCacheEntry
 	dirTTL   time.Duration
 
-	embyDir   string
-	publicURL string
-	strmToken string
+	embyDir       string
+	publicURL     string
+	strmToken     string
+	mediaNotifier MediaNotifier
 }
 
 // New creates a new scrape Service.
@@ -96,6 +97,11 @@ func (service *Service) SetEmbyExport(embyDir, publicURL, strmToken string) {
 	service.embyDir = embyDir
 	service.publicURL = publicURL
 	service.strmToken = strmToken
+}
+
+// SetMediaNotifier configures the notifier for Emby media updates.
+func (service *Service) SetMediaNotifier(notifier MediaNotifier) {
+	service.mediaNotifier = notifier
 }
 
 // Close releases resources and terminates background workers.

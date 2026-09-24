@@ -36,6 +36,9 @@ func DefaultPacing(ctx context.Context) error {
 	}
 }
 
+// MediaNotifier receives notifications when exported media directories are written or updated.
+type MediaNotifier = scrape.MediaNotifier
+
 // Scanner encapsulates the dependencies required to execute library scan jobs.
 type Scanner struct {
 	driveSvc  *drive.Drive
@@ -46,6 +49,7 @@ type Scanner struct {
 	publicURL string
 	strmToken string
 	pace      func(context.Context) error
+	notifier  MediaNotifier
 }
 
 // New creates a new Scanner with the provided dependencies.
@@ -66,6 +70,10 @@ func (s *Scanner) SetEmbyExport(embyDir, publicURL, strmToken string) {
 
 func (s *Scanner) SetPacing(pace func(context.Context) error) {
 	s.pace = pace
+}
+
+func (s *Scanner) SetMediaNotifier(notifier MediaNotifier) {
+	s.notifier = notifier
 }
 
 func (s *Scanner) writeFastSTRM(video Video) {
@@ -93,7 +101,11 @@ func (s *Scanner) writeFastSTRM(video Video) {
 		tokenParam = "?token=" + url.QueryEscape(s.strmToken)
 	}
 	content := fmt.Sprintf("%s/api/strm/play/%s%s\n", publicURL, video.ID, tokenParam)
-	_ = os.WriteFile(strmPath, []byte(content), 0o644)
+	if err := os.WriteFile(strmPath, []byte(content), 0o644); err == nil {
+		if s.notifier != nil {
+			s.notifier.NotifyUpdated(destDir)
+		}
+	}
 }
 
 // Run executes a library scan job: it walks the media directories, matches NFOs
@@ -137,7 +149,7 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 	}
 	reconcile := func() error {
 		return sess.Commit(ctx, func(tx *ent.Tx) error {
-			return ReconcileScanTx(ctx, tx, job.ID, scanID, &payload, observed, images, tasksSvc, s.embyDir, s.publicURL, s.strmToken)
+			return ReconcileScanTx(ctx, tx, job.ID, scanID, &payload, observed, images, tasksSvc, s.embyDir, s.publicURL, s.strmToken, s.notifier)
 		})
 	}
 
@@ -160,6 +172,7 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 			if err := savePage(path.Dir(payload.TargetPath), []Video{{File: info.File}}, func(videos []Video) []Video {
 				if videos[0].Code != "" {
 					payload.Scan.MatchedFiles, payload.Scan.Movies = 1, 1
+					s.writeFastSTRM(videos[0])
 				} else {
 					payload.Scan.UnmatchedFiles = 1
 				}
@@ -281,6 +294,7 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 					if video.Code != "" {
 						payload.Scan.MatchedFiles++
 						codes[video.Code] = true
+						s.writeFastSTRM(video)
 					} else {
 						payload.Scan.UnmatchedFiles++
 					}

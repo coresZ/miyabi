@@ -17,6 +17,7 @@ import (
 	"github.com/ppxb/miyabi/internal/config"
 	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/drive"
+	"github.com/ppxb/miyabi/internal/emby"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/javdb"
 	"github.com/ppxb/miyabi/internal/library"
@@ -43,6 +44,7 @@ type App struct {
 	catalogue *catalogue.Service
 	play      *playback.Service
 	scrape    *scrape.Service
+	embySvc   *emby.Service
 }
 
 // New initializes all services, database connections, and registers task handlers.
@@ -112,10 +114,27 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		_ = store.Close()
 		return nil, fmt.Errorf("initialize subtitle service: %w", err)
 	}
+	embySvc, err := emby.NewService(ctx, store.Client, emby.Config{
+		Enabled:   cfg.EmbyEnabled,
+		ServerURL: cfg.EmbyServerURL,
+		APIKey:    cfg.EmbyAPIKey,
+		MediaPath: cfg.EmbyMediaPath,
+		LocalDir:  cfg.EmbyDir,
+	})
+	if err != nil {
+		playSvc.Close()
+		catalogueSvc.Close()
+		driveSvc.Close()
+		_ = store.Close()
+		return nil, fmt.Errorf("initialize emby service: %w", err)
+	}
+
 	scrapeSvc.SetEmbyExport(cfg.EmbyDir, cfg.PublicURL, cfg.STRMToken)
+	scrapeSvc.SetMediaNotifier(embySvc)
 	scrapeSvc.SetSubtitles(subtitleSvc)
 	subtitleSvc.SetEmbyDir(cfg.EmbyDir)
 	libSvc.SetEmbyExport(cfg.EmbyDir, cfg.PublicURL, cfg.STRMToken)
+	libSvc.SetMediaNotifier(embySvc)
 	libSvc.SetPacing(scan.DefaultPacing)
 
 	taskRegistry.Register(tasks.NewHandler(tasks.KindScan, libSvc.Scan, libSvc.Finished))
@@ -140,6 +159,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		Maintenance: maintenanceSvc,
 		Network:     network,
 		Subtitle:    subtitleSvc,
+		Emby:        embySvc,
 		Frontend:    miyabi.Frontend(),
 		STRMToken:   cfg.STRMToken,
 		EmbyDir:     cfg.EmbyDir,
@@ -163,6 +183,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		catalogue: catalogueSvc,
 		play:      playSvc,
 		scrape:    scrapeSvc,
+		embySvc:   embySvc,
 	}, nil
 }
 
@@ -222,6 +243,9 @@ func (a *App) Run(ctx context.Context) error {
 
 // Close releases resources held by the application.
 func (a *App) Close() error {
+	if a.embySvc != nil {
+		a.embySvc.Close()
+	}
 	if a.scrape != nil {
 		a.scrape.Close()
 	}

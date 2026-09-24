@@ -82,8 +82,13 @@ func ExportEmbyMedia(embyDir, publicURL, strmToken, code string, doc nfo.Movie, 
 	return nil
 }
 
+// MediaNotifier receives notifications when exported media directories are written or updated.
+type MediaNotifier interface {
+	NotifyUpdated(localPath string)
+}
+
 // ExportLocalMovie exports an already-scraped ent.Movie record and cached artwork to the Emby directory if missing.
-func ExportLocalMovie(embyDir, publicURL, strmToken string, record *ent.Movie, images *mediaimage.Cache) error {
+func ExportLocalMovie(embyDir, publicURL, strmToken string, record *ent.Movie, images *mediaimage.Cache, notifiers ...MediaNotifier) error {
 	if record == nil || record.Code == "" {
 		return nil
 	}
@@ -125,5 +130,11 @@ func ExportLocalMovie(embyDir, publicURL, strmToken string, record *ent.Movie, i
 		}
 	}
 
-	return ExportEmbyMedia(embyDir, publicURL, strmToken, record.Code, doc, videos, posterBytes, fanartBytes)
+	if err := ExportEmbyMedia(embyDir, publicURL, strmToken, record.Code, doc, videos, posterBytes, fanartBytes); err != nil {
+		return err
+	}
+	if len(notifiers) > 0 && notifiers[0] != nil {
+		notifiers[0].NotifyUpdated(destDir)
+	}
+	return nil
 }

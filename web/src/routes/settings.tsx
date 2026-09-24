@@ -6,8 +6,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { AppearanceSection } from '@/features/settings/appearance-section'
 import { DataSection } from '@/features/settings/data-section'
-import { JavBusSection } from '@/features/settings/javbus-section'
-import { JavDBSection } from '@/features/settings/javdb-section'
+import { DataSourceSection } from '@/features/settings/data-source-section'
+import { EmbySection } from '@/features/settings/emby-section'
 import { NetworkSection } from '@/features/settings/network-section'
 import { PanSection } from '@/features/settings/pan-section'
 import { PrivacySection } from '@/features/settings/privacy-section'
@@ -21,7 +21,7 @@ export const Route = createFileRoute('/settings')({
 function SettingsPage() {
   return (
     <AppPage showBackTop={false}>
-      <PageHeader title="设置" description="管理 115、JavDB、网络代理和本地应用选项" />
+      <PageHeader title="设置" description="管理 115、Emby、数据源、网络代理和本地应用选项" />
 
       <Card>
         <CardContent className="space-y-8">
@@ -31,9 +31,9 @@ function SettingsPage() {
           <Separator />
           <NetworkSection />
           <Separator />
-          <JavDBSection />
+          <DataSourceSection />
           <Separator />
-          <JavBusSection />
+          <EmbySection />
           <Separator />
           <PanSection />
           <Separator />

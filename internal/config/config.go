@@ -20,6 +20,10 @@ type Config struct {
 	LogLevel       string
 	AccessPassword string
 	Runtime        Runtime
+	EmbyEnabled    bool
+	EmbyServerURL  string
+	EmbyAPIKey     string
+	EmbyMediaPath  string
 }
 
 func Load() (Config, error) {
@@ -37,6 +41,18 @@ func Load() (Config, error) {
 		}
 		publicURL = "http://127.0.0.1:" + port
 	}
+	embyServerURL := strings.TrimRight(strings.TrimSpace(os.Getenv("MIYABI_EMBY_SERVER_URL")), "/")
+	if embyServerURL == "" {
+		embyServerURL = strings.TrimRight(strings.TrimSpace(os.Getenv("MIYABI_EMBY_URL")), "/")
+	}
+	embyAPIKey := strings.TrimSpace(os.Getenv("MIYABI_EMBY_API_KEY"))
+	embyMediaPath := strings.TrimSpace(os.Getenv("MIYABI_EMBY_MEDIA_PATH"))
+	embyEnabledStr := strings.ToLower(strings.TrimSpace(os.Getenv("MIYABI_EMBY_ENABLED")))
+	embyEnabled := embyEnabledStr == "true" || embyEnabledStr == "1"
+	if embyEnabledStr == "" && (embyServerURL != "" || embyAPIKey != "") {
+		embyEnabled = true
+	}
+
 	cfg := Config{
 		Listen:         listen,
 		DataDir:        dataDir,
@@ -46,6 +62,10 @@ func Load() (Config, error) {
 		LogLevel:       envOrDefault("MIYABI_LOG_LEVEL", "info"),
 		AccessPassword: os.Getenv("MIYABI_ACCESS_PASSWORD"),
 		Runtime:        DefaultRuntime(),
+		EmbyEnabled:    embyEnabled,
+		EmbyServerURL:  embyServerURL,
+		EmbyAPIKey:     embyAPIKey,
+		EmbyMediaPath:  embyMediaPath,
 	}
 	if err := cfg.validate(); err != nil {
 		return Config{}, err

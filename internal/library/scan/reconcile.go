@@ -17,23 +17,32 @@ import (
 )
 
 // ReconcileScan executes reconciliation within a fresh transaction.
-func ReconcileScan(ctx context.Context, db *ent.Client, taskID int, scanID string, payload *Payload, observed scrape.DirectoryObservations, images *mediaimage.Cache, tasksSvc *tasks.Service, embyOpts ...string) error {
+func ReconcileScan(ctx context.Context, db *ent.Client, taskID int, scanID string, payload *Payload, observed scrape.DirectoryObservations, images *mediaimage.Cache, tasksSvc *tasks.Service, embyOpts ...any) error {
 	return ent.WithTx(ctx, db, func(tx *ent.Tx) error {
 		return ReconcileScanTx(ctx, tx, taskID, scanID, payload, observed, images, tasksSvc, embyOpts...)
 	})
 }
 
 // ReconcileScanTx cleans up missing files, updates offline workflows, and schedules metadata scrape tasks.
-func ReconcileScanTx(ctx context.Context, tx *ent.Tx, taskID int, scanID string, payload *Payload, observed scrape.DirectoryObservations, images *mediaimage.Cache, tasksSvc *tasks.Service, embyOpts ...string) error {
+func ReconcileScanTx(ctx context.Context, tx *ent.Tx, taskID int, scanID string, payload *Payload, observed scrape.DirectoryObservations, images *mediaimage.Cache, tasksSvc *tasks.Service, embyOpts ...any) error {
 	embyDir, publicURL, strmToken := "", "", ""
-	if len(embyOpts) > 0 {
-		embyDir = embyOpts[0]
-	}
-	if len(embyOpts) > 1 {
-		publicURL = embyOpts[1]
-	}
-	if len(embyOpts) > 2 {
-		strmToken = embyOpts[2]
+	var notifier scrape.MediaNotifier
+	var strCount int
+	for _, opt := range embyOpts {
+		switch v := opt.(type) {
+		case string:
+			switch strCount {
+			case 0:
+				embyDir = v
+			case 1:
+				publicURL = v
+			case 2:
+				strmToken = v
+			}
+			strCount++
+		case scrape.MediaNotifier:
+			notifier = v
+		}
 	}
 	stale := file.And(database.LibraryFiles(payload.Source), file.ScanIDNEQ(scanID))
 	if payload.TargetID != "" {
@@ -107,7 +116,7 @@ func ReconcileScanTx(ctx context.Context, tx *ent.Tx, taskID int, scanID string,
 				}
 				if cached {
 					if embyDir != "" {
-						if err := scrape.ExportLocalMovie(embyDir, publicURL, strmToken, record, images); err != nil {
+						if err := scrape.ExportLocalMovie(embyDir, publicURL, strmToken, record, images, notifier); err != nil {
 							return fmt.Errorf("export local movie %s: %w", record.Code, err)
 						}
 					}
