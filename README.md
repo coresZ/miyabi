@@ -75,8 +75,6 @@ services:
 docker compose up -d
 ```
 
----
-
 启动后访问 `http://<服务器IP>:8080`。
 
 查看日志：
