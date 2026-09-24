@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -243,3 +244,44 @@ func TestAuth_RateLimiterTriggers(t *testing.T) {
 		}
 	}
 }
+
+func TestAuth_UntrustedProxiesIgnoreSpoofedIP(t *testing.T) {
+	password := "correct-password"
+	gate := NewAccessGateService(password)
+	// By default, TrustedProxies is empty so router.SetTrustedProxies(nil) is in effect
+	router := NewRouter(Dependencies{
+		Access: gate,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	// Fail 5 times with different spoofed X-Forwarded-For headers, but from the same TCP RemoteAddr
+	for i := 0; i < 5; i++ {
+		body, _ := json.Marshal(map[string]string{"password": "wrong"})
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Forwarded-For", fmt.Sprintf("198.51.100.%d", i+1))
+		req.RemoteAddr = "203.0.113.50:12345"
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401, got %d", i+1, rec.Code)
+		}
+	}
+
+	// 6th attempt with another spoofed X-Forwarded-For must STILL be blocked because RemoteAddr was banned!
+	{
+		body, _ := json.Marshal(map[string]string{"password": password})
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Forwarded-For", "198.51.100.99")
+		req.RemoteAddr = "203.0.113.50:12345"
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected blocked with StatusConflict even with spoofed X-Forwarded-For, got %d: %s", rec.Code, rec.Body.String())
+		}
+	}
+}
+

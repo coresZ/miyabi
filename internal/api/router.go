@@ -34,13 +34,21 @@ type Dependencies struct {
 	Subtitle    SubtitleManager
 	Emby        EmbyManager
 	Frontend    fs.FS
-	STRMToken   string
-	EmbyDir     string
+	STRMToken      string
+	EmbyDir        string
+	TrustedProxies []string
 }
 
 func NewRouter(deps Dependencies) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
+
+	if len(deps.TrustedProxies) > 0 {
+		_ = router.SetTrustedProxies(deps.TrustedProxies)
+	} else {
+		_ = router.SetTrustedProxies(nil)
+	}
+
 	router.Use(
 		sloggin.NewWithFilters(deps.Logger, sloggin.IgnoreStatus(statusClientClosedRequest)),
 		recoveryMiddleware(deps.Logger),

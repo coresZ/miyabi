@@ -176,15 +176,17 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		Network:     network,
 		Subtitle:    subtitleSvc,
 		Emby:        embySvc,
-		Frontend:    miyabi.Frontend(),
-		STRMToken:   cfg.STRMToken,
-		EmbyDir:     cfg.EmbyDir,
+		Frontend:       miyabi.Frontend(),
+		STRMToken:      cfg.STRMToken,
+		EmbyDir:        cfg.EmbyDir,
+		TrustedProxies: cfg.TrustedProxies,
 	})
 
 	server := &http.Server{
 		Addr:              cfg.Listen,
 		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	return &App{

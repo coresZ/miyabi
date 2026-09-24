@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -12,7 +13,7 @@ func clearConfigEnvironment(t *testing.T) {
 	for _, key := range []string{
 		"MIYABI_LISTEN", "MIYABI_DATA_DIR", "MIYABI_EMBY_DIR",
 		"MIYABI_PUBLIC_URL", "MIYABI_STRM_TOKEN",
-		"MIYABI_LOG_LEVEL", "MIYABI_ACCESS_PASSWORD", "MIYABI_JWT_SECRET",
+		"MIYABI_LOG_LEVEL", "MIYABI_ACCESS_PASSWORD", "MIYABI_JWT_SECRET", "MIYABI_TRUSTED_PROXIES",
 		"MIYABI_EMBY_ENABLED", "MIYABI_EMBY_SERVER_URL", "MIYABI_EMBY_API_KEY", "MIYABI_EMBY_MEDIA_PATH", "MIYABI_EMBY_SYNC_ACTORS",
 	} {
 		// Restore the developer's environment when the test finishes.
@@ -93,7 +94,7 @@ func TestLoadDefaultsAndEnvironment(t *testing.T) {
 				t.Setenv(key, value)
 			}
 			cfg, err := Load()
-			if err != nil || cfg != test.want {
+			if err != nil || !reflect.DeepEqual(cfg, test.want) {
 				t.Fatalf("config=%+v want=%+v err=%v", cfg, test.want, err)
 			}
 		})
