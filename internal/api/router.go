@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ppxb/miyabi/internal/domain"
@@ -44,14 +45,26 @@ func NewRouter(deps Dependencies) *gin.Engine {
 		sloggin.NewWithFilters(deps.Logger, sloggin.IgnoreStatus(statusClientClosedRequest)),
 		recoveryMiddleware(deps.Logger),
 		errorMiddleware(deps.Logger),
+		securityHeadersMiddleware(),
 	)
+
+	loginLimiter := newLoginRateLimiter(5, 5*time.Minute, 24*time.Hour)
 
 	api := router.Group("/api")
 	api.GET("/health", healthHandler(deps.Health))
+
 	authAPI := api.Group("/auth", noStore())
 	authAPI.GET("/config", accessConfigHandler(deps.Access))
-	authAPI.POST("/login", accessLoginHandler(deps.Access))
-	settingsAPI := api.Group("/settings", noStore())
+	authAPI.POST("/login", accessLoginHandler(deps.Access, loginLimiter))
+	authAPI.POST("/logout", accessLogoutHandler())
+
+	strmHandler := playSTRMHandler(deps.Play, deps.STRMToken, deps.Access)
+	api.GET("/strm/play/:fileID", noStore(), strmHandler)
+	api.HEAD("/strm/play/:fileID", noStore(), strmHandler)
+
+	protected := api.Group("", authMiddleware(deps.Access))
+
+	settingsAPI := protected.Group("/settings", noStore())
 	settingsAPI.GET("/system", dataInfoHandler(deps.Maintenance))
 	settingsAPI.DELETE("/cache", dataClearCacheHandler(deps.Maintenance))
 	settingsAPI.GET("/network", networkHandler(deps.Network))
@@ -64,35 +77,37 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	settingsAPI.PUT("/javbus", javbusUpdateHandler(deps.Catalogue))
 	settingsAPI.GET("/subscription", subscriptionSettingsGetHandler(deps.Monitor))
 	settingsAPI.PUT("/subscription", subscriptionSettingsUpdateHandler(deps.Monitor))
-	api.GET("/library/movies", libraryMoviesHandler(deps.Library))
-	api.PUT("/library/movies/:id/watched", libraryWatchedHandler(deps.Library))
-	api.GET("/library/history", libraryHistoryHandler(deps.Library))
-	api.POST("/library/history/remove", libraryHistoryRemoveHandler(deps.Library))
-	api.DELETE("/library/history", libraryHistoryClearHandler(deps.Library))
-	api.PUT("/library/history/:id/progress", libraryHistoryProgressHandler(deps.Library))
-	api.POST("/library/scan", libraryScanHandler(deps.Library))
-	api.POST("/library/scan/local", libraryLocalScanHandler(deps.Library, deps.EmbyDir))
-	api.GET("/library/artwork/:key", libraryArtworkHandler(deps.Artwork))
-	playAPI := api.Group("/play", noStore())
+
+	protected.GET("/library/movies", libraryMoviesHandler(deps.Library))
+	protected.PUT("/library/movies/:id/watched", libraryWatchedHandler(deps.Library))
+	protected.GET("/library/history", libraryHistoryHandler(deps.Library))
+	protected.POST("/library/history/remove", libraryHistoryRemoveHandler(deps.Library))
+	protected.DELETE("/library/history", libraryHistoryClearHandler(deps.Library))
+	protected.PUT("/library/history/:id/progress", libraryHistoryProgressHandler(deps.Library))
+	protected.POST("/library/scan", libraryScanHandler(deps.Library))
+	protected.POST("/library/scan/local", libraryLocalScanHandler(deps.Library, deps.EmbyDir))
+	protected.GET("/library/artwork/:key", libraryArtworkHandler(deps.Artwork))
+
+	playAPI := protected.Group("/play", noStore())
 	playAPI.GET("/files", playFilesHandler(deps.Play))
 	playAPI.GET("/subtitles/:id", subtitleVTTHandler(deps.Subtitle))
 	playAPI.GET("/:id", playStartHandler(deps.Play))
 	playAPI.DELETE("/:id", playReleaseHandler(deps.Play))
 	playAPI.GET("/:id/stream/:resource", playStreamHandler(deps.Play))
 	playAPI.HEAD("/:id/stream/:resource", playStreamHandler(deps.Play))
-	strmHandler := playSTRMHandler(deps.Play, deps.STRMToken)
-	api.GET("/strm/play/:fileID", noStore(), strmHandler)
-	api.HEAD("/strm/play/:fileID", noStore(), strmHandler)
-	subtitlesAPI := api.Group("/subtitles", noStore())
+
+	subtitlesAPI := protected.Group("/subtitles", noStore())
 	subtitlesAPI.GET("/search", subtitleSearchHandler(deps.Subtitle))
 	subtitlesAPI.POST("/apply", subtitleApplyHandler(deps.Subtitle))
 	subtitlesAPI.PATCH("/:id/offset", subtitleOffsetHandler(deps.Subtitle))
 	subtitlesAPI.PUT("/:id/default", subtitleSetDefaultHandler(deps.Subtitle))
 	subtitlesAPI.DELETE("/:id", subtitleDeleteHandler(deps.Subtitle))
-	api.GET("/tasks", noStore(), tasksHandler(deps.Tasks))
-	api.GET("/tasks/events", taskEventsHandler(deps.Tasks))
-	api.GET("/offline/tasks", noStore(), offlineActivityHandler(deps.Offline))
-	subscriptionsAPI := api.Group("/subscriptions", noStore())
+
+	protected.GET("/tasks", noStore(), tasksHandler(deps.Tasks))
+	protected.GET("/tasks/events", taskEventsHandler(deps.Tasks))
+	protected.GET("/offline/tasks", noStore(), offlineActivityHandler(deps.Offline))
+
+	subscriptionsAPI := protected.Group("/subscriptions", noStore())
 	subscriptionsAPI.GET("", subscriptionListHandler(deps.Monitor))
 	subscriptionsAPI.POST("", subscriptionCreateHandler(deps.Monitor))
 	subscriptionsAPI.PATCH("/:id", subscriptionUpdateHandler(deps.Monitor))
@@ -100,21 +115,23 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	subscriptionsAPI.POST("/:id/enqueue", subscriptionEnqueueSingleHandler(deps.Monitor))
 	subscriptionsAPI.POST("/enqueue", subscriptionEnqueueBatchHandler(deps.Monitor))
 	subscriptionsAPI.GET("/actors/:id/feed", subscriptionActorFeedHandler(deps.Monitor))
-	api.GET("/discover/movies", discoverBrowseHandler(deps.Catalogue))
-	api.POST("/discover/movie-states", noStore(), discoverMovieStatesHandler(deps.Catalogue))
-	api.GET("/discover/viewed", noStore(), discoverViewedHandler(deps.Library))
-	api.POST("/discover/viewed", discoverAddViewedHandler(deps.Library))
-	api.GET("/discover/search", discoverSearchHandler(deps.Catalogue))
-	api.GET("/discover/tags", discoverTagsHandler(deps.Catalogue))
-	api.GET("/discover/movies/:id", discoverMovieHandler(deps.Catalogue))
-	api.GET("/discover/movies/:id/magnets", discoverMagnetsHandler(deps.Catalogue))
-	api.POST("/discover/movies/:id/offline", offlineAddHandler(deps.Offline))
-	api.GET("/discover/movies/:id/offline", noStore(), offlineTasksHandler(deps.Offline))
-	api.GET("/image", imageHandler(deps.Catalogue))
-	api.GET("/javdb/route", javdbRouteHandler(deps.Catalogue))
-	api.PUT("/javdb/route", javdbSelectRouteHandler(deps.Catalogue))
-	api.POST("/javdb/reselect", javdbReselectHandler(deps.Catalogue))
-	panAPI := api.Group("/pan", noStore())
+
+	protected.GET("/discover/movies", discoverBrowseHandler(deps.Catalogue))
+	protected.POST("/discover/movie-states", noStore(), discoverMovieStatesHandler(deps.Catalogue))
+	protected.GET("/discover/viewed", noStore(), discoverViewedHandler(deps.Library))
+	protected.POST("/discover/viewed", discoverAddViewedHandler(deps.Library))
+	protected.GET("/discover/search", discoverSearchHandler(deps.Catalogue))
+	protected.GET("/discover/tags", discoverTagsHandler(deps.Catalogue))
+	protected.GET("/discover/movies/:id", discoverMovieHandler(deps.Catalogue))
+	protected.GET("/discover/movies/:id/magnets", discoverMagnetsHandler(deps.Catalogue))
+	protected.POST("/discover/movies/:id/offline", offlineAddHandler(deps.Offline))
+	protected.GET("/discover/movies/:id/offline", noStore(), offlineTasksHandler(deps.Offline))
+	protected.GET("/image", imageHandler(deps.Catalogue))
+	protected.GET("/javdb/route", javdbRouteHandler(deps.Catalogue))
+	protected.PUT("/javdb/route", javdbSelectRouteHandler(deps.Catalogue))
+	protected.POST("/javdb/reselect", javdbReselectHandler(deps.Catalogue))
+
+	panAPI := protected.Group("/pan", noStore())
 	panAPI.GET("/account", panAccountHandler(deps.Drive))
 	panAPI.DELETE("/account", panDisconnectHandler(deps.Drive))
 	panAPI.POST("/login", panBeginLoginHandler(deps.Drive))
@@ -149,3 +166,13 @@ func installFrontend(router *gin.Engine, frontend fs.FS) {
 		fileServer.ServeHTTP(c.Writer, c.Request)
 	})
 }
+
+func securityHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Next()
+	}
+}
+

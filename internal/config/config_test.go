@@ -12,7 +12,7 @@ func clearConfigEnvironment(t *testing.T) {
 	for _, key := range []string{
 		"MIYABI_LISTEN", "MIYABI_DATA_DIR", "MIYABI_EMBY_DIR",
 		"MIYABI_PUBLIC_URL", "MIYABI_STRM_TOKEN",
-		"MIYABI_LOG_LEVEL", "MIYABI_ACCESS_PASSWORD",
+		"MIYABI_LOG_LEVEL", "MIYABI_ACCESS_PASSWORD", "MIYABI_JWT_SECRET",
 		"MIYABI_EMBY_ENABLED", "MIYABI_EMBY_SERVER_URL", "MIYABI_EMBY_API_KEY", "MIYABI_EMBY_MEDIA_PATH", "MIYABI_EMBY_SYNC_ACTORS",
 	} {
 		// Restore the developer's environment when the test finishes.

@@ -19,6 +19,7 @@ type Config struct {
 	STRMToken      string
 	LogLevel       string
 	AccessPassword string
+	JWTSecret      string
 	Runtime        Runtime
 	EmbyEnabled    bool
 	EmbyServerURL  string
@@ -64,6 +65,7 @@ func Load() (Config, error) {
 		STRMToken:      strings.TrimSpace(os.Getenv("MIYABI_STRM_TOKEN")),
 		LogLevel:       envOrDefault("MIYABI_LOG_LEVEL", "info"),
 		AccessPassword: os.Getenv("MIYABI_ACCESS_PASSWORD"),
+		JWTSecret:      strings.TrimSpace(os.Getenv("MIYABI_JWT_SECRET")),
 		Runtime:        DefaultRuntime(),
 		EmbyEnabled:    embyEnabled,
 		EmbyServerURL:  embyServerURL,

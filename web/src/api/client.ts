@@ -60,6 +60,27 @@ export function apiPut<T>(
   })
 }
 
+const TOKEN_STORAGE_KEY = 'miyabi_jwt_token'
+
+export function getAuthToken(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem(TOKEN_STORAGE_KEY)
+}
+
+export function setAuthToken(token: string | undefined): void {
+  if (typeof window === 'undefined') return
+  if (token) {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token)
+  } else {
+    localStorage.removeItem(TOKEN_STORAGE_KEY)
+  }
+}
+
+export function clearAuthToken(): void {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem(TOKEN_STORAGE_KEY)
+}
+
 // JavDB CDN hosts are not reachable from every browser network, so images go through the backend.
 export function imageURL(source: string) {
   if (source.startsWith('/api/library/artwork/')) return source
@@ -68,8 +89,25 @@ export function imageURL(source: string) {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init)
+  const headers = new Headers(init?.headers)
+  const token = getAuthToken()
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  const response = await fetch(path, {
+    ...init,
+    headers
+  })
+
   if (!response.ok) {
+    if (response.status === 401 && !path.startsWith('/api/auth/')) {
+      clearAuthToken()
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('miyabi:unauthorized'))
+      }
+    }
+
     let message = response.statusText || `请求失败（HTTP ${response.status}）`
     try {
       const payload: unknown = await response.json()

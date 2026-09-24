@@ -87,7 +87,7 @@ func playReleaseHandler(play PlayManager) gin.HandlerFunc {
 	}
 }
 
-func playSTRMHandler(play PlayManager, expectedToken string) gin.HandlerFunc {
+func playSTRMHandler(play PlayManager, expectedToken string, gate AccessGate) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uri, ok := bindURI[struct {
 			FileID string `uri:"fileID" binding:"required"`
@@ -98,7 +98,29 @@ func playSTRMHandler(play PlayManager, expectedToken string) gin.HandlerFunc {
 		if expectedToken != "" {
 			token := c.Query("token")
 			if token != expectedToken {
-				c.Error(domain.E(domain.KindUnauthorized, "无效的播放令牌", nil))
+				if gate != nil && gate.Enabled() {
+					jwtToken := extractToken(c)
+					if jwtToken == "" {
+						c.Error(domain.E(domain.KindUnauthorized, "无效的播放令牌", nil))
+						return
+					}
+					if _, err := gate.VerifyToken(jwtToken); err != nil {
+						c.Error(domain.E(domain.KindUnauthorized, "无效的播放令牌", nil))
+						return
+					}
+				} else {
+					c.Error(domain.E(domain.KindUnauthorized, "无效的播放令牌", nil))
+					return
+				}
+			}
+		} else if gate != nil && gate.Enabled() {
+			jwtToken := extractToken(c)
+			if jwtToken == "" {
+				c.Error(domain.E(domain.KindUnauthorized, "未提供认证令牌，请登录", nil))
+				return
+			}
+			if _, err := gate.VerifyToken(jwtToken); err != nil {
+				c.Error(domain.E(domain.KindUnauthorized, "认证令牌无效或已过期", nil))
 				return
 			}
 		}

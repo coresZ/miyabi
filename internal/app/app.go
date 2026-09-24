@@ -163,7 +163,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	router := api.NewRouter(api.Dependencies{
 		Logger:      logger,
 		Health:      store,
-		Access:      api.NewAccessGateService(cfg.AccessPassword),
+		Access:      api.NewAccessGateService(cfg.AccessPassword, cfg.JWTSecret),
 		Catalogue:   catalogueSvc,
 		Drive:       driveSvc,
 		Offline:     offlineSvc,

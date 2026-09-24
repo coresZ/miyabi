@@ -1,5 +1,5 @@
 import { LoaderCircleIcon } from 'lucide-react'
-import { useState, type FormEvent, type PropsWithChildren } from 'react'
+import { useEffect, useState, type FormEvent, type PropsWithChildren } from 'react'
 
 import { useAccessGateConfig, useAccessGateLogin } from '@/api/auth'
 import { InlineError } from '@/components/error-state'
@@ -7,23 +7,37 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 
-const ACCESS_GATE_KEY = 'miyabi-access-granted'
-
 export function AccessGate({ children }: PropsWithChildren) {
-  const [granted, setGranted] = useState(() => sessionStorage.getItem(ACCESS_GATE_KEY) === 'true')
-  const [password, setPassword] = useState('')
-  const config = useAccessGateConfig(!granted)
+  const config = useAccessGateConfig()
   const login = useAccessGateLogin()
+  const [password, setPassword] = useState('')
+  const [sessionUnlocked, setSessionUnlocked] = useState(false)
 
-  if (granted || config.data?.enabled === false) return children
+  useEffect(() => {
+    function handleUnauthorized() {
+      setSessionUnlocked(false)
+      void config.refetch()
+    }
+
+    window.addEventListener('miyabi:unauthorized', handleUnauthorized)
+    return () => {
+      window.removeEventListener('miyabi:unauthorized', handleUnauthorized)
+    }
+  }, [config])
+
+  const isGranted =
+    config.data?.enabled === false ||
+    config.data?.authenticated === true ||
+    sessionUnlocked
+
+  if (isGranted) return children
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     login.mutate(password, {
       onSuccess: () => {
-        sessionStorage.setItem(ACCESS_GATE_KEY, 'true')
         setPassword('')
-        setGranted(true)
+        setSessionUnlocked(true)
       }
     })
   }
