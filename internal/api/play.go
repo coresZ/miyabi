@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/playback"
 )
 
@@ -14,6 +15,8 @@ type PlayManager interface {
 	Start(context.Context, string) (playback.Playback, error)
 	Stream(context.Context, string, int, string, http.Header) (*http.Response, error)
 	Release(string)
+	StreamURL(context.Context, string) (string, error)
+	OpenMedia(context.Context, string, string, http.Header) (*http.Response, error)
 }
 
 func playFilesHandler(play PlayManager) gin.HandlerFunc {
@@ -83,3 +86,41 @@ func playReleaseHandler(play PlayManager) gin.HandlerFunc {
 		respond(c, gin.H{"released": true}, nil)
 	}
 }
+
+func playSTRMHandler(play PlayManager, expectedToken string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uri, ok := bindURI[struct {
+			FileID string `uri:"fileID" binding:"required"`
+		}](c)
+		if !ok {
+			return
+		}
+		if expectedToken != "" {
+			token := c.Query("token")
+			if token != expectedToken {
+				c.Error(domain.E(domain.KindUnauthorized, "无效的播放令牌", nil))
+				return
+			}
+		}
+		streamURL, err := play.StreamURL(c.Request.Context(), uri.FileID)
+		if err != nil {
+			c.Error(err)
+			return
+		}
+		if c.Request.Method == http.MethodHead {
+			response, err := play.OpenMedia(c.Request.Context(), http.MethodHead, streamURL, c.Request.Header)
+			if err == nil {
+				defer response.Body.Close()
+				for _, name := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
+					if value := response.Header.Get(name); value != "" {
+						c.Header(name, value)
+					}
+				}
+				c.Status(response.StatusCode)
+				return
+			}
+		}
+		c.Redirect(http.StatusFound, streamURL)
+	}
+}
+

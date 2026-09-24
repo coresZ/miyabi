@@ -32,6 +32,7 @@ type Dependencies struct {
 	Network     NetworkManager
 	Subtitle    SubtitleManager
 	Frontend    fs.FS
+	STRMToken   string
 }
 
 func NewRouter(deps Dependencies) *gin.Engine {
@@ -73,6 +74,9 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	playAPI.DELETE("/:id", playReleaseHandler(deps.Play))
 	playAPI.GET("/:id/stream/:resource", playStreamHandler(deps.Play))
 	playAPI.HEAD("/:id/stream/:resource", playStreamHandler(deps.Play))
+	strmHandler := playSTRMHandler(deps.Play, deps.STRMToken)
+	api.GET("/strm/play/:fileID", noStore(), strmHandler)
+	api.HEAD("/strm/play/:fileID", noStore(), strmHandler)
 	subtitlesAPI := api.Group("/subtitles", noStore())
 	subtitlesAPI.GET("/search", subtitleSearchHandler(deps.Subtitle))
 	subtitlesAPI.POST("/apply", subtitleApplyHandler(deps.Subtitle))

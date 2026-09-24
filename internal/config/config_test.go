@@ -2,13 +2,18 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func clearConfigEnvironment(t *testing.T) {
 	t.Helper()
-	for _, key := range []string{"MIYABI_LISTEN", "MIYABI_DATA_DIR", "MIYABI_LOG_LEVEL", "MIYABI_ACCESS_PASSWORD"} {
+	for _, key := range []string{
+		"MIYABI_LISTEN", "MIYABI_DATA_DIR", "MIYABI_EMBY_DIR",
+		"MIYABI_PUBLIC_URL", "MIYABI_STRM_TOKEN",
+		"MIYABI_LOG_LEVEL", "MIYABI_ACCESS_PASSWORD",
+	} {
 		// Restore the developer's environment when the test finishes.
 		t.Setenv(key, "")
 		if err := os.Unsetenv(key); err != nil {
@@ -23,20 +28,48 @@ func TestLoadDefaultsAndEnvironment(t *testing.T) {
 		env  map[string]string
 		want Config
 	}{
-		{name: "defaults", want: Config{Listen: ":8080", DataDir: "./data", LogLevel: "info", Runtime: DefaultRuntime()}},
+		{
+			name: "defaults",
+			want: Config{
+				Listen:    ":8080",
+				DataDir:   "./data",
+				EmbyDir:   filepath.Join("./data", "emby"),
+				LogLevel:  "info",
+				Runtime:   DefaultRuntime(),
+			},
+		},
 		{
 			name: "environment overrides defaults and preserves password whitespace",
 			env: map[string]string{
-				"MIYABI_LISTEN": " 127.0.0.1:9090 ", "MIYABI_DATA_DIR": " ./custom-data ",
-				"MIYABI_LOG_LEVEL": " DEBUG ", "MIYABI_ACCESS_PASSWORD": " password with spaces ",
+				"MIYABI_LISTEN":         " 127.0.0.1:9090 ",
+				"MIYABI_DATA_DIR":       " ./custom-data ",
+				"MIYABI_EMBY_DIR":       " ./custom-emby ",
+				"MIYABI_PUBLIC_URL":     " http://192.168.1.100:8080/ ",
+				"MIYABI_STRM_TOKEN":     " secret-token ",
+				"MIYABI_LOG_LEVEL":      " DEBUG ",
+				"MIYABI_ACCESS_PASSWORD": " password with spaces ",
 			},
-			want: Config{Listen: "127.0.0.1:9090", DataDir: "./custom-data", LogLevel: "debug",
-				AccessPassword: " password with spaces ", Runtime: DefaultRuntime()},
+			want: Config{
+				Listen:         "127.0.0.1:9090",
+				DataDir:        "./custom-data",
+				EmbyDir:        "./custom-emby",
+				PublicURL:      "http://192.168.1.100:8080",
+				STRMToken:      "secret-token",
+				LogLevel:       "debug",
+				AccessPassword: " password with spaces ",
+				Runtime:        DefaultRuntime(),
+			},
 		},
 		{
 			name: "empty optional value disables access gate",
 			env:  map[string]string{"MIYABI_ACCESS_PASSWORD": ""},
-			want: Config{Listen: ":8080", DataDir: "./data", LogLevel: "info", Runtime: DefaultRuntime()},
+			want: Config{
+				Listen:    ":8080",
+				DataDir:   "./data",
+				EmbyDir:   filepath.Join("./data", "emby"),
+				LogLevel:  "info",
+				Runtime:   DefaultRuntime(),
+			},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

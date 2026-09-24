@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -45,6 +46,9 @@ type App struct {
 
 // New initializes all services, database connections, and registers task handlers.
 func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
+	if cfg.EmbyDir == "" {
+		cfg.EmbyDir = filepath.Join(cfg.DataDir, "emby")
+	}
 	ctx := context.Background()
 	store, err := database.Open(ctx, cfg.DataDir)
 	if err != nil {
@@ -132,6 +136,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		Network:     network,
 		Subtitle:    subtitleSvc,
 		Frontend:    miyabi.Frontend(),
+		STRMToken:   cfg.STRMToken,
 	})
 
 	server := &http.Server{
