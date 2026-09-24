@@ -160,7 +160,6 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 			if err := savePage(path.Dir(payload.TargetPath), []Video{{File: info.File}}, func(videos []Video) []Video {
 				if videos[0].Code != "" {
 					payload.Scan.MatchedFiles, payload.Scan.Movies = 1, 1
-					s.writeFastSTRM(videos[0])
 				} else {
 					payload.Scan.UnmatchedFiles = 1
 				}
@@ -282,11 +281,11 @@ func (s *Scanner) Run(ctx context.Context, job tasks.Job) error {
 					if video.Code != "" {
 						payload.Scan.MatchedFiles++
 						codes[video.Code] = true
-						s.writeFastSTRM(video)
 					} else {
 						payload.Scan.UnmatchedFiles++
 					}
 				}
+
 				payload.Scan.Movies = len(codes)
 				return identified
 			}); err != nil {

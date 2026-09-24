@@ -34,7 +34,35 @@ func ExportEmbyMedia(embyDir, publicURL, strmToken, code string, doc nfo.Movie, 
 		tokenParam = "?token=" + url.QueryEscape(strmToken)
 	}
 
-	// 1. Write STRM files
+	// 1. Write poster and fanart FIRST
+	posterName, fanartName := "poster.jpg", "fanart.jpg"
+	if len(poster) > 0 {
+		posterPath := filepath.Join(destDir, posterName)
+		if err := os.WriteFile(posterPath, poster, 0o644); err != nil {
+			return fmt.Errorf("write poster: %w", err)
+		}
+	}
+	if len(fanart) > 0 {
+		fanartPath := filepath.Join(destDir, fanartName)
+		if err := os.WriteFile(fanartPath, fanart, 0o644); err != nil {
+			return fmt.Errorf("write fanart: %w", err)
+		}
+	}
+
+	// 2. Write NFO file SECOND
+	nfoName := stem + ".nfo"
+	doc.Thumbs = []nfo.Thumb{{Aspect: "poster", Path: posterName}}
+	doc.Fanart = fanartName
+	nfoBody, err := nfo.Encode(doc)
+	if err != nil {
+		return fmt.Errorf("encode nfo: %w", err)
+	}
+	nfoPath := filepath.Join(destDir, nfoName)
+	if err := os.WriteFile(nfoPath, nfoBody, 0o644); err != nil {
+		return fmt.Errorf("write nfo file: %w", err)
+	}
+
+	// 3. Write STRM files LAST so media servers (Emby) watching via inotify detect complete assets
 	if len(videos) == 1 {
 		strmPath := filepath.Join(destDir, stem+".strm")
 		content := fmt.Sprintf("%s/api/strm/play/%s%s\n", publicURL, videos[0].ID, tokenParam)
@@ -48,34 +76,6 @@ func ExportEmbyMedia(embyDir, publicURL, strmToken, code string, doc nfo.Movie, 
 			if err := os.WriteFile(strmPath, []byte(content), 0o644); err != nil {
 				return fmt.Errorf("write strm file: %w", err)
 			}
-		}
-	}
-
-	// 2. Write NFO file
-	posterName, fanartName := "poster.jpg", "fanart.jpg"
-	nfoName := stem + ".nfo"
-	doc.Thumbs = []nfo.Thumb{{Aspect: "poster", Path: posterName}}
-	doc.Fanart = fanartName
-	nfoBody, err := nfo.Encode(doc)
-	if err != nil {
-		return fmt.Errorf("encode nfo: %w", err)
-	}
-	nfoPath := filepath.Join(destDir, nfoName)
-	if err := os.WriteFile(nfoPath, nfoBody, 0o644); err != nil {
-		return fmt.Errorf("write nfo file: %w", err)
-	}
-
-	// 3. Write poster and fanart
-	if len(poster) > 0 {
-		posterPath := filepath.Join(destDir, posterName)
-		if err := os.WriteFile(posterPath, poster, 0o644); err != nil {
-			return fmt.Errorf("write poster: %w", err)
-		}
-	}
-	if len(fanart) > 0 {
-		fanartPath := filepath.Join(destDir, fanartName)
-		if err := os.WriteFile(fanartPath, fanart, 0o644); err != nil {
-			return fmt.Errorf("write fanart: %w", err)
 		}
 	}
 

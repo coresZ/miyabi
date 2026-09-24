@@ -13,7 +13,9 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/nfo"
+	"github.com/ppxb/miyabi/internal/pan"
 )
+
 
 func TestExportLocalMovie_ScrapedRecordExportsMissingSidecars(t *testing.T) {
 	tempDir := t.TempDir()
@@ -154,3 +156,46 @@ func TestExportLocalMovie_ScrapedRecordExportsMissingSidecars(t *testing.T) {
 		t.Fatalf("second ExportLocalMovie failed: %v", err)
 	}
 }
+
+func TestExportEmbyMedia_WritesSTRMLast(t *testing.T) {
+	tempDir := t.TempDir()
+	embyDir := filepath.Join(tempDir, "emby")
+
+	doc := nfo.Movie{
+		Code:  "SSIS-999",
+		Title: "Test Write Order",
+	}
+	videos := []pan.File{
+		{ID: "vid-1", Name: "SSIS-999.mp4"},
+	}
+	poster := []byte("poster data")
+	fanart := []byte("fanart data")
+
+	err := ExportEmbyMedia(embyDir, "http://127.0.0.1:8080", "", "SSIS-999", doc, videos, poster, fanart)
+	if err != nil {
+		t.Fatalf("ExportEmbyMedia failed: %v", err)
+	}
+
+	movieDir := filepath.Join(embyDir, "SSIS", "SSIS-999")
+	posterStat, err := os.Stat(filepath.Join(movieDir, "poster.jpg"))
+	if err != nil {
+		t.Fatalf("poster not found: %v", err)
+	}
+	nfoStat, err := os.Stat(filepath.Join(movieDir, "SSIS-999.nfo"))
+	if err != nil {
+		t.Fatalf("nfo not found: %v", err)
+	}
+	strmStat, err := os.Stat(filepath.Join(movieDir, "SSIS-999.strm"))
+	if err != nil {
+		t.Fatalf("strm not found: %v", err)
+	}
+
+	// STRM mod time must not be before poster or nfo
+	if strmStat.ModTime().Before(posterStat.ModTime()) {
+		t.Errorf("expected strm to be written after or equal to poster: strm=%v, poster=%v", strmStat.ModTime(), posterStat.ModTime())
+	}
+	if strmStat.ModTime().Before(nfoStat.ModTime()) {
+		t.Errorf("expected strm to be written after or equal to nfo: strm=%v, nfo=%v", strmStat.ModTime(), nfoStat.ModTime())
+	}
+}
+
