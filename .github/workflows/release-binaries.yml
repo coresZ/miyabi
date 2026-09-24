@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - "v*.*.*"
-  workflow_dispatch:   # 也可以在 Actions 页面手动跑
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -21,37 +21,37 @@ jobs:
             goos: windows
             goarch: amd64
             ext: .exe
-            archive: zip
           - name: linux-amd64
             goos: linux
             goarch: amd64
             ext: ""
-            archive: tar.gz
-          # 需要 arm64 再加下面两行
+          # 需要 arm64 时取消下面注释
           # - name: windows-arm64
           #   goos: windows
           #   goarch: arm64
           #   ext: .exe
-          #   archive: zip
           # - name: linux-arm64
           #   goos: linux
           #   goarch: arm64
           #   ext: ""
-          #   archive: tar.gz
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 1. 先装 pnpm（关键！顺序不能反）
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      # 2. 再装 Node（并开启 pnpm 缓存）
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: "pnpm"
           cache-dependency-path: web/pnpm-lock.yaml
-
-      - name: Enable pnpm
-        run: corepack enable && corepack prepare pnpm@10 --activate
 
       - name: Build frontend
         working-directory: web
@@ -78,9 +78,10 @@ jobs:
       - name: Package Windows (解压即用)
         if: matrix.goos == 'windows'
         run: |
-          mkdir -p dist/miyabi-${{ matrix.name }}
-          cp miyabi.exe dist/miyabi-${{ matrix.name }}/
-          cat > dist/miyabi-${{ matrix.name }}/start.bat << 'EOF'
+          mkdir -p "dist/miyabi-${{ matrix.name }}"
+          cp "miyabi.exe" "dist/miyabi-${{ matrix.name }}/"
+
+          cat > "dist/miyabi-${{ matrix.name }}/start.bat" << 'EOF'
           @echo off
           chcp 65001 >nul
           title Miyabi
@@ -100,7 +101,7 @@ jobs:
           pause
           EOF
 
-          cat > dist/miyabi-${{ matrix.name }}/使用说明.txt << 'EOF'
+          cat > "dist/miyabi-${{ matrix.name }}/使用说明.txt" << 'EOF'
           Miyabi 本地版（Windows）
 
           1. 双击 start.bat 启动
@@ -114,16 +115,16 @@ jobs:
           EOF
 
           cd dist
-          zip -r "miyabi-${{ matrix.name }}.zip" "miyabi-${{ matrix.name }}"
+          zip -r "../miyabi-${{ matrix.name }}.zip" "miyabi-${{ matrix.name }}"
           cd ..
-          mv dist/miyabi-${{ matrix.name }}.zip .
 
       - name: Package Linux
         if: matrix.goos == 'linux'
         run: |
-          mkdir -p dist/miyabi-${{ matrix.name }}
-          cp miyabi dist/miyabi-${{ matrix.name }}/
-          cat > dist/miyabi-${{ matrix.name }}/start.sh << 'EOF'
+          mkdir -p "dist/miyabi-${{ matrix.name }}"
+          cp miyabi "dist/miyabi-${{ matrix.name }}/"
+
+          cat > "dist/miyabi-${{ matrix.name }}/start.sh" << 'EOF'
           #!/bin/bash
           export MIYABI_ACCESS_PASSWORD="${MIYABI_ACCESS_PASSWORD:-change-me}"
           export MIYABI_DATA_DIR="$(cd "$(dirname "$0")" && pwd)/data"
@@ -133,8 +134,10 @@ jobs:
           echo "Miyabi 启动中... 访问 http://127.0.0.1:8080  密码: change-me"
           exec ./miyabi
           EOF
-          chmod +x dist/miyabi-${{ matrix.name }}/miyabi \
-                   dist/miyabi-${{ matrix.name }}/start.sh
+
+          chmod +x "dist/miyabi-${{ matrix.name }}/miyabi" \
+                   "dist/miyabi-${{ matrix.name }}/start.sh"
+
           tar -C dist -czf "miyabi-${{ matrix.name }}.tar.gz" "miyabi-${{ matrix.name }}"
 
       - name: Upload artifact
