@@ -14,24 +14,23 @@ import (
 )
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	// run reports its own failure: by then the portable log file is the only
 	// record a window-less build leaves behind, and it must still be open.
-	if err := run(os.Args[1:]); err != nil {
+	if err := run(ctx, os.Args[1:]); err != nil {
 		os.Exit(1)
 	}
 }
 
-func run(args []string) error {
-	healthcheck := len(args) == 1 && args[0] == "healthcheck"
-	if len(args) > 0 && !healthcheck {
-		return fail(false, errors.New("usage: miyabi [healthcheck]; configure the application with MIYABI_* environment variables"))
+func run(ctx context.Context, args []string) error {
+	if len(args) > 0 {
+		return fail(false, errors.New("usage: miyabi; configure the application with MIYABI_* environment variables"))
 	}
 	cfg, portable, err := loadConfig()
 	if err != nil {
 		return fail(portable, err)
-	}
-	if healthcheck {
-		return fail(false, checkHealth(cfg.Listen))
 	}
 
 	logger, closeLog := newLogger(cfg, portable)
@@ -40,7 +39,7 @@ func run(args []string) error {
 
 	// A second double-click must reach the running instance instead of failing
 	// on a port that is already bound.
-	if portable && checkHealth(cfg.Listen) == nil {
+	if portable && app.ProbeLocal(cfg.Listen) == nil {
 		openBrowser(cfg.Listen)
 		return nil
 	}
@@ -50,9 +49,6 @@ func run(args []string) error {
 		return fail(portable, err)
 	}
 	defer application.Close()
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	runError := make(chan error, 1)
 	stopped := make(chan struct{})

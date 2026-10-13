@@ -185,7 +185,6 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 
 	router := api.NewRouter(api.Dependencies{
 		Logger:         logger,
-		Health:         store,
 		Access:         api.NewAccessGateService(cfg.AccessPassword, cfg.JWTSecret),
 		Catalogue:      catalogueSvc,
 		Metadata:       metadataSvc,
@@ -240,21 +239,17 @@ func (a *App) Run(ctx context.Context) error {
 
 	var workers sync.WaitGroup
 	poolError := make(chan error, len(a.pools))
-	workers.Add(len(a.pools) + 2)
 	for _, pool := range a.pools {
-		go func() {
-			defer workers.Done()
+		workers.Go(func() {
 			poolError <- pool.Run(ctx)
-		}()
+		})
 	}
-	go func() {
-		defer workers.Done()
+	workers.Go(func() {
 		tasks.RunPeriodic(ctx, a.logger, "sync 115 offline tasks", offlineSyncInterval, nil, a.offline.Sync)
-	}()
-	go func() {
-		defer workers.Done()
+	})
+	workers.Go(func() {
 		tasks.RunPeriodic(ctx, a.logger, "monitor", monitorCheckInterval, a.monitors.Pending(), a.monitors.Check)
-	}()
+	})
 
 	serverError := make(chan error, 1)
 	go func() {
@@ -325,8 +320,10 @@ func LocalURL(listen string) (string, error) {
 	return "http://" + net.JoinHostPort(host, port), nil
 }
 
-// CheckHealth probes the health of a running server given its listen address.
-func CheckHealth(listen string) error {
+// ProbeLocal reports whether this Miyabi already answers on its listen address.
+// It asks the public access-configuration endpoint: it needs no session, so the
+// probe works before the browser holds a login.
+func ProbeLocal(listen string) error {
 	local, err := LocalURL(listen)
 	if err != nil {
 		return err
@@ -339,13 +336,13 @@ func CheckHealth(listen string) error {
 			return http.ErrUseLastResponse
 		},
 	}
-	response, err := client.Get(local + "/api/health")
+	response, err := client.Get(local + "/api/auth/config")
 	if err != nil {
-		return fmt.Errorf("check health: %w", err)
+		return fmt.Errorf("probe the local server: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("health check returned HTTP %d", response.StatusCode)
+		return fmt.Errorf("local probe returned HTTP %d", response.StatusCode)
 	}
 	return nil
 }

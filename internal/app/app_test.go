@@ -74,10 +74,10 @@ func TestLocalURLUsesLoopbackForWildcardListeners(t *testing.T) {
 	}
 }
 
-func TestCheckHealth(t *testing.T) {
+func TestProbeLocalAsksThePublicAccessEndpoint(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/api/health" {
+			if r.URL.Path != "/api/auth/config" {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
@@ -89,24 +89,24 @@ func TestCheckHealth(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := app.CheckHealth("127.0.0.1:" + port); err != nil {
-			t.Fatalf("expected healthcheck success, got: %v", err)
+		if err := app.ProbeLocal("127.0.0.1:" + port); err != nil {
+			t.Fatalf("expected probe success, got: %v", err)
 		}
 	})
 
-	t.Run("unhealthy status", func(t *testing.T) {
+	t.Run("failed status", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}))
 		defer server.Close()
 
-		if err := app.CheckHealth(server.Listener.Addr().String()); err == nil {
-			t.Fatal("expected healthcheck failure for status 503")
+		if err := app.ProbeLocal(server.Listener.Addr().String()); err == nil {
+			t.Fatal("expected probe failure for status 503")
 		}
 	})
 
 	t.Run("invalid address", func(t *testing.T) {
-		if err := app.CheckHealth("invalid-listen-address"); err == nil {
+		if err := app.ProbeLocal("invalid-listen-address"); err == nil {
 			t.Fatal("expected error for invalid address")
 		}
 	})

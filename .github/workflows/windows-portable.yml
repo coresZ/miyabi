@@ -94,8 +94,8 @@ jobs:
           mkdir -p "${stage}"
 
           # miyabi.exe 隐藏控制台窗口，miyabi-console.exe 用于排查问题。
-          go build -trimpath -ldflags "-s -w -H=windowsgui" -o "${stage}/miyabi.exe" ./cmd/miyabi
-          go build -trimpath -ldflags "-s -w" -o "${stage}/miyabi-console.exe" ./cmd/miyabi
+          go build -trimpath -ldflags "-s -w -H=windowsgui" -o "${stage}/miyabi.exe" ./cmd
+          go build -trimpath -ldflags "-s -w" -o "${stage}/miyabi-console.exe" ./cmd
 
           cp LICENSE "${stage}/"
           cp docs/portable-windows.md "${stage}/使用说明.md"
@@ -138,13 +138,13 @@ jobs:
             $ready = $false
             foreach ($attempt in 1..60) {
               try {
-                $health = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/api/health' -TimeoutSec 2
-                if ($health.StatusCode -eq 200) { $ready = $true; break }
+                $probe = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/api/auth/config' -TimeoutSec 2
+                if ($probe.StatusCode -eq 200) { $ready = $true; break }
               } catch {
                 Start-Sleep -Seconds 1
               }
             }
-            if (-not $ready) { throw 'the portable build never answered its health probe' }
+            if (-not $ready) { throw 'the portable build never answered its startup probe' }
 
             $page = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/' -TimeoutSec 5
             if ($page.StatusCode -ne 200 -or $page.Content -notmatch 'id="root"') {

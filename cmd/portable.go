@@ -68,13 +68,13 @@ func openBrowser(listen string) {
 	}
 }
 
-// openBrowserWhenReady waits for the health endpoint so a double-click never
+// openBrowserWhenReady waits for the server to answer so a double-click never
 // lands on a dead page, then opens the local UI. It gives up as soon as the
 // server stops, so a startup failure is reported without waiting for the poll.
 func openBrowserWhenReady(ctx context.Context, listen string, stopped <-chan struct{}) {
 	deadline := time.Now().Add(browserStartupTimeout)
 	for {
-		if app.CheckHealth(listen) == nil {
+		if app.ProbeLocal(listen) == nil {
 			openBrowser(listen)
 			return
 		}

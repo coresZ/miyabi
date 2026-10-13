@@ -24,7 +24,7 @@ popd
 
 :run
 echo 启动 Miyabi（源码，http://127.0.0.1:8080），按 Ctrl+C 停止。
-go run ./cmd/miyabi
+go run ./cmd
 exit /b %errorlevel%
 
 :nogo

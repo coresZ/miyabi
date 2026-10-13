@@ -41,8 +41,8 @@ try {
     Write-Host "Building $package..."
     # The window-less build is what a double-click launches; without a console
     # the logs land in <data>/miyabi.log.
-    go build -trimpath -ldflags '-s -w -H=windowsgui' -o (Join-Path $stage 'miyabi.exe') ./cmd/miyabi
-    go build -trimpath -ldflags '-s -w' -o (Join-Path $stage 'miyabi-console.exe') ./cmd/miyabi
+    go build -trimpath -ldflags '-s -w -H=windowsgui' -o (Join-Path $stage 'miyabi.exe') ./cmd
+    go build -trimpath -ldflags '-s -w' -o (Join-Path $stage 'miyabi-console.exe') ./cmd
 
     Copy-Item LICENSE $stage
     Copy-Item docs/portable-windows.md (Join-Path $stage '使用说明.md')

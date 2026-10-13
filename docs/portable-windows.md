@@ -92,7 +92,7 @@ D:\miyabi\
 ```powershell
 cd web; pnpm install --frozen-lockfile; pnpm build; cd ..
 $env:CGO_ENABLED = "0"; $env:GOOS = "windows"; $env:GOARCH = "amd64"
-go build -trimpath -ldflags "-s -w -H=windowsgui" -o miyabi.exe ./cmd/miyabi
+go build -trimpath -ldflags "-s -w -H=windowsgui" -o miyabi.exe ./cmd
 ```
 
 `-H=windowsgui` 生成无控制台窗口的程序；去掉它即可得到带控制台的版本。
@@ -101,7 +101,7 @@ go build -trimpath -ldflags "-s -w -H=windowsgui" -o miyabi.exe ./cmd/miyabi
 
 Windows 便携版由独立工作流 `.github/workflows/windows-portable.yml` 构建，与 Docker 镜像的 `docker-publish.yml` 互不依赖：
 
-- 推送 `v*.*.*` 标签：自动构建 `windows/amd64` 与 `windows/arm64` 两个 zip，先在 `windows-latest` 上启动 amd64 包做冒烟验证（健康检查 + 首页返回），通过后再附加到同一个 Release 草稿上。
+- 推送 `v*.*.*` 标签：自动构建 `windows/amd64` 与 `windows/arm64` 两个 zip，先在 `windows-latest` 上启动 amd64 包做冒烟验证（接口就绪 + 首页返回），通过后再附加到同一个 Release 草稿上。
 - 手动触发（`workflow_dispatch`，无需打标签）：只产出可下载的 workflow artifact，用于验证构建，不修改任何 Release。
 - 两个工作流共用同一个 tag 触发，各自构建、各自上传；Release 草稿仍由 Docker 工作流创建。
 
@@ -112,5 +112,4 @@ Windows 便携版由独立工作流 `.github/workflows/windows-portable.yml` 构
 | 配置来源 | `miyabi.env`（也可用环境变量） | 环境变量 / compose |
 | 数据目录 | exe 同级 `data\` | 容器内 `/app/data`（挂载卷） |
 | 默认监听 | `:8080` | `:8080` |
-| 健康检查 | `miyabi.exe healthcheck` | 镜像内置 HEALTHCHECK |
 | 启动方式 | 双击，浏览器自动打开 | `docker run` / compose |

@@ -12,7 +12,7 @@ where pnpm >nul 2>&1
 if errorlevel 1 goto :nopnpm
 
 echo 启动后端（:8080）与前端热重载（:5173，局域网可访问）...
-start "miyabi backend" cmd /k "go run -tags dev ./cmd/miyabi"
+start "miyabi backend" cmd /k "go run -tags dev ./cmd"
 start "miyabi frontend" cmd /k "pnpm --dir web dev --host"
 timeout /t 3 /nobreak >nul
 start "" "http://127.0.0.1:5173"
