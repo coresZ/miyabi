@@ -203,20 +203,23 @@ jobs:
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 这个 job 没有 checkout，工作目录里没有 .git，gh 无法推断目标仓库；
+          # 缺了它每个 gh 调用都会失败，之前因此把「附件已就位」误判成成功。
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.version.outputs.tag }}
         run: |
           set -euo pipefail
 
-          # docker-publish.yml 会为同一个 tag 创建 Release 草稿；这里等它出现，
-          # 避免两个独立工作流因顺序不同而互相失败。
-          for attempt in $(seq 1 30); do
-            if gh release view "${TAG}" >/dev/null 2>&1; then break; fi
-            sleep 10
-          done
-
+          # 与 docker-publish.yml 共用同一个 tag 触发，两者互不等待：
+          # 谁先到谁建草稿，另一方只做自己那部分。Docker 工作流随后补齐正文并取消草稿。
           if ! gh release view "${TAG}" >/dev/null 2>&1; then
-            echo "::warning::release ${TAG} does not exist yet; the packages stay available as workflow artifacts"
-            exit 0
+            # 两边可能同时建，抢输的一方失败后复核一次即可，不当作错误。
+            gh release create "${TAG}" \
+              --verify-tag \
+              --title "Release ${TAG}" \
+              --generate-notes \
+              --draft ||
+              gh release view "${TAG}" >/dev/null 2>&1
           fi
 
           gh release upload "${TAG}" dist/*.zip --clobber

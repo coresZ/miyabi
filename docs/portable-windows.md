@@ -103,7 +103,7 @@ Windows 便携版由独立工作流 `.github/workflows/windows-portable.yml` 构
 
 - 推送 `v*.*.*` 标签：自动构建 `windows/amd64` 与 `windows/arm64` 两个 zip，先在 `windows-latest` 上启动 amd64 包做冒烟验证（接口就绪 + 首页返回），通过后再附加到同一个 Release 草稿上。
 - 手动触发（`workflow_dispatch`，无需打标签）：只产出可下载的 workflow artifact，用于验证构建，不修改任何 Release。
-- 两个工作流共用同一个 tag 触发，各自构建、各自上传；Release 草稿仍由 Docker 工作流创建。
+- 两个工作流共用同一个 tag 触发，各自构建、各自上传，**互不等待**：Release 草稿由先跑完的一方创建（通常是本工作流），Docker 工作流负责取消草稿并发布。任一方失败都不会拖住另一方。
 
 ## 与 Docker 部署的差异
 
