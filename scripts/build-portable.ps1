@@ -1,4 +1,4 @@
-# Builds the Windows portable package: a window-less miyabi.exe for double-click
+﻿# Builds the Windows portable package: a window-less miyabi.exe for double-click
 # use plus a console twin for diagnostics, packaged with the licence and guide.
 [CmdletBinding()]
 param(
@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $package = "miyabi-$Version-windows-$Arch"
 $stage = Join-Path $root "dist/$package"
-$zip = Join-Path $root "dist/$package.zip"
+$zip = Join-Path $root "dist/$package-portable.zip"
 
 Push-Location $root
 try {

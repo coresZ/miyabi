@@ -18,6 +18,7 @@
   - 约定：原生 video `id=videoPlayer`，xgplayer 容器 `id=xgplayerContainer`——`gif-capture.js` 依赖这两个选择器。
   - 保留 GIF 截动图；丢弃拖拽、笔记/标签、文件目录树、player 自带历史。
   - 移除：`TmPlayerControls` 的沉浸模式（按钮 / `onToggleImmersive` / `getImmersive` / `setImmersive` / `is-immersive` 类及 `body.immersive-mode` CSS）。原实现容器加 `is-immersive`，与 CSS 的 `body.immersive-mode` 不匹配，功能一直失效；现仅保留普通与全屏两态。
+  - `tm-player-controls.js` 控制面板空闲收起：原 `show({autoHide:'self'})` 分支与 `hideDelay` 无人调用（`hide()` 只被永不触发的定时器和无调用者的 `toggle()` 引用），面板实际永久常驻。现由 `_scheduleAutoHide()` 统一接线——播放中且指针不在面板上时 `show({autoHide:'self'})`，`hideDelay`(3200ms) 后收成 `controls-mini`（仅底部 3px 进度条，仍可拖拽）；暂停时或指针停在面板上时常驻。交互监听从底部窄条 host 改绑 `videoWrapper`（整个播放区），否则面板收起后无处唤出；`pointerenter`/`pointerleave` 维护 `_pointerOverHost`，避免指针在面板上时缩回。与 `setControlsHidden`（眼睛按钮，`display:none`）语义正交，两者独立。
 
 ## 验证
-`node --check js/player-core.js`；资源经 `pnpm build` 内联到 `dist/player/**`，由后端 `installFrontend` 提供。
+`node --check js/player-core.js js/tm-player-controls.js`；资源经 `pnpm build` 内联到 `dist/player/**`，由后端 `installFrontend` 提供。

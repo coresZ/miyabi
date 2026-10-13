@@ -4,7 +4,7 @@
 
 ## 快速开始
 
-1. 解压 `miyabi-<版本>-windows-<架构>.zip` 到一个**可写**目录，例如 `D:\miyabi`。
+1. 解压 `miyabi-<版本>-windows-<架构>-portable.zip` 到一个**可写**目录，例如 `D:\miyabi`。
    - 不要放在 `C:\Program Files` 等受保护目录：那里无法写入数据库与日志。
 2. 双击 `miyabi.exe`。程序在后台启动，并自动用默认浏览器打开 `http://127.0.0.1:8080`。
    - 首次运行 Windows 会弹出防火墙授权提示。选择「允许访问」后，局域网内的电视、手机、Emby 才能访问；只在自己电脑上用可以选择「取消」。
@@ -85,7 +85,7 @@ D:\miyabi\
 ./scripts/build-portable.ps1 -Version 0.2.0 -Arch amd64   # 也可以 -Arch arm64
 ```
 
-脚本会先构建前端（需要 Node 与 pnpm），再输出 `dist/miyabi-<版本>-windows-<架构>.zip`。前端已经构建过时可以加 `-SkipFrontend`。
+脚本会先构建前端（需要 Node 与 pnpm），再输出 `dist/miyabi-<版本>-windows-<架构>-portable.zip`。前端已经构建过时可以加 `-SkipFrontend`。
 
 ### 手动命令
 
