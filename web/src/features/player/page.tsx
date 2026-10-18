@@ -152,17 +152,22 @@ export function PlayerPage() {
     return () => setNavHidden(false)
   }, [desktopShell, setNavHidden])
 
-  // Escape steps back one level: fullscreen -> borderless -> windowed.
+  // Escape steps back one level: the catalog drawer first, then fullscreen,
+  // then borderless.
   useEffect(() => {
-    if (windowMode === 'windowed') return
+    if (!borderless && !railOpen) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       event.preventDefault()
+      if (railOpen) {
+        setRailOpen(false)
+        return
+      }
       applyWindowMode(windowMode === 'fullscreen' ? 'borderless' : 'windowed')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [windowMode, applyWindowMode])
+  }, [borderless, railOpen, windowMode, applyWindowMode])
 
   // Leaving the page must restore the title bar, otherwise the window stays
   // borderless with no way back.
@@ -292,7 +297,6 @@ export function PlayerPage() {
     playerRef.current?.setSources(tracks, index)
     setCurrent(index)
     setPlaying(track)
-    if (borderless) setRailOpen(false)
     if (!isDesktop) setSnap('half')
   }
 
@@ -588,6 +592,18 @@ export function PlayerPage() {
           </div>
         </section>
 
+        {/* Soft left edge for the drawer: the panel itself stays opaque, only
+            this strip fades into the video. */}
+        {borderless ? (
+          <div
+            aria-hidden
+            className={cn(
+              'pointer-events-none fixed inset-y-0 right-[min(20rem,80vw)] z-40 w-8 bg-gradient-to-l from-card to-transparent transition-opacity duration-200',
+              railOpen ? 'opacity-100' : 'opacity-0'
+            )}
+          />
+        ) : null}
+
         <section
           inert={collapsed && isDesktop && !borderless ? true : undefined}
           style={isDesktop ? undefined : { height: dragHeight ?? sheetHeight }}
@@ -599,7 +615,7 @@ export function PlayerPage() {
             // right edge, so the video owns the whole frame.
             borderless &&
               cn(
-                'fixed inset-y-0 right-0 z-50 w-[20rem] max-w-[80vw] rounded-none rounded-l-2xl bg-card/95 shadow-[-10px_0_34px_rgba(0,0,0,0.35)] backdrop-blur transition-transform duration-200 ease-out',
+                'fixed inset-y-0 right-0 z-50 w-[20rem] max-w-[80vw] rounded-none rounded-l-2xl bg-card transition-transform duration-200 ease-out',
                 railOpen ? 'translate-x-0' : 'translate-x-full'
               ),
             dragging

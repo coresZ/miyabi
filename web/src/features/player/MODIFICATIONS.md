@@ -13,7 +13,7 @@
 - 三态 `windowed / borderless / fullscreen`，由 `page.tsx` 的 `windowMode` 持有。工具栏「无边框播放」按钮进入 `borderless`；`Escape` 退一层（`fullscreen → borderless → windowed`）。
 - 壳侧 `set_player_window_mode`：进 `borderless` 先记下窗口尺寸与位置，再 `set_decorations(false)`；回 `windowed` 恢复装饰并还原尺寸位置；`fullscreen` 用 `set_fullscreen(true)`。
 - 画面比例：`player-core.js` 在 `loadedmetadata` 时通过 `onMetadata` 上报片源真实尺寸。进无边框时把宽高比传给壳，壳按当前显示器把窗口调成同比例，首帧正好铺满，不裁不黑。之后窗口比例一旦偏离片源，`PlayerStage` 加上 `miyabi-player-cover`，把 `object-fit` 切成 `cover` 裁边填充；比例回到一致时自动退回 `contain`。
-- 目录：无边框时目录不再占栅格列，改成 `fixed right-0` 的右侧抽屉，默认 `translate-x-full` 收在屏幕外；鼠标进入右侧 24px 热区滑入，指针离开抽屉自动收起，点选影片后也收起。
+- 目录：无边框时目录不再占栅格列，改成 `fixed right-0` 的右侧抽屉，默认 `translate-x-full` 收在屏幕外；鼠标进入右侧 24px 热区滑入，指针离开抽屉自动收起。**点选影片不收起**，可以连续选片；`Escape` 先收抽屉，再退出无边框。面板不透明、不加阴影（收起时阴影会渗回可视区），左缘用一条 `from-card to-transparent` 的固定渐变过渡。
 - 窗口按钮不常驻：顶部 48px 是透明热区，鼠标进入才淡入右上角的还原 / 全屏 / 关闭，离开即淡出。拖动靠顶栏的 `data-tauri-drag-region`。
 - 底部留白：`main` 的 `pb-24` 原本是给悬浮导航让位；桌面壳里导航已隐藏，改用 `pb-4`，避免播放器下方空出一条背景色。浏览器保留 `pb-24`。
 - 页头：桌面壳里不渲染「播放」标题那块，播放器直接顶到上方；浏览器和移动端保留。
