@@ -6,6 +6,7 @@ pub fn open_setup(app: &AppHandle) -> tauri::Result<()> {
     if app.get_webview_window("setup").is_some() {
         return Ok(());
     }
+    crate::log::info("opening the setup window");
     WebviewWindowBuilder::new(app, "setup", WebviewUrl::App("setup.html".into()))
         .title("Miyabi")
         .inner_size(560.0, 640.0)
@@ -17,6 +18,7 @@ pub fn open_setup(app: &AppHandle) -> tauri::Result<()> {
 }
 
 pub fn open_main(app: &AppHandle, url: String) -> tauri::Result<()> {
+    crate::log::info(format!("opening the main window at {url}"));
     if let Some(existing) = app.get_webview_window("main") {
         let parsed: tauri::Url = url.parse().expect("local url must be valid");
         existing.navigate(parsed)?;

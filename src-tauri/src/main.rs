@@ -5,6 +5,7 @@
 //! local UI.
 
 mod commands;
+mod log;
 mod prefs;
 mod sidecar;
 mod window;
@@ -22,14 +23,43 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let paths = Paths::resolve(app.handle()).map_err(std::io::Error::other)?;
+            log::init(paths.prefs_path.parent().unwrap_or(std::path::Path::new(".")));
+            log::info(format!(
+                "shell starting; portable={}; data={}; prefs={}",
+                paths.portable,
+                paths.default_data_dir.display(),
+                paths.prefs_path.display()
+            ));
             let ready = Prefs::load(&paths.prefs_path).is_some_and(|prefs| prefs.setup_done);
             app.manage(ShellState { paths: paths.clone() });
             if ready {
                 let prefs = Prefs::load(&paths.prefs_path).expect("prefs just loaded");
-                let url = sidecar::start(&prefs).map_err(std::io::Error::other)?;
-                window::open_main(app.handle(), url)?;
+                log::info(format!(
+                    "setup done; lan={}; port={}; password={}",
+                    prefs.lan,
+                    prefs.port,
+                    !prefs.password.is_empty()
+                ));
+                match sidecar::start(&prefs) {
+                    Ok(url) => {
+                        log::info(format!("server ready at {url}"));
+                        if let Err(err) = window::open_main(app.handle(), url) {
+                            log::error(format!("cannot open the main window: {err}"));
+                            return Err(err.into());
+                        }
+                        log::info("main window opened");
+                    }
+                    Err(err) => {
+                        log::error(format!("server failed to start: {err}"));
+                        return Err(std::io::Error::other(err).into());
+                    }
+                }
             } else {
-                window::open_setup(app.handle())?;
+                log::info("no setup yet; opening the setup window");
+                if let Err(err) = window::open_setup(app.handle()) {
+                    log::error(format!("cannot open the setup window: {err}"));
+                    return Err(err.into());
+                }
             }
             Ok(())
         })
@@ -45,6 +75,7 @@ fn main() {
         .expect("error while building the Miyabi desktop shell")
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
+                log::info("shell exiting; stopping the server");
                 sidecar::shutdown();
             }
         });

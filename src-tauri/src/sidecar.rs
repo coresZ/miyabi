@@ -33,6 +33,7 @@ pub fn restart(prefs: &Prefs) -> Result<String, String> {
 
 pub fn start(prefs: &Prefs) -> Result<String, String> {
     let port = choose_port(prefs)?;
+    crate::log::info(format!("starting the server; port={port}; lan={}", prefs.lan));
     std::fs::create_dir_all(&prefs.data_dir).map_err(|err| err.to_string())?;
 
     let listen = if prefs.lan {
@@ -41,6 +42,14 @@ pub fn start(prefs: &Prefs) -> Result<String, String> {
         format!("127.0.0.1:{port}")
     };
     let server = server_path()?;
+    if !server.is_file() {
+        let message = format!("server binary is missing: {}", server.display());
+        crate::log::error(&message);
+        return Err(format!(
+            "找不到 runtime\\miyabi-server.exe，请不要把 Miyabi.exe 单独拷走（{}）",
+            server.display()
+        ));
+    }
     let mut command = Command::new(&server);
     command
         .env("MIYABI_LISTEN", listen)
@@ -54,14 +63,20 @@ pub fn start(prefs: &Prefs) -> Result<String, String> {
     }
 
     let child = command.spawn().map_err(|err| {
+        crate::log::error(format!("cannot spawn {}: {err}", server.display()));
         format!("找不到 runtime\\miyabi-server.exe，请不要把 Miyabi.exe 单独拷走（{err}）")
     })?;
+    crate::log::info(format!("server spawned; pid={}", child.id()));
     *CHILD.lock().expect("child lock") = Some(child);
 
     if !wait_ready(port, READY_TIMEOUT) {
+        crate::log::error(format!(
+            "server did not listen on 127.0.0.1:{port} within {READY_TIMEOUT:?}"
+        ));
         shutdown();
         return Err("服务未能在 30 秒内启动".into());
     }
+    crate::log::info(format!("server listening on 127.0.0.1:{port}"));
     *PORT.lock().expect("port lock") = port;
     Ok(format!("http://127.0.0.1:{port}"))
 }
@@ -70,6 +85,7 @@ pub fn shutdown() {
     if let Some(mut child) = CHILD.lock().expect("child lock").take() {
         let _ = child.kill();
         let _ = child.wait();
+        crate::log::info(format!("server stopped; pid={}", child.id()));
     }
     *PORT.lock().expect("port lock") = 0;
 }

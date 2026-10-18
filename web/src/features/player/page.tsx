@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from 'cn'
 import { PlayerStage, type PlayerInstance, type PlayerTrack } from './player-stage'
 import { isDesktopWindow, setPlayerWindowMode, type PlayerWindowMode } from './window-mode'
+import { useShellChrome } from '@/stores/shell-chrome'
 
 type SourceOption = {
   id: string
@@ -91,13 +92,22 @@ export function PlayerPage() {
   const railMovedRef = useRef(false)
   const isDesktop = useIsDesktop()
   const desktopShell = isDesktopWindow()
+  const setNavHidden = useShellChrome(state => state.setNavHidden)
   const [windowMode, setWindowMode] = useState<PlayerWindowMode>('windowed')
+  const [chromeVisible, setChromeVisible] = useState(false)
   const borderless = windowMode !== 'windowed'
 
   const applyWindowMode = useCallback((mode: PlayerWindowMode) => {
     setWindowMode(mode)
     void setPlayerWindowMode(mode).catch(() => setWindowMode('windowed'))
   }, [])
+
+  // A borderless player is only the video: the floating navigation would
+  // otherwise sit on top of it.
+  useEffect(() => {
+    setNavHidden(borderless)
+    return () => setNavHidden(false)
+  }, [borderless, setNavHidden])
 
   // Escape steps back one level: fullscreen -> borderless -> windowed.
   useEffect(() => {
@@ -327,52 +337,67 @@ export function PlayerPage() {
     <main
       className={cn(
         'mx-auto flex h-dvh w-full max-w-[84rem] flex-col gap-5 overflow-hidden bg-background px-4 pt-7 pb-24',
-        borderless && 'max-w-none gap-0 px-0 pt-0 pb-0'
+        borderless && 'relative max-w-none gap-0 bg-black px-0 pt-0 pb-0'
       )}
     >
       {borderless ? (
-        <div
-          data-tauri-drag-region
-          className="flex h-9 flex-none items-center justify-between bg-background/95 pr-1 pl-3 select-none"
-        >
-          <span data-tauri-drag-region className="text-xs text-muted-foreground">
-            Miyabi · 播放
-          </span>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="还原窗口"
-              title="还原窗口"
-              onClick={() => applyWindowMode('windowed')}
-            >
-              <Minimize2Icon />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={windowMode === 'fullscreen' ? '退出全屏' : '全屏'}
-              title={windowMode === 'fullscreen' ? '退出全屏' : '全屏'}
-              onClick={() => applyWindowMode(windowMode === 'fullscreen' ? 'borderless' : 'fullscreen')}
-            >
-              {windowMode === 'fullscreen' ? <SquareIcon /> : <Maximize2Icon />}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="关闭窗口"
-              title="关闭窗口"
-              onClick={() => {
-                const w = window as Window & {
-                  __TAURI__?: { window?: { getCurrentWindow?: () => { close: () => Promise<void> } } }
-                }
-                void w.__TAURI__?.window?.getCurrentWindow?.().close()
-              }}
-            >
-              <XIcon />
-            </Button>
+        <>
+          {/* Invisible hover strip: the window controls appear only when the
+              pointer reaches the top edge, so the video keeps the whole frame. */}
+          <div
+            aria-hidden
+            className="absolute inset-x-0 top-0 z-40 h-12"
+            onPointerEnter={() => setChromeVisible(true)}
+            onPointerLeave={() => setChromeVisible(false)}
+          />
+          <div
+            data-tauri-drag-region
+            className={cn(
+              'absolute inset-x-0 top-0 z-50 flex h-9 items-center justify-end bg-gradient-to-b from-black/70 to-transparent pr-1 select-none transition-opacity duration-200',
+              chromeVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
+            )}
+            onPointerEnter={() => setChromeVisible(true)}
+            onPointerLeave={() => setChromeVisible(false)}
+          >
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="还原窗口"
+                title="还原窗口"
+                className="text-white hover:bg-white/20 hover:text-white"
+                onClick={() => applyWindowMode('windowed')}
+              >
+                <Minimize2Icon />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={windowMode === 'fullscreen' ? '退出全屏' : '全屏'}
+                title={windowMode === 'fullscreen' ? '退出全屏' : '全屏'}
+                className="text-white hover:bg-white/20 hover:text-white"
+                onClick={() => applyWindowMode(windowMode === 'fullscreen' ? 'borderless' : 'fullscreen')}
+              >
+                {windowMode === 'fullscreen' ? <SquareIcon /> : <Maximize2Icon />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="关闭窗口"
+                title="关闭窗口"
+                className="text-white hover:bg-red-500 hover:text-white"
+                onClick={() => {
+                  const w = window as Window & {
+                    __TAURI__?: { window?: { getCurrentWindow?: () => { close: () => Promise<void> } } }
+                  }
+                  void w.__TAURI__?.window?.getCurrentWindow?.().close()
+                }}
+              >
+                <XIcon />
+              </Button>
+            </div>
           </div>
-        </div>
+        </>
       ) : null}
 
       <header className={cn('flex flex-none flex-wrap items-end justify-between gap-3', borderless && 'hidden')}>

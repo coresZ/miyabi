@@ -7,11 +7,15 @@
 - `player-stage.tsx`：把 `window.MiyabiPlayer.create` 挂到容器，用 `handlers` ref 传回调（避免重建播放器），通过 `onReady` 把 `PlayerInstance` 交给页面；`onChange` 透传 `(index, source)` 供页面记录正在播放项。
 - `player-assets.ts`：按需单次加载 `/player/**` 的 CSS/JS（xgplayer、hls、TmPlayerControls、GIF、内核）。
 - `window-mode.ts`：桌面壳的无边框窗口态。只有壳里才 invoke `set_player_window_mode`；浏览器里全部是空操作，页面自动降级。`isDesktopWindow()` 决定「无边框播放」按钮是否出现。
+- `web/src/stores/shell-chrome.ts`：`navHidden` 让整屏页面（播放页无边框）隐藏底部悬浮导航，`AppShell` 读取它。
 
 ## 无边框播放（桌面壳）
-- 三态 `windowed / borderless / fullscreen`，由 `page.tsx` 的 `windowMode` 持有。工具栏「无边框播放」按钮进入 `borderless`；顶栏三个按钮分别是还原 / 全屏 / 关闭；`Escape` 退一层（`fullscreen → borderless → windowed`）。
-- 壳侧 `set_player_window_mode`：进 `borderless` 先记下窗口尺寸与位置，再 `set_decorations(false)`；回 `windowed` 恢复装饰并还原尺寸位置；`fullscreen` 用 `set_fullscreen(true)`。拖动靠顶栏的 `data-tauri-drag-region`。
-- `borderless` 时隐藏页头、工具栏、目录栏与分隔线把手，播放器 `aspect-auto h-full flex-1` 铺满；离开页面时兜底恢复 `windowed`，避免留下无标题栏窗口。
+- 三态 `windowed / borderless / fullscreen`，由 `page.tsx` 的 `windowMode` 持有。工具栏「无边框播放」按钮进入 `borderless`；`Escape` 退一层（`fullscreen → borderless → windowed`）。
+- 壳侧 `set_player_window_mode`：进 `borderless` 先记下窗口尺寸与位置，再 `set_decorations(false)`；回 `windowed` 恢复装饰并还原尺寸位置；`fullscreen` 用 `set_fullscreen(true)`。
+- 画面铺满整窗：无边框时不渲染页头、工具栏、目录栏、分隔线把手，播放器 `aspect-auto h-full flex-1`。
+- 窗口按钮不常驻：顶部 48px 是透明热区，鼠标进入才淡入右上角的还原 / 全屏 / 关闭，离开即淡出。拖动靠顶栏的 `data-tauri-drag-region`。
+- 底部悬浮导航由 `stores/shell-chrome.ts` 的 `navHidden` 控制，无边框时隐藏，离开播放页恢复。
+- 离开页面时兜底恢复 `windowed`，避免留下无标题栏、退不出去的窗口。
 - 不复用 `tm-player-controls.css` 里的 `.video-container:fullscreen`：那批选择器的容器类名与实际 DOM（`.miyabi-player` / `.miyabi-player-stage`）不匹配，是死代码。
 
 ## 数据

@@ -21,6 +21,15 @@ data\                    首次运行后出现：数据库、封面、日志
 
 `Miyabi.exe` 和 `runtime\` 必须放在一起，不要只拷走 exe。
 
+## 出问题先看日志
+
+`miyabi-desktop.log` 与 `desktop.json` 同目录：
+
+- 安装版：`%APPDATA%\com.ppxb.miyabi.desktop\`
+- 便携版：`runtime\`
+
+里面按时间记录启动、端口、后端进程、开窗和设置重启的结果。超过 2MB 会轮转为 `.log.1`。后端自己的日志仍在 `data\miyabi.log`。
+
 ## 安装版
 
 - `runtime\` 里没有 `portable`。
