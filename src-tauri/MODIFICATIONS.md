@@ -7,7 +7,7 @@
 - 前端由 Go 端 `embed.go` 内嵌提供，桌面层不参与前端构建。
 
 ## 文件
-- `Cargo.toml` / `build.rs`：Tauri v2 依赖与构建脚本。Windows 目标额外依赖 `windows-sys`（Job Object 用）。
+- `Cargo.toml` / `build.rs`：Tauri v2 依赖与构建脚本。
 - `tauri.conf.json`：`bundle.icon = ["../icon/miyabi.ico"]`（仓库根的 `icon/`，深色圆角底板，已提交）、`bundle.resources = { "runtime/": "runtime/" }`（Go 后端作为资源装进 `runtime/`，不再用 `externalBin`，否则安装器会把第二个 exe 摊在壳旁边）、Windows `webviewInstallMode=embedBootstrapper`、`frontendDist=stub`（真实 UI 由 Go 提供）。
 - `capabilities/default.json`：`main` 和 `setup` 只要 `core:default`。后端由壳启动，webview 不需要 shell 权限。
 - `src/main.rs`：Builder + 插件 + setup 启后端/开窗 + 退出回收。
