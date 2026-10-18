@@ -29,7 +29,13 @@ export function LibraryPage({
   const sourceTasks = tasks.data?.filter(isScanTask).filter(task => sameSource(task.source, source))
   const latest = sourceTasks?.find(task => !task.movie_id && !task.offline_task_id)
   const scanning = latest !== undefined && isTaskActive(latest)
-  const processingMovies = new Set(sourceTasks?.filter(isTaskActive).map(task => task.movie_id))
+  // Per-movie rescrape is source-agnostic: local movies join the same queue.
+  const processingMovies = new Set(
+    tasks.data
+      ?.filter(isScanTask)
+      .filter(isTaskActive)
+      .flatMap(task => (task.movie_id != null ? [task.movie_id] : []))
+  )
 
   return (
     <AppPage>
@@ -75,7 +81,7 @@ export function LibraryPage({
                 <LibraryMovieCard
                   key={movie.id}
                   movie={movie}
-                  busy={!source || scanning || processingMovies.has(movie.id)}
+                  busy={scanning || processingMovies.has(movie.id)}
                 />
               ))}
             </MovieGridLayout>

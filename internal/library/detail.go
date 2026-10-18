@@ -14,6 +14,7 @@ type MovieDetail struct {
 	domain.MovieDetail
 	LibraryID    int                `json:"library_id"`
 	ScrapeStatus movie.ScrapeStatus `json:"scrape_status"`
+	Videos       []LocalVideo       `json:"videos,omitempty"`
 }
 
 // Movie reads saved metadata within the same scope as the library list. Opening
@@ -67,6 +68,11 @@ func (s *Service) Movie(ctx context.Context, id int) (MovieDetail, error) {
 		detail.PreviewImages = append(detail.PreviewImages, domain.PreviewImage{Original: url, Thumbnail: url})
 	}
 	detail.HasPreview = len(detail.PreviewImages) > 0
+	if videos, err := s.LocalVideos(ctx, record.ID); err != nil {
+		return MovieDetail{}, err
+	} else if len(videos) > 0 {
+		detail.Videos = videos
+	}
 	return detail, nil
 }
 

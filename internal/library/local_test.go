@@ -52,8 +52,10 @@ func TestLocalScanWorkflow(t *testing.T) {
 	if err := queue.Queue().Finish(ctx, job.ID, nil); err != nil {
 		t.Fatal(err)
 	}
+	// The scan folds its queued metadata job into one workflow row.
 	listed, err := lib.ListTasks(ctx)
-	if err != nil || len(listed) != 1 || listed[0].Status != "done" || listed[0].Scan.VideoFiles != 1 {
+	if err != nil || len(listed) != 1 || listed[0].Scan.VideoFiles != 1 ||
+		listed[0].Scan.MetadataTotal != 1 || listed[0].Scan.Stage != "scraping" {
 		t.Fatalf("tasks: %+v %v", listed, err)
 	}
 	if count := store.Client.Movie.Query().CountX(ctx); count != 1 {

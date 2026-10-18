@@ -154,7 +154,8 @@ func TestLocalScannerBasicSTRMWithSidecars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query file: %v", err)
 	}
-	if f.AccountID != "local" || f.RootID != "local" {
+	// Local files record the absolute scan root so the player can resolve them.
+	if f.AccountID != domain.LocalAccountID || f.RootID != tempDir {
 		t.Fatalf("unexpected file account/root: %s, %s", f.AccountID, f.RootID)
 	}
 	if f.MovieID == nil || *f.MovieID != film.ID {

@@ -1,4 +1,4 @@
-# Builds the Windows portable package: a window-less miyabi.exe for double-click
+﻿# Builds the Windows portable package: a window-less miyabi.exe for double-click
 # use plus a console twin for diagnostics, packaged with the licence and guide.
 [CmdletBinding()]
 param(
@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $package = "miyabi-$Version-windows-$Arch"
 $stage = Join-Path $root "dist/$package"
-$zip = Join-Path $root "dist/$package.zip"
+$zip = Join-Path $root "dist/$package-portable.zip"
 
 Push-Location $root
 try {
@@ -41,11 +41,12 @@ try {
     Write-Host "Building $package..."
     # The window-less build is what a double-click launches; without a console
     # the logs land in <data>/miyabi.log.
-    go build -trimpath -ldflags '-s -w -H=windowsgui' -o (Join-Path $stage 'miyabi.exe') ./cmd/miyabi
-    go build -trimpath -ldflags '-s -w' -o (Join-Path $stage 'miyabi-console.exe') ./cmd/miyabi
+    go build -trimpath -ldflags '-s -w -H=windowsgui' -o (Join-Path $stage 'miyabi.exe') ./cmd
+    go build -trimpath -ldflags '-s -w' -o (Join-Path $stage 'miyabi-console.exe') ./cmd
 
     Copy-Item LICENSE $stage
     Copy-Item docs/portable-windows.md (Join-Path $stage '使用说明.md')
+    Copy-Item scripts/start-portable.bat (Join-Path $stage '启动.bat')
     Copy-Item scripts/stop-portable.bat (Join-Path $stage '停止.bat')
 
     if (Test-Path $zip) { Remove-Item -Force $zip }

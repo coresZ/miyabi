@@ -15,6 +15,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
+	"github.com/ppxb/miyabi/internal/ent/predicate"
 	"github.com/ppxb/miyabi/internal/export"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
 	"github.com/ppxb/miyabi/internal/nfo"
@@ -124,6 +125,16 @@ func (service *Service) Close() {
 	service.subtitleQueue.Close()
 }
 
+// FileScope selects the indexed files a source owns. Local files share the
+// fixed local account and are not separated by root, matching the library
+// listing scope; remote sources keep account plus mounted root.
+func FileScope(source domain.LibrarySource) predicate.File {
+	if source.AccountID == domain.LocalAccountID {
+		return file.AccountIDEQ(domain.LocalAccountID)
+	}
+	return database.LibraryFiles(source)
+}
+
 // TryLockArtwork attempts to acquire the artwork lock for cache maintenance.
 func (service *Service) TryLockArtwork() bool {
 	return service.images.TryLockArtwork()
@@ -156,6 +167,11 @@ func (service *Service) Scrape(ctx context.Context, job tasks.Job) error {
 		return nil
 	}
 	input.Code = codeid.Normalize(input.Code)
+	// Local sources have no 115 session; they share metadata and artwork
+	// resolution but publish straight into the central database.
+	if input.Source.AccountID == domain.LocalAccountID {
+		return service.scrapeLocal(ctx, job, input)
+	}
 	sess, err := service.begin(ctx, input.MetadataPayload)
 	if err != nil {
 		return err
@@ -168,7 +184,7 @@ func (service *Service) Scrape(ctx context.Context, job tasks.Job) error {
 		return domain.E(domain.KindConflict, "影片番号已纠正，请使用新的刮削任务", nil)
 	}
 	if !input.MetadataReady {
-		if err := service.prepareMetadata(ctx, sess, job.ID, &input); err != nil {
+		if err := service.prepareMetadata(ctx, sess.Commit, job.ID, &input); err != nil {
 			return err
 		}
 	}
@@ -191,9 +207,13 @@ func (service *Service) Scrape(ctx context.Context, job tasks.Job) error {
 	return nil
 }
 
-func (service *Service) prepareMetadata(ctx context.Context, sess drive.Session, taskID int, input *Payload) error {
+// txCommit runs a database transaction for the caller's source type: the 115
+// session commit for remote sources, or a local transaction for local ones.
+type txCommit func(context.Context, func(*ent.Tx) error) error
+
+func (service *Service) prepareMetadata(ctx context.Context, commit txCommit, taskID int, input *Payload) error {
 	record, err := service.db.Movie.Query().Where(movie.IDEQ(input.MovieID),
-		movie.HasFilesWith(database.LibraryFiles(input.Source))).Only(ctx)
+		movie.HasFilesWith(FileScope(input.Source))).Only(ctx)
 	if err != nil {
 		return fmt.Errorf("load indexed movie for metadata: %w", err)
 	}
@@ -228,7 +248,7 @@ func (service *Service) prepareMetadata(ctx context.Context, sess drive.Session,
 	if err != nil {
 		return err
 	}
-	if err := sess.Commit(ctx, func(tx *ent.Tx) error {
+	if err := commit(ctx, func(tx *ent.Tx) error {
 		if err := SaveMovieMetadata(ctx, tx, input.MovieID, input.Document); err != nil {
 			return err
 		}
@@ -256,7 +276,7 @@ func (service *Service) Finished(ctx context.Context, tx *ent.Tx, job tasks.Job,
 	update := tx.Movie.Update().Where(
 		movie.IDEQ(input.MovieID),
 		movie.ManualCodeEQ(input.ManualCode),
-		movie.HasFilesWith(database.LibraryFiles(input.Source)),
+		movie.HasFilesWith(FileScope(input.Source)),
 	)
 	if !input.Rebuild {
 		update.Where(movie.ScrapeStatusNEQ(movie.ScrapeStatusDone))

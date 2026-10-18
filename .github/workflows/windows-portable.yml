@@ -94,18 +94,35 @@ jobs:
           mkdir -p "${stage}"
 
           # miyabi.exe 隐藏控制台窗口，miyabi-console.exe 用于排查问题。
-          go build -trimpath -ldflags "-s -w -H=windowsgui" -o "${stage}/miyabi.exe" ./cmd/miyabi
-          go build -trimpath -ldflags "-s -w" -o "${stage}/miyabi-console.exe" ./cmd/miyabi
+          go build -trimpath -ldflags "-s -w -H=windowsgui" -o "${stage}/miyabi.exe" ./cmd
+          go build -trimpath -ldflags "-s -w" -o "${stage}/miyabi-console.exe" ./cmd
 
           cp LICENSE "${stage}/"
           cp docs/portable-windows.md "${stage}/使用说明.md"
-          (cd dist && zip -qr "${package}.zip" "${package}")
+          cp scripts/start-portable.bat "${stage}/启动.bat"
+          cp scripts/stop-portable.bat "${stage}/停止.bat"
+
+          # 打包目录内容而不是目录本身：解压后就是文件，不再多一层目录。
+          (cd "${stage}" && zip -qr "../${package}-portable.zip" *)
+
+          # zip 布局即契约：必须是 6 个条目，且全部位于同一层（无目录前缀）。
+          # 只看条目数和分隔符，不比较文件名——中文名在 zip 里不带 UTF-8 标志，
+          # unzip 会按本地代码页转码输出，逐字节比对必然误报。
+          entries=$(unzip -Z1 "dist/${package}-portable.zip")
+          count=$(printf '%s\n' "${entries}" | grep -c .)
+          if [ "${count}" != "6" ] || printf '%s\n' "${entries}" | grep -q '[/\\]'; then
+            echo "::error::portable zip must hold exactly six files in one flat layer"
+            printf '%s\n' "${entries}"
+            exit 1
+          fi
 
       - name: Upload the package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: miyabi-windows-${{ matrix.arch }}
-          path: dist/*.zip
+          # archive:false 直接上传这个 zip 本身；默认的 true 会把它再压一层。
+          # 该模式下 artifact 名取自文件名，name 会被忽略。
+          path: dist/miyabi-${{ needs.version.outputs.version }}-windows-${{ matrix.arch }}-portable.zip
+          archive: false
           if-no-files-found: error
 
   # 在真实 Windows 上启动便携版并探测它：确认内嵌 UI 真的被提供，
@@ -117,10 +134,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Download the amd64 package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
-          name: miyabi-windows-amd64
+          name: miyabi-${{ needs.version.outputs.version }}-windows-amd64-portable.zip
           path: dist
+          # 上传端用了 archive:false，这里必须跳过解压，否则 zip 会被当场拆开。
+          skip-decompress: true
 
       - name: Run the portable build and probe it
         shell: pwsh
@@ -136,13 +155,13 @@ jobs:
             $ready = $false
             foreach ($attempt in 1..60) {
               try {
-                $health = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/api/health' -TimeoutSec 2
-                if ($health.StatusCode -eq 200) { $ready = $true; break }
+                $probe = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/api/auth/config' -TimeoutSec 2
+                if ($probe.StatusCode -eq 200) { $ready = $true; break }
               } catch {
                 Start-Sleep -Seconds 1
               }
             }
-            if (-not $ready) { throw 'the portable build never answered its health probe' }
+            if (-not $ready) { throw 'the portable build never answered its startup probe' }
 
             $page = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/' -TimeoutSec 5
             if ($page.StatusCode -ne 200 -or $page.Content -notmatch 'id="root"') {
@@ -151,6 +170,13 @@ jobs:
 
             if (-not (Test-Path (Join-Path $exe.DirectoryName 'miyabi.env'))) {
               throw 'the portable build did not generate miyabi.env next to the executable'
+            }
+
+            if (-not (Test-Path (Join-Path $exe.DirectoryName '启动.bat'))) {
+              throw 'the portable build is missing the start script'
+            }
+            if (-not (Test-Path (Join-Path $exe.DirectoryName '停止.bat'))) {
+              throw 'the portable build is missing the stop script'
             }
             Write-Host 'portable build serves the embedded UI and generated its configuration'
           } finally {
@@ -166,29 +192,34 @@ jobs:
       contents: write
     steps:
       - name: Download the packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
-          pattern: miyabi-windows-*
+          pattern: miyabi-*-windows-*-portable.zip
           merge-multiple: true
+          # 同上：保留上传时的 zip 原样。
+          skip-decompress: true
 
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 这个 job 没有 checkout，工作目录里没有 .git，gh 无法推断目标仓库；
+          # 缺了它每个 gh 调用都会失败，之前因此把「附件已就位」误判成成功。
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.version.outputs.tag }}
         run: |
           set -euo pipefail
 
-          # docker-publish.yml 会为同一个 tag 创建 Release 草稿；这里等它出现，
-          # 避免两个独立工作流因顺序不同而互相失败。
-          for attempt in $(seq 1 30); do
-            if gh release view "${TAG}" >/dev/null 2>&1; then break; fi
-            sleep 10
-          done
-
+          # 与 docker-publish.yml 共用同一个 tag 触发，两者互不等待：
+          # 谁先到谁建草稿，另一方只做自己那部分。Docker 工作流随后补齐正文并取消草稿。
           if ! gh release view "${TAG}" >/dev/null 2>&1; then
-            echo "::warning::release ${TAG} does not exist yet; the packages stay available as workflow artifacts"
-            exit 0
+            # 两边可能同时建，抢输的一方失败后复核一次即可，不当作错误。
+            gh release create "${TAG}" \
+              --verify-tag \
+              --title "Release ${TAG}" \
+              --generate-notes \
+              --draft ||
+              gh release view "${TAG}" >/dev/null 2>&1
           fi
 
           gh release upload "${TAG}" dist/*.zip --clobber

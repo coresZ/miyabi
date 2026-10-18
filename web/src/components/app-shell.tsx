@@ -1,5 +1,12 @@
 import type { PropsWithChildren } from 'react'
-import { BellIcon, CompassIcon, FilmIcon, SearchIcon, SettingsIcon } from 'lucide-react'
+import {
+  BellIcon,
+  CompassIcon,
+  FilmIcon,
+  PlayIcon,
+  SearchIcon,
+  SettingsIcon
+} from 'lucide-react'
 
 import { FloatingNav, type FloatingNavItem } from '@/components/floating-nav'
 import { Toaster } from '@/components/ui/sonner'
@@ -8,6 +15,7 @@ import { TaskNotifications } from '@/features/tasks/task-notifications'
 
 const NAV_ITEMS: FloatingNavItem[] = [
   { id: 'library', label: '媒体库', icon: FilmIcon, to: '/' },
+  { id: 'play', label: '播放', icon: PlayIcon, to: '/play' },
   { id: 'subscriptions', label: '订阅', icon: BellIcon, to: '/subscriptions' },
   { id: 'discover', label: '发现', icon: CompassIcon, to: '/discover' },
   { id: 'search', label: '搜索', icon: SearchIcon, to: '/search' },

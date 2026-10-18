@@ -23,8 +23,8 @@ export function PageHeader({
       )}
     >
       <div className="flex flex-col gap-2">
-        <h1 className="text-4xl font-bold">{title}</h1>
-        <p className="text-muted-foreground">{description}</p>
+        <h1 className="text-3xl font-bold sm:text-4xl">{title}</h1>
+        <p className="text-sm text-muted-foreground sm:text-base">{description}</p>
       </div>
       {children ? (
         <div className="flex max-w-full flex-wrap items-center gap-2">{children}</div>

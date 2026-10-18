@@ -1,6 +1,9 @@
 /miyabi
 /miyabi.exe
+/miyabi-console.exe
+/miyabi.env
 /bin/
+/dist/
 *.test
 *.out
 coverage.*
@@ -20,10 +23,13 @@ config.local.*
 /web/.vite/
 /web/.tanstack/
 /web/*.tsbuildinfo
-/web/src/routeTree.gen.ts
 /.pnpm-store/
 
 /.tmp/
+
+# Local references and visual drafts, not shipped.
+/player/
+/design/
 
 .idea/
 .vscode/

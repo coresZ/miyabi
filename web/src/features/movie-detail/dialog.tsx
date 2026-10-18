@@ -1,4 +1,5 @@
 import { useRouter } from '@tanstack/react-router'
+import { XIcon } from 'lucide-react'
 import {
   lazy,
   Suspense,
@@ -9,7 +10,8 @@ import {
   type PropsWithChildren
 } from 'react'
 
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { MovieDetailDialogContext, movieDetailKey, type MovieDetailTarget } from './dialog-context'
 import { MovieDetailSkeleton } from './skeleton'
 
@@ -53,6 +55,16 @@ export function MovieDetailDialogProvider({ children }: PropsWithChildren) {
           }}
         >
           <DialogTitle className="sr-only">影片详情</DialogTitle>
+          <DialogClose asChild>
+            <Button
+              variant="secondary"
+              size="icon-sm"
+              aria-label="关闭"
+              className="absolute top-3 right-3 z-10 sm:hidden"
+            >
+              <XIcon />
+            </Button>
+          </DialogClose>
           <div
             key={movie && movieDetailKey(movie)}
             className="min-h-0 flex-1 scroll-fade scrollbar-none overflow-y-auto overscroll-contain p-4 sm:p-6 [&::-webkit-scrollbar]:hidden"

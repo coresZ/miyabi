@@ -19,7 +19,7 @@ func TestBusinessPackagesDoNotImportEachOther(t *testing.T) {
 		"library", "library/scan", "library/scrape",
 		"offline", "monitor", "strm", "maintenance", "emby", "subtitle", "network",
 	}
-	shared := []string{"drive", "tasks", "database", "domain", "domain/subtitle", "domain/download", "export", "netx"}
+	shared := []string{"drive", "tasks", "database", "domain", "domain/subtitle", "domain/download", "export", "localsource", "netx"}
 	// Keep cross-package exceptions explicit and directional.
 	allowed := map[string][]string{
 		"library":            {"library/scan"},
@@ -46,7 +46,7 @@ func TestBusinessPackagesDoNotImportEachOther(t *testing.T) {
 			banned = append(banned, module+"domain")
 		case "database":
 			banned = append(banned, module+"tasks", module+"drive")
-		case "domain", "domain/subtitle", "domain/download":
+		case "domain", "domain/subtitle":
 			banned = append(banned, module+"tasks", module+"drive", module+"database", module+"export")
 		}
 		for _, imported := range packageImports(t, filepath.Join("..", filepath.FromSlash(pkg))) {

@@ -45,18 +45,27 @@ export function LibraryMovieActions({
     >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button ref={trigger} type="button" variant="ghost" size="icon-sm" disabled={busy}>
+          <Button
+            ref={trigger}
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="max-sm:size-6! max-sm:[&_svg]:size-3.5!"
+            disabled={busy}
+          >
             <Ellipsis />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
+          className="max-sm:min-w-32 max-sm:p-0.5 max-sm:rounded-xl"
           onCloseAutoFocus={event => {
             if (correcting) event.preventDefault()
           }}
         >
           <DropdownMenuItem
             disabled={busy}
+            className="max-sm:py-1.5 max-sm:pl-2 max-sm:text-xs max-sm:[&_svg]:size-3.5"
             onSelect={() =>
               scrape.mutate(undefined, {
                 onSuccess: notifyScan,
@@ -74,6 +83,7 @@ export function LibraryMovieActions({
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={busy}
+            className="max-sm:py-1.5 max-sm:pl-2 max-sm:text-xs max-sm:[&_svg]:size-3.5"
             onSelect={() => {
               scrape.reset()
               setCode(movie.code)
