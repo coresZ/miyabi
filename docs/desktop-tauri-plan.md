@@ -230,6 +230,42 @@ git merge upstream/master
 
 ---
 
+## 11. 后续方案（未实施）
+
+### 11.1 防火墙引导
+
+局域网绑定 `0.0.0.0:<port>` 后，Windows 首次会弹「安全警报」。用户点取消并勾「不再提示」后局域网会静默失效，界面无从得知。
+
+分三层，按成本递增：
+
+| 层 | 做法 |
+|---|---|
+| 运行期 | 首次开启局域网时尝试 `netsh advfirewall firewall add rule dir=in action=allow program=<Miyabi.exe>`；无管理员权限则失败，不阻断 |
+| 引导 | 设置页局域网区块加一行状态：端口 + 「其他设备打不开？」链接，打开 `control.exe /name Microsoft.WindowsFirewall` |
+| 安装期 | NSIS hook 提权预置入站规则，可选增强 |
+
+注意：本机无法判断「外部是否能访问」，只能确认监听成功。所以文案用「打不开时」而不是「未放行」。
+
+### 11.2 自动更新（Tauri updater）
+
+1. `tauri signer generate` 生成 minisign 密钥；公钥写入 `plugins.updater.pubkey`，私钥存 CI secret 并离线备份。
+2. 引入 `tauri-plugin-updater`、`tauri-plugin-process`，`bundle.createUpdaterArtifacts = true`。
+3. CI 在 tag 构建后产出 `latest.json` 与 `.sig`，随 Release 上传。
+4. 应用内：启动后延迟检查，或设置页「检查更新」；便携版不支持静默安装，只提示并打开下载页。
+
+风险：私钥丢失等于永久失去升级能力；`version` 必须与 tag 严格一致。
+
+### 11.3 代码签名
+
+- 证书：OV（约 $200–400/年，需累积 SmartScreen 声誉）、EV（硬件 token，立即信任）或 Azure Trusted Signing（CI 友好，无硬件 token）。
+- 接入：`bundle.windows.certificateThumbprint` + `digestAlgorithm: "sha256"` + `timestampUrl`；或 `signCommand` 接自定义签名脚本。
+- CI：`.pfx` 以 base64 存 secret，构建前导入证书存储，`tauri build` 自动签 exe 与 NSIS 安装包。
+- **`runtime/miyabi-server.exe` 也要单独签名**，否则子进程仍会触发 SmartScreen。
+
+实施顺序建议：防火墙引导 → 代码签名 → 自动更新（更新依赖签名产物）。
+
+---
+
 ## 附录：关键接口清单
 
 - 启动：`miyabi`（无参即起 HTTP 服务；上游已拒绝 `healthcheck` 等子命令）。
