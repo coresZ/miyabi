@@ -1,4 +1,13 @@
-import { ChevronRightIcon, EyeIcon, EyeOffIcon, Maximize2Icon, Minimize2Icon, SearchIcon, SquareIcon, XIcon } from 'lucide-react'
+import {
+  ChevronRightIcon,
+  EyeIcon,
+  EyeOffIcon,
+  Maximize2Icon,
+  Minimize2Icon,
+  SearchIcon,
+  SquareIcon,
+  XIcon
+} from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -28,7 +37,12 @@ type SourceOption = {
   disabled?: boolean
 }
 
-const ALL_LOCAL: SourceOption = { id: 'local:all', label: '本地（全部）', scope: 'local', directory: '' }
+const ALL_LOCAL: SourceOption = {
+  id: 'local:all',
+  label: '本地（全部）',
+  scope: 'local',
+  directory: ''
+}
 
 type SheetSnap = 'peek' | 'half' | 'full'
 const SHEET_SNAPS: SheetSnap[] = ['peek', 'half', 'full']
@@ -138,10 +152,20 @@ export function PlayerPage() {
     const list: SourceOption[] = [ALL_LOCAL]
     for (const source of sources.data ?? []) {
       if (!source.enabled) continue
-      list.push({ id: `local:${source.id}`, label: source.name, scope: 'local', directory: source.id })
+      list.push({
+        id: `local:${source.id}`,
+        label: source.name,
+        scope: 'local',
+        directory: source.id
+      })
     }
     if (pan.data?.connected && pan.data.directory) {
-      list.push({ id: 'remote', label: `115 · ${pan.data.directory.name}`, scope: 'remote', directory: '' })
+      list.push({
+        id: 'remote',
+        label: `115 · ${pan.data.directory.name}`,
+        scope: 'remote',
+        directory: ''
+      })
     }
     list.push({ id: 'favorite', label: '收藏', scope: 'favorite', directory: '', disabled: true })
     return list
@@ -180,7 +204,9 @@ export function PlayerPage() {
     }, 0)
     return result
   }, [items])
-  const activeMovie = movies.find(entry => current >= entry.start && current < entry.start + entry.count)
+  const activeMovie = movies.find(
+    entry => current >= entry.start && current < entry.start + entry.count
+  )
 
   useEffect(() => {
     playerRef.current?.setQueue(tracks)
@@ -337,7 +363,9 @@ export function PlayerPage() {
     <main
       className={cn(
         'mx-auto flex h-dvh w-full max-w-[84rem] flex-col gap-5 overflow-hidden bg-background px-4 pt-7 pb-24',
-        borderless && 'relative max-w-none gap-0 bg-black px-0 pt-0 pb-0'
+        // Borderless only shows the video: pin the page to the window edges so no
+        // page padding or max-width leaves a gap around the player.
+        borderless && 'fixed inset-0 z-40 h-auto w-auto max-w-none gap-0 bg-black p-0'
       )}
     >
       {borderless ? (
@@ -353,7 +381,7 @@ export function PlayerPage() {
           <div
             data-tauri-drag-region
             className={cn(
-              'absolute inset-x-0 top-0 z-50 flex h-9 items-center justify-end bg-gradient-to-b from-black/70 to-transparent pr-1 select-none transition-opacity duration-200',
+              'absolute inset-x-0 top-0 z-50 flex h-9 items-center justify-end bg-gradient-to-b from-black/70 to-transparent pr-1 transition-opacity duration-200 select-none',
               chromeVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
             )}
             onPointerEnter={() => setChromeVisible(true)}
@@ -376,7 +404,9 @@ export function PlayerPage() {
                 aria-label={windowMode === 'fullscreen' ? '退出全屏' : '全屏'}
                 title={windowMode === 'fullscreen' ? '退出全屏' : '全屏'}
                 className="text-white hover:bg-white/20 hover:text-white"
-                onClick={() => applyWindowMode(windowMode === 'fullscreen' ? 'borderless' : 'fullscreen')}
+                onClick={() =>
+                  applyWindowMode(windowMode === 'fullscreen' ? 'borderless' : 'fullscreen')
+                }
               >
                 {windowMode === 'fullscreen' ? <SquareIcon /> : <Maximize2Icon />}
               </Button>
@@ -388,7 +418,9 @@ export function PlayerPage() {
                 className="text-white hover:bg-red-500 hover:text-white"
                 onClick={() => {
                   const w = window as Window & {
-                    __TAURI__?: { window?: { getCurrentWindow?: () => { close: () => Promise<void> } } }
+                    __TAURI__?: {
+                      window?: { getCurrentWindow?: () => { close: () => Promise<void> } }
+                    }
                   }
                   void w.__TAURI__?.window?.getCurrentWindow?.().close()
                 }}
@@ -400,7 +432,12 @@ export function PlayerPage() {
         </>
       ) : null}
 
-      <header className={cn('flex flex-none flex-wrap items-end justify-between gap-3', borderless && 'hidden')}>
+      <header
+        className={cn(
+          'flex flex-none flex-wrap items-end justify-between gap-3',
+          borderless && 'hidden'
+        )}
+      >
         <div>
           <h1 className="text-3xl font-bold tracking-tight">播放</h1>
           <p className="mt-1 text-sm text-muted-foreground">选择一个来源，点击右侧目录即可播放</p>
@@ -417,8 +454,8 @@ export function PlayerPage() {
             : undefined
         }
         className={cn(
-          'relative grid min-h-0 flex-1 grid-rows-[auto] gap-5 lg:grid-rows-1 lg:grid-cols-[minmax(0,1fr)_var(--rail-w)]',
-          borderless && 'gap-0 lg:grid-cols-[minmax(0,1fr)]',
+          'relative grid min-h-0 flex-1 grid-rows-[auto] gap-5 lg:grid-cols-[minmax(0,1fr)_var(--rail-w)] lg:grid-rows-1',
+          borderless && 'h-full gap-0 lg:grid-cols-[minmax(0,1fr)]',
           draggingRail
             ? 'lg:transition-none'
             : 'lg:transition-[grid-template-columns] lg:duration-200 lg:ease-out'
@@ -432,7 +469,7 @@ export function PlayerPage() {
           )}
         >
           <PlayerStage
-            className={cn(borderless && 'aspect-auto h-full min-h-0 flex-1 rounded-none')}
+            className={cn(borderless && 'aspect-auto h-full w-full flex-1 rounded-none')}
             onReady={player => {
               playerRef.current = player
               player.setQueue(tracks)
@@ -488,7 +525,11 @@ export function PlayerPage() {
               <Button variant="outline" size="sm" disabled={current <= 0} onClick={() => go(-1)}>
                 上一段
               </Button>
-              <Button size="sm" disabled={current < 0 || current + 1 >= tracks.length} onClick={() => go(1)}>
+              <Button
+                size="sm"
+                disabled={current < 0 || current + 1 >= tracks.length}
+                onClick={() => go(1)}
+              >
                 下一段
               </Button>
             </div>
@@ -503,113 +544,121 @@ export function PlayerPage() {
             'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:rounded-b-none max-lg:shadow-[0_-10px_34px_rgba(0,0,0,0.14)]',
             collapsed && isDesktop && 'lg:pointer-events-none lg:opacity-0',
             borderless && 'hidden',
-            dragging ? 'max-lg:transition-none' : 'max-lg:transition-[height] max-lg:duration-200 max-lg:ease-out'
+            dragging
+              ? 'max-lg:transition-none'
+              : 'max-lg:transition-[height] max-lg:duration-200 max-lg:ease-out'
           )}
         >
-            <div
-              onPointerDown={onHandleDown}
-              onPointerMove={onHandleMove}
-              onPointerUp={onHandleUp}
-              onPointerCancel={onHandleUp}
-              className="flex flex-none cursor-grab touch-none items-center justify-center py-2.5 active:cursor-grabbing lg:hidden"
-            >
-              <span className="h-1 w-9 rounded-full bg-border" />
+          <div
+            onPointerDown={onHandleDown}
+            onPointerMove={onHandleMove}
+            onPointerUp={onHandleUp}
+            onPointerCancel={onHandleUp}
+            className="flex flex-none cursor-grab touch-none items-center justify-center py-2.5 active:cursor-grabbing lg:hidden"
+          >
+            <span className="h-1 w-9 rounded-full bg-border" />
+          </div>
+          <div className="flex-none border-b border-border/60 p-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold">目录列表</h2>
+              <span className="text-xs text-muted-foreground tabular-nums">{countLabel}</span>
             </div>
-            <div className="flex-none border-b border-border/60 p-3">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold">目录列表</h2>
-                <span className="text-xs text-muted-foreground tabular-nums">{countLabel}</span>
-              </div>
-              <div className="relative mt-2">
-                <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  value={search}
-                  onChange={event => onSearch(event.target.value)}
-                  placeholder="搜索番号或标题"
-                  className="h-9 w-full rounded-lg border border-border bg-background pr-3 pl-8 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </div>
-              <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {options.map(option => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    disabled={option.disabled}
-                    onClick={() => {
-                      setCurrent(-1)
-                      setSourceID(option.id)
-                    }}
-                    className={cn(
-                      'h-7 flex-none rounded-full border px-2.5 text-xs whitespace-nowrap transition-colors',
-                      option.id === sourceID
-                        ? 'border-transparent bg-primary text-primary-foreground'
-                        : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
-                      option.disabled
-                        ? 'cursor-not-allowed opacity-45 hover:bg-transparent'
-                        : 'cursor-pointer'
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
+            <div className="relative mt-2">
+              <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={event => onSearch(event.target.value)}
+                placeholder="搜索番号或标题"
+                className="h-9 w-full rounded-lg border border-border bg-background pr-3 pl-8 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
             </div>
+            <div className="mt-2 flex [scrollbar-width:none] gap-1.5 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden">
+              {options.map(option => (
+                <button
+                  key={option.id}
+                  type="button"
+                  disabled={option.disabled}
+                  onClick={() => {
+                    setCurrent(-1)
+                    setSourceID(option.id)
+                  }}
+                  className={cn(
+                    'h-7 flex-none rounded-full border px-2.5 text-xs whitespace-nowrap transition-colors',
+                    option.id === sourceID
+                      ? 'border-transparent bg-primary text-primary-foreground'
+                      : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
+                    option.disabled
+                      ? 'cursor-not-allowed opacity-45 hover:bg-transparent'
+                      : 'cursor-pointer'
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pt-1.5 pb-24 lg:pb-1.5">
-              {isPending ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">加载中…</p>
-              ) : isError ? (
-                <div className="p-2">
-                  <ErrorState message="无法读取播放列表" onRetry={reload} retrying={isFetching} />
-                </div>
-              ) : movies.length === 0 ? (
-                <EmptyState
-                  className="py-10"
-                  title={term ? '没有匹配的影片' : '这个来源还没有可播放的影片'}
-                />
-              ) : (
-                <>
-                  {isRefetchError ? (
-                    <InlineError onRetry={reload} retrying={isFetching}>
-                      刷新失败，请重试。
-                    </InlineError>
-                  ) : null}
-                  {movies.map(entry => {
-                    const isCurrent = activeMovie?.item.movie_id === entry.item.movie_id
-                    return (
-                      <button
-                        key={entry.item.movie_id}
-                        type="button"
-                        onClick={() => play(entry.start)}
-                        aria-current={isCurrent ? 'true' : undefined}
-                        className={cn(
-                          'flex w-full cursor-pointer items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-muted',
-                          isCurrent && 'bg-accent ring-1 ring-border/60'
+          <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pt-1.5 pb-24 lg:pb-1.5">
+            {isPending ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">加载中…</p>
+            ) : isError ? (
+              <div className="p-2">
+                <ErrorState message="无法读取播放列表" onRetry={reload} retrying={isFetching} />
+              </div>
+            ) : movies.length === 0 ? (
+              <EmptyState
+                className="py-10"
+                title={term ? '没有匹配的影片' : '这个来源还没有可播放的影片'}
+              />
+            ) : (
+              <>
+                {isRefetchError ? (
+                  <InlineError onRetry={reload} retrying={isFetching}>
+                    刷新失败，请重试。
+                  </InlineError>
+                ) : null}
+                {movies.map(entry => {
+                  const isCurrent = activeMovie?.item.movie_id === entry.item.movie_id
+                  return (
+                    <button
+                      key={entry.item.movie_id}
+                      type="button"
+                      onClick={() => play(entry.start)}
+                      aria-current={isCurrent ? 'true' : undefined}
+                      className={cn(
+                        'flex w-full cursor-pointer items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-muted',
+                        isCurrent && 'bg-accent ring-1 ring-border/60'
+                      )}
+                    >
+                      <span className="grid aspect-video w-16 flex-none place-items-center overflow-hidden rounded-lg bg-muted text-[0.6rem] text-muted-foreground ring-1 ring-border/60">
+                        {entry.item.poster ? (
+                          <img
+                            src={entry.item.poster}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          '封面'
                         )}
-                      >
-                        <span className="grid aspect-video w-16 flex-none place-items-center overflow-hidden rounded-lg bg-muted text-[0.6rem] text-muted-foreground ring-1 ring-border/60">
-                          {entry.item.poster ? (
-                            <img src={entry.item.poster} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            '封面'
-                          )}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="inline-block rounded-full border border-border px-1.5 py-0.5 text-[0.6rem] font-semibold tabular-nums">
+                          {entry.item.code}
                         </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="inline-block rounded-full border border-border px-1.5 py-0.5 text-[0.6rem] font-semibold tabular-nums">
-                            {entry.item.code}
-                          </span>
-                          <span className="mt-1 block truncate text-sm">{entry.item.title || entry.item.code}</span>
+                        <span className="mt-1 block truncate text-sm">
+                          {entry.item.title || entry.item.code}
                         </span>
-                      </button>
-                    )
-                  })}
-                  <div ref={sentinelRef} className="h-6" />
-                  {isFetchingNextPage ? (
-                    <p className="py-3 text-center text-sm text-muted-foreground">加载中…</p>
-                  ) : null}
-                </>
-              )}
-            </div>
+                      </span>
+                    </button>
+                  )
+                })}
+                <div ref={sentinelRef} className="h-6" />
+                {isFetchingNextPage ? (
+                  <p className="py-3 text-center text-sm text-muted-foreground">加载中…</p>
+                ) : null}
+              </>
+            )}
+          </div>
         </section>
 
         {isDesktop && !borderless ? (
@@ -630,7 +679,9 @@ export function PlayerPage() {
             }}
             className="absolute top-1/2 z-10 grid h-[54px] w-[22px] -translate-x-1/2 -translate-y-1/2 cursor-col-resize touch-none place-items-center rounded-full border border-border bg-background text-foreground shadow-sm"
           >
-            <ChevronRightIcon className={cn('size-[13px] transition-transform', collapsed && 'rotate-180')} />
+            <ChevronRightIcon
+              className={cn('size-[13px] transition-transform', collapsed && 'rotate-180')}
+            />
           </button>
         ) : null}
       </div>

@@ -12,7 +12,7 @@
 ## 无边框播放（桌面壳）
 - 三态 `windowed / borderless / fullscreen`，由 `page.tsx` 的 `windowMode` 持有。工具栏「无边框播放」按钮进入 `borderless`；`Escape` 退一层（`fullscreen → borderless → windowed`）。
 - 壳侧 `set_player_window_mode`：进 `borderless` 先记下窗口尺寸与位置，再 `set_decorations(false)`；回 `windowed` 恢复装饰并还原尺寸位置；`fullscreen` 用 `set_fullscreen(true)`。
-- 画面铺满整窗：无边框时不渲染页头、工具栏、目录栏、分隔线把手，播放器 `aspect-auto h-full flex-1`。
+- 画面铺满整窗：无边框时 `main` 改成 `fixed inset-0`，清掉页面的最大宽度、内边距和底部留白，避免视频四周留缝；页头、工具栏、目录栏、分隔线把手都不渲染，播放器 `aspect-auto h-full flex-1`。
 - 窗口按钮不常驻：顶部 48px 是透明热区，鼠标进入才淡入右上角的还原 / 全屏 / 关闭，离开即淡出。拖动靠顶栏的 `data-tauri-drag-region`。
 - 底部悬浮导航由 `stores/shell-chrome.ts` 的 `navHidden` 控制，无边框时隐藏，离开播放页恢复。
 - 离开页面时兜底恢复 `windowed`，避免留下无标题栏、退不出去的窗口。
