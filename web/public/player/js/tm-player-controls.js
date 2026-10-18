@@ -53,6 +53,7 @@
       this.supportsVolumeControl = !(/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream);
       this.controlsVisible = true;
       this.hideTimer = null;
+      this._pointerOverHost = false;
       this._bound = [];
       this._progressMove = null;
       this._progressUp = null;
@@ -121,10 +122,12 @@
       const onPlay = () => {
         this.updatePlayPauseButton();
         this._showCenterFlash('play');
+        this._scheduleAutoHide();
       };
       const onPause = () => {
         this.updatePlayPauseButton();
         this._showCenterFlash('pause');
+        this._scheduleAutoHide();
       };
       const onVol = () => this.updateVolumeUI();
       const onRate = () => {
@@ -146,13 +149,30 @@
     }
 
     _bindHostInteraction() {
+      // 监听整个播放区：面板收起后只剩底部进度条可点，绑在 host 上就唤不出面板了。
+      const surface = this.videoWrapper || this.host;
       const bump = () => {
-        this.show();
+        this._scheduleAutoHide();
         if (typeof this.onUserInteract === 'function') this.onUserInteract();
       };
-      this._on(this.host, 'pointerdown', bump);
-      this._on(this.host, 'mousemove', bump);
+      this._on(surface, 'pointerdown', bump);
+      this._on(surface, 'mousemove', bump);
+      this._on(this.host, 'pointerenter', () => {
+        this._pointerOverHost = true;
+        this._scheduleAutoHide();
+      });
+      this._on(this.host, 'pointerleave', () => {
+        this._pointerOverHost = false;
+        this._scheduleAutoHide();
+      });
       this._on(this.root, 'click', (e) => e.stopPropagation());
+    }
+
+    /** 播放中且指针不在面板上时才自动收起；暂停或指针停在面板上时常驻。 */
+    _scheduleAutoHide() {
+      const v = this.video;
+      const idle = !this._pointerOverHost && !!v && !v.paused;
+      this.show({ autoHide: idle ? 'self' : false });
     }
 
     show(options = {}) {

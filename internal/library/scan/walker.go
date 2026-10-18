@@ -18,7 +18,6 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/export"
 	mediaimage "github.com/ppxb/miyabi/internal/image"
-	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
@@ -34,9 +33,6 @@ func DefaultPacing(ctx context.Context) error {
 	}
 }
 
-// MediaNotifier receives notifications when exported media directories are written or updated.
-type MediaNotifier = scrape.MediaNotifier
-
 // Scanner encapsulates the dependencies required to execute library scan jobs.
 type Scanner struct {
 	driveSvc  *drive.Drive
@@ -45,7 +41,7 @@ type Scanner struct {
 	tasksSvc  *tasks.Service
 	exportMgr *export.Manager
 	pace      func(context.Context) error
-	notifier  MediaNotifier
+	notifier  export.MediaNotifier
 }
 
 // New creates a new Scanner with the provided dependencies.
@@ -63,7 +59,7 @@ func New(driveSvc *drive.Drive, db *ent.Client, images *mediaimage.Cache, tasksS
 	}
 }
 
-func (s *Scanner) SetMediaNotifier(notifier MediaNotifier) {
+func (s *Scanner) SetMediaNotifier(notifier export.MediaNotifier) {
 	s.notifier = notifier
 }
 
@@ -145,6 +141,9 @@ func (r *scanRun) reconcile(ctx context.Context) error {
 	}
 	return r.scanner.exportMgr.WithConfig(func(expCfg export.Config) error {
 		finish := func() error {
+			if err := r.cleanupReassignedExports(ctx, expCfg); err != nil {
+				return err
+			}
 			reusable, err := r.prepareReconcile(ctx, expCfg)
 			if err != nil {
 				return err
@@ -299,6 +298,9 @@ func (r *scanRun) indexDirectory(ctx context.Context, directory Directory) error
 		return fmt.Errorf("scan %s: %w", directory.Path, err)
 	}
 
+	if err := resolveDirectoryParts(ctx, r.scanner.db, r.payload.Source.AccountID, directory.Path, directoryVideos, sidecars); err != nil {
+		return err
+	}
 	// Apply single-NFO tolerance matching to establish standard catalogue identity.
 	if len(sidecars) > 0 {
 		if err := applyManualCodes(ctx, r.scanner.db, r.payload.Source.AccountID, directoryVideos); err != nil {

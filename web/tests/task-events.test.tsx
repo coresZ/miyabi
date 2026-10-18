@@ -10,6 +10,7 @@ import {
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 
 import { apiGet } from '@/api/client'
+import * as clientAPI from '@/api/client'
 import { libraryKeys, useStartLibraryScan, useRescrapeLibraryMovie } from '@/api/library'
 import { movieStateKeys } from '@/api/movie-states'
 import { offlineKeys, useAddOffline, useOfflineControl, type OfflineActivity } from '@/api/offline'
@@ -19,7 +20,7 @@ import { taskKeys, type Task, type ScanTask } from '@/api/tasks'
 import { TaskEventsProvider, useTaskConnection } from '@/features/tasks/task-events'
 import { offlineSubmission } from './fixtures'
 
-// Capture the production effect so Node tests can drive its setup/cleanup without a browser.
+// Exercise production stream callbacks and disposal; React effect scheduling is outside this fixture.
 vi.mock('react', async importOriginal => ({
   ...(await importOriginal<typeof import('react')>()),
   useEffect: vi.fn()
@@ -96,12 +97,9 @@ function fixture() {
     staleTime: Infinity
   })
   const unsubscribe = observer.subscribe(() => {})
-  let reconnect!: () => void
+  const captureConnection = vi.fn<(connection: ReturnType<typeof useTaskConnection>) => void>()
   function CaptureConnection() {
-    const connection = useTaskConnection()
-    useEffect(() => {
-      reconnect = connection.reconnect
-    }, [connection.reconnect])
+    captureConnection(useTaskConnection())
     return null
   }
   renderToStaticMarkup(
@@ -111,8 +109,13 @@ function fixture() {
       </TaskEventsProvider>
     </QueryClientProvider>
   )
-  const setup = vi.mocked(useEffect).mock.calls.at(-2)![0]
-  vi.mocked(useEffect).mock.calls.at(-1)![0]()
+  // Identify the connection effect by its query client, independent of other effects' order.
+  const connectionEffects = vi
+    .mocked(useEffect)
+    .mock.calls.filter(([, deps]) => deps?.includes(client))
+  expect(connectionEffects).toHaveLength(1)
+  const setup = connectionEffects[0]![0]
+  const { reconnect } = captureConnection.mock.calls.at(-1)![0]
   let cleanup = setup()
   const dispose = () => {
     if (cleanup) cleanup()
@@ -226,6 +229,121 @@ test('cleanup removes the pending connection timeout', async () => {
   await vi.advanceTimersByTimeAsync(60_000)
   expect(f.fetch).not.toHaveBeenCalled()
 })
+
+function probeFixture() {
+  const f = fixture()
+  const unauthorized = vi.spyOn(clientAPI, 'notifyUnauthorized').mockImplementation(() => {})
+  const headers = Promise.withResolvers<Response>()
+  let signal!: AbortSignal
+  f.fetch.mockImplementation(async (path, init) => {
+    if (path === '/api/tasks/events') {
+      signal = init!.signal as AbortSignal
+      return headers.promise
+    }
+    expect(path).toBe('/api/tasks')
+    return Response.json([done])
+  })
+  const timers = vi.spyOn(globalThis, 'setTimeout')
+  f.events.close()
+  f.events.onerror?.()
+  return {
+    ...f,
+    headers,
+    unauthorized,
+    timers,
+    get signal() {
+      return signal
+    }
+  }
+}
+
+test('a stalled 401 body times out and schedules reconnect without reporting expired login', async () => {
+  const f = probeFixture()
+  const body = new ReadableStream({
+    start(controller) {
+      f.signal.addEventListener('abort', () => controller.error(f.signal.reason), { once: true })
+    }
+  })
+  f.headers.resolve(new Response(body, { status: 401 }))
+  await vi.advanceTimersByTimeAsync(4999)
+  expect(f.signal.aborted).toBe(false)
+  await vi.advanceTimersByTimeAsync(1)
+  expect(f.signal.aborted).toBe(true)
+  expect(f.unauthorized).not.toHaveBeenCalled()
+  expect(f.timers.mock.calls.filter(([, delay]) => delay === 3000)).toHaveLength(1)
+})
+
+for (const phase of ['headers', 'body'] as const) {
+  for (const action of ['dispose', 'reconnect'] as const) {
+    test(`${action} cancels the probe during ${phase} and ignores its late 401 response`, async () => {
+      const f = probeFixture()
+      const body = Promise.withResolvers<unknown>()
+      const response = new Response(null, { status: 401 })
+      vi.spyOn(response, 'json').mockReturnValue(body.promise)
+      if (phase === 'body') {
+        f.headers.resolve(response)
+        await vi.advanceTimersByTimeAsync(0)
+      }
+      expect(f.signal.aborted).toBe(false)
+      f[action]()
+      expect(f.signal.aborted).toBe(true)
+      f.timers.mockClear()
+      // Simulate a response settling after cancellation, before its continuation runs.
+      f.headers.resolve(response)
+      body.resolve({ code: 'UNAUTHORIZED' })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(f.unauthorized).not.toHaveBeenCalled()
+      expect(f.timers.mock.calls.filter(([, delay]) => delay === 3000)).toHaveLength(0)
+    })
+  }
+}
+
+test('a rejected probe clears its deadline and schedules one reconnect', async () => {
+  const clearTimer = vi.spyOn(globalThis, 'clearTimeout')
+  const f = probeFixture()
+  const timeoutIndex = f.timers.mock.calls.findIndex(([, delay]) => delay === 5000)
+  expect(timeoutIndex).toBeGreaterThanOrEqual(0)
+  const timeout = f.timers.mock.results[timeoutIndex]!.value
+  f.headers.reject(new TypeError('network unavailable'))
+  await vi.advanceTimersByTimeAsync(0)
+  expect(clearTimer).toHaveBeenCalledWith(timeout)
+  expect(f.signal.aborted).toBe(true)
+  expect(f.unauthorized).not.toHaveBeenCalled()
+  expect(f.timers.mock.calls.filter(([, delay]) => delay === 3000)).toHaveLength(1)
+})
+
+test('repeated closed-stream errors share the pending probe', async () => {
+  const f = probeFixture()
+  f.events.onerror?.()
+  f.events.onerror?.()
+  expect(f.fetch.mock.calls.filter(([path]) => path === '/api/tasks/events')).toHaveLength(1)
+  f.headers.resolve(new Response(null, { status: 200 }))
+  await vi.advanceTimersByTimeAsync(0)
+  expect(f.signal.aborted).toBe(true)
+  expect(f.timers.mock.calls.filter(([, delay]) => delay === 3000)).toHaveLength(1)
+})
+
+test('disposed stream errors and heartbeats cannot start another probe', async () => {
+  const f = fixture()
+  const previous = f.events
+  f.dispose()
+  previous.onerror?.()
+  await previous.send('ping', null)
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(f.fetch).not.toHaveBeenCalled()
+})
+
+for (const code of ['UNAUTHORIZED', 'PAN_UNAUTHORIZED', undefined]) {
+  test(`a completed 401 probe preserves authentication handling for ${code ?? 'missing code'}`, async () => {
+    const f = probeFixture()
+    f.headers.resolve(Response.json({ code }, { status: 401 }))
+    await vi.advanceTimersByTimeAsync(0)
+    const expired = code !== 'PAN_UNAUTHORIZED'
+    expect(f.unauthorized).toHaveBeenCalledTimes(expired ? 1 : 0)
+    expect(f.signal.aborted).toBe(true)
+    expect(f.timers.mock.calls.filter(([, delay]) => delay === 3000)).toHaveLength(expired ? 0 : 1)
+  })
+}
 
 const source = { account_id: 'acc1', directory: { id: 'dir1', name: 'Movies', path: '/Movies' } }
 const queuedScan: ScanTask = {

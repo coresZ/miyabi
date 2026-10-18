@@ -28,7 +28,7 @@ const reconcileBatchSize = 100
 
 // ReconcileScan prepares cached exports before atomically committing index
 // cleanup, metadata jobs, Emby notifications and scan completion.
-func ReconcileScan(ctx context.Context, db *ent.Client, taskID int, payload *domain.ScanPayload, images *mediaimage.Cache, tasksSvc *tasks.Service, cfg export.Config, notifier scrape.MediaNotifier) error {
+func ReconcileScan(ctx context.Context, db *ent.Client, taskID int, payload *domain.ScanPayload, images *mediaimage.Cache, tasksSvc *tasks.Service, cfg export.Config, notifier export.MediaNotifier) error {
 	run := scanRun{scanner: &Scanner{db: db, images: images, tasksSvc: tasksSvc, notifier: notifier, exportMgr: export.NewManager(cfg)}, taskID: taskID, payload: payload}
 	return run.reconcile(ctx)
 }
@@ -46,6 +46,39 @@ func (r *scanRun) staleFiles() predicate.File {
 		}
 	}
 	return stale
+}
+
+// Reassociation deletes old records during indexing. Keep their export cleanup
+// in the scan checkpoint so a failed removal or notification can be retried.
+// The caller holds the export configuration and source locks.
+func (r *scanRun) cleanupReassignedExports(ctx context.Context, cfg export.Config) error {
+	for _, code := range r.payload.ObsoleteCodes {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if cfg.EmbyDir == "" {
+			continue
+		}
+		exists, err := r.scanner.db.Movie.Query().Where(movie.CodeEQ(code)).Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		dir := export.EmbyMovieDir(cfg.EmbyDir, code)
+		if err := os.RemoveAll(dir); err != nil {
+			return fmt.Errorf("remove reassigned movie export %s: %w", code, err)
+		}
+		_ = os.Remove(filepath.Dir(dir))
+		if r.scanner.notifier != nil {
+			if err := r.scanner.notifier.NotifyUpdated(ctx, dir); err != nil {
+				return err
+			}
+		}
+	}
+	r.payload.ObsoleteCodes = nil
+	return nil
 }
 
 // Prepare only bounded pages of completed movies. Files that reconciliation
@@ -120,7 +153,7 @@ func (r *scanRun) reconcileTx(ctx context.Context, tx *ent.Tx, cfg export.Config
 				}
 				var cleanupErrors []error
 				for _, code := range removed {
-					movieDir := scrape.EmbyMovieDir(cfg.EmbyDir, code)
+					movieDir := export.EmbyMovieDir(cfg.EmbyDir, code)
 					if err := os.RemoveAll(movieDir); err != nil {
 						cleanupErrors = append(cleanupErrors, fmt.Errorf("remove exported movie %s after commit: %w", code, err))
 						continue
@@ -202,7 +235,7 @@ func (r *scanRun) reconcileTx(ctx context.Context, tx *ent.Tx, cfg export.Config
 				if cfg.EmbyDir != "" && r.scanner.notifier != nil {
 					// Also notify on a retry that finds complete exports: a previous
 					// attempt may have written them before its database commit failed.
-					if err := r.scanner.notifier.NotifyUpdatedTx(ctx, tx, scrape.EmbyMovieDir(cfg.EmbyDir, record.Code)); err != nil {
+					if err := r.scanner.notifier.NotifyUpdatedTx(ctx, tx, export.EmbyMovieDir(cfg.EmbyDir, record.Code)); err != nil {
 						return err
 					}
 				}

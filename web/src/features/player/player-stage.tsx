@@ -1,3 +1,4 @@
+import { cn } from 'cn'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { loadPlayerAssets } from './player-assets'
@@ -5,7 +6,7 @@ import { loadPlayerAssets } from './player-assets'
 export type PlayerTrack = {
   url: string
   name: string
-  code: string
+  code?: string
 }
 
 export type PlayerInstance = {
@@ -29,6 +30,7 @@ declare global {
 }
 
 type PlayerStageProps = {
+  className?: string
   poster?: string
   onReady?: (player: PlayerInstance) => void
   onChange?: (index: number, source: PlayerTrack) => void
@@ -75,10 +77,20 @@ export function PlayerStage(props: PlayerStageProps) {
 
   if (error) {
     return (
-      <div className="grid aspect-video w-full place-items-center rounded-2xl bg-black text-sm text-muted-foreground">
+      <div
+        className={cn(
+          'grid aspect-video w-full place-items-center rounded-2xl bg-black text-sm text-muted-foreground',
+          props.className
+        )}
+      >
         {error}
       </div>
     )
   }
-  return <div ref={hostRef} className="aspect-video w-full overflow-hidden rounded-2xl bg-black" />
+  return (
+    <div
+      ref={hostRef}
+      className={cn('aspect-video w-full overflow-hidden rounded-2xl bg-black', props.className)}
+    />
+  )
 }
