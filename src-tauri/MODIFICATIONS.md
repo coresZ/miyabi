@@ -8,7 +8,7 @@
 
 ## 文件
 - `Cargo.toml` / `build.rs`：Tauri v2 依赖与构建脚本。
-- `tauri.conf.json`：`bundle.icon = ["../icon/miyabi.ico"]`（仓库根的 `icon/`，白色透明底，已提交）、`bundle.resources = { "runtime/": "runtime/" }`（Go 后端作为资源装进 `runtime/`，不再用 `externalBin`，否则安装器会把第二个 exe 摊在壳旁边）、Windows `webviewInstallMode=embedBootstrapper`、`frontendDist=stub`（真实 UI 由 Go 提供）。
+- `tauri.conf.json`：`bundle.icon = ["../icon/miyabi.ico"]`（仓库根的 `icon/`，深色圆角底板，已提交）、`bundle.resources = { "runtime/": "runtime/" }`（Go 后端作为资源装进 `runtime/`，不再用 `externalBin`，否则安装器会把第二个 exe 摊在壳旁边）、Windows `webviewInstallMode=embedBootstrapper`、`frontendDist=stub`（真实 UI 由 Go 提供）。
 - `capabilities/default.json`：`main` 和 `setup` 只要 `core:default`。后端由壳启动，webview 不需要 shell 权限。
 - `src/main.rs`：Builder + 插件 + setup 启后端/开窗 + 退出回收。
 - `src/sidecar.rs`：**唯一的上游契约适配点**——选空闲端口、起 `runtime/miyabi-server.exe`（`MIYABI_LISTEN`/`MIYABI_DATA_DIR`）、TCP 就绪等待、退出 kill。
@@ -32,9 +32,9 @@
 - 便携 zip 组装前先确认 `target/release/miyabi-desktop.exe` 和 NSIS 都已产出。release 二进制沿用 Cargo 包名，不是 `productName`。zip 顶层只有 `Miyabi.exe`、`runtime/`、说明和 LICENSE；`portable` 标记写在 `runtime/` 里。
 
 ## 状态
-- M1/M2 骨架：代码已落，**待 CI（GitHub Actions）首次构建验证**（本地未装 Rust）。
-- 未做：局域网开关（M4）、图标正式化（M6）、Job Object 兜底回收。
+- M1/M2 骨架、M3 打包、M5 CI：已落地并通过 CI 构建（0.4.x 产物可安装运行）。
+- 未做：局域网防火墙引导（M4 剩余项）、自动更新与代码签名（M6）、Job Object 兜底回收。
 
 ## 验证
-- CI：`.github/workflows/desktop-tauri.yml`（`Build desktop (Tauri)`，Windows runner：装 Go/Rust/Node → 建前端 → 建 `runtime/miyabi-server.exe` → `tauri icon` → `tauri build` → 产出 NSIS 安装包与便携 zip）。
+- CI：`.github/workflows/desktop-tauri.yml`（`Build desktop (Tauri)`，Windows runner：装 Go/Rust/Node → 建前端 → 建 `runtime/miyabi-server.exe` → `tauri build` → 产出 NSIS 安装包与便携 zip）。
 - 本地未装 Rust，故不在本地构建。

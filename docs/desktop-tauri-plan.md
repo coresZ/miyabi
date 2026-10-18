@@ -1,7 +1,7 @@
 # Miyabi 桌面端落地方案（Tauri v2 + Go sidecar）
 
 > 分支：`feat/desktop-tauri-v2`
-> 状态：**M1/M2 骨架已落地**（`src-tauri/**` + `scripts/**` + `desktop-tauri.yml`）；本地未装 Rust，**待 CI 首次构建验证**。
+> 状态：M1–M5 已落地并通过 CI 构建；图标已就位。未完成项见 §10 里程碑。
 > 目标：把现有 Web 应用变成**原生桌面窗口**，不再依赖外部浏览器，同时尽量**不侵入上游**（`ppxb/miyabi`），以便持续从 `master` 同步。
 
 ---
@@ -62,7 +62,7 @@ src-tauri/                       # 新增：Tauri 壳（纯增量，不动上游
     sidecar.rs                   # 启动/就绪等待/退出（唯一的“契约适配”文件）
     window.rs                    # 创建外部 URL 窗口
   runtime/                       # 构建时放入 miyabi-server.exe（ignored，装进 runtime/）
-icon/                            # 应用图标（已提交）：icon-*.png + miyabi.ico
+icon/                            # 应用图标：icon-1024.png（母图）+ miyabi.ico
 scripts/
   build-desktop.ps1              # 新增：编前端 + Go 后端 + tauri build
   gen-icon.mjs                   # 旧占位图标生成器，桌面构建已不再使用
@@ -217,12 +217,14 @@ git merge upstream/master
 
 ## 10. 里程碑（待办）
 
-- [x] M1 骨架：`src-tauri/` 建窗口并指向本地服务（代码已落，待 CI 验证）。
-- [x] M2 sidecar：自动起/停 + 就绪等待 + 单实例复用（代码已落，待 CI 验证）。
-- [ ] M3 打包：Windows NSIS/MSI，sidecar 打包含入。
-- [ ] M4 局域网：绑定开关（`MIYABI_LISTEN`）+ 访问密码 + 地址展示/复制 + 防火墙引导。
-- [ ] M5 CI：`desktop-tauri.yml` 出产物；WebView2 策略确定。
-- [x] M6 图标：`icon/miyabi.ico`（白色透明底，16–256 多尺寸）已接入 `bundle.icon`。
+- [x] M1 骨架：`src-tauri/` 建窗口并指向本地服务，已通过 CI 构建。
+- [x] M2 sidecar：自动起/停 + 就绪等待 + 单实例复用，已通过 CI 构建。
+- [x] M3 打包：Windows NSIS 安装包，Go 后端以 resources 装入 `runtime/`。
+- [x] M4 局域网：设置页开关 + 端口 + 访问密码 + 局域网地址复制。**未做**：Windows 防火墙引导。
+- [x] M5 CI：`desktop-tauri.yml` 出安装包与便携 zip（`archive: false`）；WebView2 用 `embedBootstrapper`。
+- [x] M6 图标：`icon/miyabi.ico`（深色圆角底板，16–256 多尺寸）已接入 `bundle.icon`。
+- [x] M6 图标小尺寸重做：16–1024 全部改为深色圆角底板（`#1b2233`）+ 插画占画布 72%，各尺寸可见比例稳定在 57% 左右；`miyabi.ico` 由 `scripts/build-ico.py` 重新生成（16–128 为 BMP 条目，256 为 PNG）。
+- [x] 图标格式修复：ICO 之前全部用 PNG 压缩，Windows 只认 256 那一档用 PNG，小尺寸必须是 BMP，否则资源管理器列表视图空白。
 - [ ] M6 打磨：自动更新（Tauri updater）、代码签名。
 
 ---
