@@ -1,5 +1,6 @@
-import { ChevronRightIcon, EyeIcon, EyeOffIcon, SearchIcon } from 'lucide-react'
+import { ChevronRightIcon, EyeIcon, EyeOffIcon, Maximize2Icon, Minimize2Icon, SearchIcon, SquareIcon, XIcon } from 'lucide-react'
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -16,6 +17,7 @@ import { ErrorState, InlineError } from '@/components/error-state'
 import { Button } from '@/components/ui/button'
 import { cn } from 'cn'
 import { PlayerStage, type PlayerInstance, type PlayerTrack } from './player-stage'
+import { isDesktopWindow, setPlayerWindowMode, type PlayerWindowMode } from './window-mode'
 
 type SourceOption = {
   id: string
@@ -88,6 +90,35 @@ export function PlayerPage() {
   const railDragRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const railMovedRef = useRef(false)
   const isDesktop = useIsDesktop()
+  const desktopShell = isDesktopWindow()
+  const [windowMode, setWindowMode] = useState<PlayerWindowMode>('windowed')
+  const borderless = windowMode !== 'windowed'
+
+  const applyWindowMode = useCallback((mode: PlayerWindowMode) => {
+    setWindowMode(mode)
+    void setPlayerWindowMode(mode).catch(() => setWindowMode('windowed'))
+  }, [])
+
+  // Escape steps back one level: fullscreen -> borderless -> windowed.
+  useEffect(() => {
+    if (windowMode === 'windowed') return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      applyWindowMode(windowMode === 'fullscreen' ? 'borderless' : 'windowed')
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [windowMode, applyWindowMode])
+
+  // Leaving the page must restore the title bar, otherwise the window stays
+  // borderless with no way back.
+  useEffect(() => {
+    if (!desktopShell) return
+    return () => {
+      void setPlayerWindowMode('windowed')
+    }
+  }, [desktopShell])
   const [viewport, setViewport] = useState(() => ({
     height: typeof window === 'undefined' ? 0 : window.innerHeight,
     playerBottom: 0
@@ -293,8 +324,58 @@ export function PlayerPage() {
   }
 
   return (
-    <main className="mx-auto flex h-dvh w-full max-w-[84rem] flex-col gap-5 overflow-hidden bg-background px-4 pt-7 pb-24">
-      <header className="flex flex-none flex-wrap items-end justify-between gap-3">
+    <main
+      className={cn(
+        'mx-auto flex h-dvh w-full max-w-[84rem] flex-col gap-5 overflow-hidden bg-background px-4 pt-7 pb-24',
+        borderless && 'max-w-none gap-0 px-0 pt-0 pb-0'
+      )}
+    >
+      {borderless ? (
+        <div
+          data-tauri-drag-region
+          className="flex h-9 flex-none items-center justify-between bg-background/95 pr-1 pl-3 select-none"
+        >
+          <span data-tauri-drag-region className="text-xs text-muted-foreground">
+            Miyabi · 播放
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="还原窗口"
+              title="还原窗口"
+              onClick={() => applyWindowMode('windowed')}
+            >
+              <Minimize2Icon />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={windowMode === 'fullscreen' ? '退出全屏' : '全屏'}
+              title={windowMode === 'fullscreen' ? '退出全屏' : '全屏'}
+              onClick={() => applyWindowMode(windowMode === 'fullscreen' ? 'borderless' : 'fullscreen')}
+            >
+              {windowMode === 'fullscreen' ? <SquareIcon /> : <Maximize2Icon />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="关闭窗口"
+              title="关闭窗口"
+              onClick={() => {
+                const w = window as Window & {
+                  __TAURI__?: { window?: { getCurrentWindow?: () => { close: () => Promise<void> } } }
+                }
+                void w.__TAURI__?.window?.getCurrentWindow?.().close()
+              }}
+            >
+              <XIcon />
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      <header className={cn('flex flex-none flex-wrap items-end justify-between gap-3', borderless && 'hidden')}>
         <div>
           <h1 className="text-3xl font-bold tracking-tight">播放</h1>
           <p className="mt-1 text-sm text-muted-foreground">选择一个来源，点击右侧目录即可播放</p>
@@ -305,16 +386,28 @@ export function PlayerPage() {
       </header>
 
       <div
-        style={isDesktop ? ({ '--rail-w': collapsed ? '0px' : `${railWidth}px` } as CSSProperties) : undefined}
+        style={
+          isDesktop && !borderless
+            ? ({ '--rail-w': collapsed ? '0px' : `${railWidth}px` } as CSSProperties)
+            : undefined
+        }
         className={cn(
           'relative grid min-h-0 flex-1 grid-rows-[auto] gap-5 lg:grid-rows-1 lg:grid-cols-[minmax(0,1fr)_var(--rail-w)]',
+          borderless && 'gap-0 lg:grid-cols-[minmax(0,1fr)]',
           draggingRail
             ? 'lg:transition-none'
             : 'lg:transition-[grid-template-columns] lg:duration-200 lg:ease-out'
         )}
       >
-        <section ref={playerSectionRef} className="flex min-h-0 min-w-0 flex-col gap-3 self-start lg:self-stretch">
+        <section
+          ref={playerSectionRef}
+          className={cn(
+            'flex min-h-0 min-w-0 flex-col gap-3 self-start lg:self-stretch',
+            borderless && 'gap-0 self-stretch'
+          )}
+        >
           <PlayerStage
+            className={cn(borderless && 'aspect-auto h-full min-h-0 flex-1 rounded-none')}
             onReady={player => {
               playerRef.current = player
               player.setQueue(tracks)
@@ -329,7 +422,7 @@ export function PlayerPage() {
             }}
           />
 
-          <div className="mt-auto flex min-w-0 items-center gap-3">
+          <div className={cn('mt-auto flex min-w-0 items-center gap-3', borderless && 'hidden')}>
             {playing ? (
               <>
                 <span className="flex-none rounded-full border border-border px-2.5 py-1 text-xs font-semibold tabular-nums">
@@ -356,6 +449,17 @@ export function PlayerPage() {
               >
                 {controlsHidden ? <EyeOffIcon /> : <EyeIcon />}
               </Button>
+              {desktopShell ? (
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="无边框播放"
+                  title="无边框播放"
+                  onClick={() => applyWindowMode('borderless')}
+                >
+                  <Maximize2Icon />
+                </Button>
+              ) : null}
               <Button variant="outline" size="sm" disabled={current <= 0} onClick={() => go(-1)}>
                 上一段
               </Button>
@@ -367,12 +471,13 @@ export function PlayerPage() {
         </section>
 
         <section
-          inert={collapsed && isDesktop ? true : undefined}
+          inert={collapsed && isDesktop && !borderless ? true : undefined}
           style={isDesktop ? undefined : { height: dragHeight ?? sheetHeight }}
           className={cn(
             'flex min-h-0 flex-col overflow-hidden rounded-2xl bg-card ring-1 ring-border/60 lg:transition-opacity lg:duration-200',
             'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:rounded-b-none max-lg:shadow-[0_-10px_34px_rgba(0,0,0,0.14)]',
             collapsed && isDesktop && 'lg:pointer-events-none lg:opacity-0',
+            borderless && 'hidden',
             dragging ? 'max-lg:transition-none' : 'max-lg:transition-[height] max-lg:duration-200 max-lg:ease-out'
           )}
         >
@@ -482,7 +587,7 @@ export function PlayerPage() {
             </div>
         </section>
 
-        {isDesktop ? (
+        {isDesktop && !borderless ? (
           <button
             type="button"
             aria-label={collapsed ? '展开目录' : '收起目录'}

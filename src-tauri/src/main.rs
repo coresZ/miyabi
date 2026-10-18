@@ -39,6 +39,7 @@ fn main() {
             commands::complete_setup,
             commands::desktop_config,
             commands::apply_desktop,
+            commands::set_player_window_mode,
         ])
         .build(tauri::generate_context!())
         .expect("error while building the Miyabi desktop shell")

@@ -22,9 +22,9 @@
 ## 首次配置
 - `stub/setup.html`：sidecar 启动前的本地向导。便携版不问数据目录，固定 exe 旁边的 `data\`。安装版用系统文件夹对话框，默认 AppData，路径只读。访问密码可选；局域网默认关，开启必须有密码，端口默认 8080。
 - `src/prefs.rs`：`desktop.json`。`runtime/` 里有空文件 `portable` 才是便携版（安装版写 AppData，便携版写 `runtime/`）。数据目录在便携版固定为壳旁边的 `data/`。
-- `src/commands.rs`：`desktop_defaults` / `pick_data_dir` / `complete_setup` / `desktop_config` / `apply_desktop`。设置页改局域网端口后重启后端并重载主窗口。
+- `src/commands.rs`：`desktop_defaults` / `pick_data_dir` / `complete_setup` / `desktop_config` / `apply_desktop` / `set_player_window_mode`。设置页改局域网端口后重启后端并重载主窗口；播放页用最后一个切无边框 / 全屏，进无边框前记住尺寸位置。
 - `capabilities/desktop-setup.json`：本地 `setup` 窗口才能调 `desktop_defaults` / `pick_data_dir` / `complete_setup`。远程页没有这些权限。
-- `capabilities/desktop-remote.json`：只允许 `http://127.0.0.1:*/*` 和 `http://localhost:*/*` 调 `desktop_config` / `apply_desktop`。
+- `capabilities/desktop-remote.json`：只允许 `http://127.0.0.1:*/*` 和 `http://localhost:*/*` 调 `desktop_config` / `apply_desktop` / `set_player_window_mode`，外加 `core:window` 的 close / start-dragging / toggle-maximize（无边框顶栏用）。
 - 产物文件名：`miyabi-<version>-windows-x86_64-tauri-portable.zip` 与 `...-tauri-setup.exe`。上传用 `archive: false`，避免 GitHub 再套一层 zip。
 - `build.rs`：用 `AppManifest::commands` 生成 `allow-desktop-defaults` 等权限。不声明的话 capability 引用会在构建期直接失败。
 - 命令返回 `Result<(), String>` 时，`tauri::Error` 不能直接 `?`，要 `map_err`。`setup` 里的 `String` 错误同样要转成 `std::error::Error`。

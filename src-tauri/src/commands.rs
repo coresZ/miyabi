@@ -1,4 +1,5 @@
 use std::net::UdpSocket;
+use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -159,6 +160,50 @@ pub fn apply_desktop(
             Err(err)
         }
     }
+}
+
+#[tauri::command]
+pub fn set_player_window_mode(app: AppHandle, mode: String) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口未打开".to_string())?;
+    match mode.as_str() {
+        "windowed" => {
+            let _ = window.set_fullscreen(false);
+            window
+                .set_decorations(true)
+                .map_err(|err| err.to_string())?;
+            if let Some(bounds) = WINDOW_BOUNDS.lock().expect("bounds lock").take() {
+                let _ = window.set_size(bounds.size);
+                let _ = window.set_position(bounds.position);
+            }
+        }
+        "borderless" => {
+            if WINDOW_BOUNDS.lock().expect("bounds lock").is_none() {
+                let size = window.inner_size().map_err(|err| err.to_string())?;
+                let position = window.outer_position().map_err(|err| err.to_string())?;
+                *WINDOW_BOUNDS.lock().expect("bounds lock") = Some(WindowBounds { size, position });
+            }
+            let _ = window.set_fullscreen(false);
+            window
+                .set_decorations(false)
+                .map_err(|err| err.to_string())?;
+        }
+        "fullscreen" => {
+            window
+                .set_fullscreen(true)
+                .map_err(|err| err.to_string())?;
+        }
+        _ => return Err("未知的窗口模式".into()),
+    }
+    Ok(())
+}
+
+static WINDOW_BOUNDS: Mutex<Option<WindowBounds>> = Mutex::new(None);
+
+struct WindowBounds {
+    size: tauri::PhysicalSize<u32>,
+    position: tauri::PhysicalPosition<i32>,
 }
 
 /// Best-effort LAN addresses. A UDP connect does not send a packet; it only

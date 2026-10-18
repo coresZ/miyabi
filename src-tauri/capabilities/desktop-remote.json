@@ -9,6 +9,10 @@
   "permissions": [
     "core:default",
     "allow-desktop-config",
-    "allow-apply-desktop"
+    "allow-apply-desktop",
+    "allow-set-player-window-mode",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize"
   ]
 }
