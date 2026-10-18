@@ -111,6 +111,7 @@ export function PlayerPage() {
   const setNavHidden = useShellChrome(state => state.setNavHidden)
   const [windowMode, setWindowMode] = useState<PlayerWindowMode>('windowed')
   const [chromeVisible, setChromeVisible] = useState(false)
+  const [railOpen, setRailOpen] = useState(false)
   const [sourceAspect, setSourceAspect] = useState<number | null>(null)
   const [coverVideo, setCoverVideo] = useState(false)
   const borderless = windowMode !== 'windowed'
@@ -134,6 +135,7 @@ export function PlayerPage() {
   const applyWindowMode = useCallback(
     (mode: PlayerWindowMode) => {
       setWindowMode(mode)
+      if (mode !== 'borderless') setRailOpen(false)
       void setPlayerWindowMode(mode, mode === 'windowed' ? null : sourceAspect).catch(() =>
         setWindowMode('windowed')
       )
@@ -290,6 +292,7 @@ export function PlayerPage() {
     playerRef.current?.setSources(tracks, index)
     setCurrent(index)
     setPlaying(track)
+    if (borderless) setRailOpen(false)
     if (!isDesktop) setSnap('half')
   }
 
@@ -389,7 +392,10 @@ export function PlayerPage() {
   return (
     <main
       className={cn(
-        'mx-auto flex h-dvh w-full max-w-[84rem] flex-col gap-5 overflow-hidden bg-background px-4 pt-7 pb-24',
+        'mx-auto flex h-dvh w-full max-w-[84rem] flex-col gap-5 overflow-hidden bg-background px-4 pt-7',
+        // The floating nav is hidden in the desktop shell, so its reserved lane
+        // would just be an empty strip under the player.
+        desktopShell ? 'pb-4' : 'pb-24',
         // Borderless only shows the video: pin the page to the window edges so no
         // page padding or max-width leaves a gap around the player.
         borderless && 'fixed inset-0 z-40 h-auto w-auto max-w-none gap-0 bg-black p-0'
@@ -404,6 +410,12 @@ export function PlayerPage() {
             className="absolute inset-x-0 top-0 z-40 h-12"
             onPointerEnter={() => setChromeVisible(true)}
             onPointerLeave={() => setChromeVisible(false)}
+          />
+          {/* Right-edge strip: the catalog slides in without covering the video. */}
+          <div
+            aria-hidden
+            className="absolute inset-y-0 right-0 z-40 w-6"
+            onPointerEnter={() => setRailOpen(true)}
           />
           <div
             data-tauri-drag-region
@@ -582,12 +594,21 @@ export function PlayerPage() {
           className={cn(
             'flex min-h-0 flex-col overflow-hidden rounded-2xl bg-card ring-1 ring-border/60 lg:transition-opacity lg:duration-200',
             'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:rounded-b-none max-lg:shadow-[0_-10px_34px_rgba(0,0,0,0.14)]',
-            collapsed && isDesktop && 'lg:pointer-events-none lg:opacity-0',
-            borderless && 'hidden',
+            collapsed && isDesktop && !borderless && 'lg:pointer-events-none lg:opacity-0',
+            // Borderless keeps the catalog off-screen and slides it in from the
+            // right edge, so the video owns the whole frame.
+            borderless &&
+              cn(
+                'fixed inset-y-0 right-0 z-50 w-[20rem] max-w-[80vw] rounded-none rounded-l-2xl bg-card/95 shadow-[-10px_0_34px_rgba(0,0,0,0.35)] backdrop-blur transition-transform duration-200 ease-out',
+                railOpen ? 'translate-x-0' : 'translate-x-full'
+              ),
             dragging
               ? 'max-lg:transition-none'
               : 'max-lg:transition-[height] max-lg:duration-200 max-lg:ease-out'
           )}
+          onPointerLeave={() => {
+            if (borderless) setRailOpen(false)
+          }}
         >
           <div
             onPointerDown={onHandleDown}
