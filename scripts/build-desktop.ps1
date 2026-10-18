@@ -11,7 +11,7 @@ pnpm --dir web build
 # 2. Go sidecar — named with the Rust target triple so Tauri finds it.
 $triple = (& rustc -vV | Select-String '^host:').Line.Split(' ')[1].Trim()
 New-Item -ItemType Directory -Force -Path "src-tauri/binaries" | Out-Null
-go build -ldflags "-s -w -H=windowsgui" -o "src-tauri/binaries/miyabi-server-$triple.exe" ./cmd/miyabi
+go build -ldflags "-s -w -H=windowsgui" -o "src-tauri/binaries/miyabi-server-$triple.exe" ./cmd
 
 # 3. Icons — generated from a scratch PNG, no binary assets committed.
 node scripts/gen-icon.mjs src-tauri/app-icon.png 1024
@@ -29,6 +29,7 @@ Copy-Item "src-tauri/target/release/miyabi-desktop.exe" (Join-Path $stage 'Miyab
 Copy-Item "src-tauri/binaries/miyabi-server-$triple.exe" (Join-Path $stage 'miyabi-server.exe')
 Copy-Item LICENSE $stage
 Copy-Item docs/desktop-usage.md (Join-Path $stage '使用说明.md')
+New-Item -ItemType File -Force -Path (Join-Path $stage 'portable') | Out-Null
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath "dist/$package.zip" -Force
 
 $nsis = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1

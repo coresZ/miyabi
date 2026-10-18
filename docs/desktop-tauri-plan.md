@@ -19,7 +19,7 @@
 - 前端自定义（player/搜索/网格等）照常合并，桌面层不增加合并面。
 
 **非目标**
-- 不使用系统自带的“打开浏览器”方式（`cmd/miyabi/portable.go:openBrowser`）。
+- 不使用系统自带的“打开浏览器”方式（`cmd/portable.go:openBrowser`）。
 - 不重写 UI、不替换 Go 后端。
 
 ---
@@ -27,16 +27,16 @@
 ## 2. 方案总览
 
 - **壳**：Tauri v2（Rust），窗口使用系统 WebView（Windows = WebView2，macOS = WKWebView，Linux = WebKitGTK）。
-- **后端**：现有 Go 程序以 **sidecar**（子进程）方式运行，完全复用 `cmd/miyabi` 编出的 `miyabi`；不再调用 `openBrowser`。
+- **后端**：现有 Go 程序以 **sidecar**（子进程）方式运行，完全复用 `cmd` 编出的 `miyabi-server`；不再调用 `openBrowser`。
 - **前端**：由 Go 内嵌并提供（`embed.go`），Tauri 窗口只是加载 `http://127.0.0.1:<port>`。
-- **就绪探测**：轮询 `GET /api/health`（见 `internal/app/app.go` 的 `CheckHealth`）直到服务可用再显示窗口。
+- **就绪探测**：TCP 连接 `127.0.0.1:<port>` 直到可连通再显示窗口。上游已删除 `GET /api/health`。
 - **局域网发布（可选）**：开关切换 sidecar 的 `MIYABI_LISTEN`（`127.0.0.1:<port>` ↔ `:<port>`），同网段设备即可用浏览器访问（原文仍由 Go 提供），符合“桌面端同时可当局域网服务器”。详见 §6.2。
 
 ```
 ┌──────────────────────────── Tauri 应用 (miyabi desktop) ───────────────────────────┐
 │  Rust shell (src-tauri/)                                                            │
 │    ├─ 启动 sidecar: miyabi-server.exe  (env: MIYABI_LISTEN / MIYABI_DATA_DIR)              │
-│    ├─ 轮询 http://127.0.0.1:<port>/api/health                                       │
+│    ├─ TCP 探活 127.0.0.1:<port>                                                     │
 │    └─ WebviewWindow(WebviewUrl::External("http://127.0.0.1:<port>"))                │
 │                                                                                     │
 │  sidecar 进程 (miyabi-server.exe)                                                          │
@@ -84,8 +84,7 @@ docs/desktop-tauri-plan.md       # 本文
 | 监听地址 | 环境变量 `MIYABI_LISTEN`（默认 `:8080`），见 `internal/config/config.go:54` |
 | 数据目录 | 环境变量 `MIYABI_DATA_DIR`，见 `internal/config/config.go:55` |
 | 便携配置 | exe 同目录 `miyabi.env`，见 `internal/config/portable.go` |
-| 健康检查 | `GET /api/health`，见 `internal/app/app.go:328` |
-| 探活子命令 | `miyabi healthcheck`，见 `cmd/miyabi/main.go:25` |
+| 就绪判据 | sidecar TCP 连通（上游已删除 `/api/health` 与 `healthcheck` 子命令） |
 
 > 只要上游不改这些，桌面层无需改动；若改动，只改 `sidecar.rs`。
 
@@ -102,7 +101,7 @@ docs/desktop-tauri-plan.md       # 本文
 - Tauri `externalBin` 要求文件名带三元组：
   ```powershell
   $triple = (rustc -vV | Select-String 'host:').ToString().Split()[-1]
-  go build -tags prod -o "src-tauri/binaries/miyabi-server-$triple.exe" ./cmd/miyabi
+  go build -tags prod -o "src-tauri/binaries/miyabi-server-$triple.exe" ./cmd
   ```
 - 说明：Go 端**不需要改动**；如需隐藏控制台窗口可用 `-ldflags "-H windowsgui"`（由构建脚本决定，不动源码）。
 
@@ -125,12 +124,12 @@ docs/desktop-tauri-plan.md       # 本文
 ### 5.4 启动 / 就绪 / 退出（`src-tauri/src/main.rs` + `sidecar.rs`）
 1. `setup`：
    - 选端口（见 §6），`Command::new_sidecar("miyabi-server")`，注入 `MIYABI_LISTEN`、`MIYABI_DATA_DIR`，spawn。
-   - 轮询 `http://127.0.0.1:<port>/api/health`，带超时（如 30s）；失败弹原生错误并退出。
+   - TCP 连接 `127.0.0.1:<port>`，带超时（如 30s）；失败弹原生错误并退出。上游已删除 `/api/health`。
    - 通过后 `WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))` 建窗。
 2. 退出：监听 `RunEvent::ExitRequested` / 主窗口 `Destroyed` → 结束 sidecar（Windows 建议用 Job Object 保证子进程随父进程退出，避免残留）。
 3. 单实例：`tauri-plugin-single-instance`。二次启动时先探活：若已有实例在跑，则聚焦既有窗口/ephemeral 复用，而不是再起 sidecar。
 
-> 直接复用上游已有的 Restart/Single-quantity 语义：`cmd/miyabi/main.go:43` 已经在“端口已被占用且健康”时直接打开浏览器——桌面端把“打开浏览器”换成“连接到既有实例并聚焦窗口”。
+> 直接复用上游已有的二次启动语义：`cmd/cmd.go` 在便携模式且端口已被占用时直接打开浏览器——桌面端把“打开浏览器”换成“连接到既有实例并聚焦窗口”。注入 `MIYABI_LISTEN` / `MIYABI_DATA_DIR` 后 Go 端退出便携模式，因此 sidecar 不会再拉起浏览器。
 
 ### 5.5 WebView2
 - `webviewInstallMode`: `embedBootstrapper`（离线引导安装）或 `fixedRuntime`（完全自带，避免依赖系统是否安装）；开发阶段可 `downloadBootstrapper`。
@@ -153,10 +152,11 @@ docs/desktop-tauri-plan.md       # 本文
 ## 6. 端口、监听与局域网发布
 
 ### 6.1 端口与数据目录
-- **端口**：优先固定 `8080`；若被占用则选一个空闲端口（Rust 侧 `TcpListener::bind("127.0.0.1:0")` 取端口后释放），再通过 `MIYABI_LISTEN` 传给 sidecar。
+- **端口**：局域网关闭时绑定 `127.0.0.1:0` 取空闲端口。局域网开启时使用设置里的端口（首次默认 `8080`），先探测占用再传给 sidecar。
 - **数据目录**：
-  - 安装版：`%APPDATA%\Miyabi`（通过 `MIYABI_DATA_DIR` 注入）。
-  - 便携版：sidecar 与数据放同目录，沿用上游 `config.Portable` 逻辑（`miyabi.env`）。
+  - 安装版：`%APPDATA%\com.ppxb.miyabi.desktop`（通过 `MIYABI_DATA_DIR` 注入）。
+  - 便携版：exe 同级 `data\`。用 exe 旁边的空文件 `portable` 区分，不看 sidecar 是否同目录（安装包里 sidecar 也在旁边）。
+- **桌面配置**：`desktop.json`。安装版在 AppData；便携版在 exe 旁边，不放进 `data\`。首次启动由本地向导写入，之后局域网端口和访问密码在设置页修改，保存时重启 sidecar。
 
 ### 6.2 局域网访问（LAN 发布）
 桌面端提供「局域网访问」开关（默认**关**）。它不引入任何新后端能力，只是改变 sidecar 的监听地址：
@@ -179,7 +179,7 @@ docs/desktop-tauri-plan.md       # 本文
 
 ## 7. 生命周期与单实例
 
-- 顺序：起 sidecar → 等 `/api/health` → 开窗。
+- 顺序：起 sidecar → TCP 探活 → 开窗。
 - 关闭：关窗/退出 → 结束 sidecar；用 Windows Job Object 兜底进程回收。
 - 二次启动：探测既有实例 → 复用/激活，不起新进程。
 
@@ -228,8 +228,8 @@ git merge upstream/master
 
 ## 附录：关键接口清单
 
-- 启动：`miyabi`（无参即起 HTTP 服务）；`miyabi healthcheck` 探活外部实例。
+- 启动：`miyabi`（无参即起 HTTP 服务；上游已拒绝 `healthcheck` 等子命令）。
 - 环境变量：`MIYABI_LISTEN`、`MIYABI_DATA_DIR`（其余 Emby/STRM/密码等按需）。
 - 便携配置：exe 同目录 `miyabi.env`。
-- 健康端点：`GET /api/health`（`internal/app/app.go`）。
+- 就绪：TCP 连通即可。上游已删除 `GET /api/health`。
 - 前端：由 `embed.go` 内嵌，`app.LocalURL(listen)` 得到回环地址。

@@ -92,7 +92,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
           # Sidecar named "miyabi-server" so it never collides with the shell
           # "Miyabi.exe" on case-insensitive Windows filesystems.
-          go build -trimpath -ldflags "-s -w -H=windowsgui" -o "src-tauri/binaries/miyabi-server-$triple.exe" ./cmd/miyabi
+          go build -trimpath -ldflags "-s -w -H=windowsgui" -o "src-tauri/binaries/miyabi-server-$triple.exe" ./cmd
           "TRIPLE=$triple" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Generate icons
@@ -116,6 +116,8 @@ jobs:
           Copy-Item "src-tauri/binaries/miyabi-server-$env:TRIPLE.exe" (Join-Path $stage 'miyabi-server.exe')
           Copy-Item LICENSE $stage
           Copy-Item docs/desktop-usage.md (Join-Path $stage '使用说明.md')
+          # Marker only. The installer has no such file, so the same exe can tell the two apart.
+          New-Item -ItemType File -Force -Path (Join-Path $stage 'portable') | Out-Null
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath "dist/$package.zip"
 
           # Installer: rename the NSIS setup so artifacts are unambiguous.
