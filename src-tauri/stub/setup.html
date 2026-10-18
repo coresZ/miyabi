@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Miyabi</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f4f4f5;
+        --card: #ffffff;
+        --text: #18181b;
+        --muted: #71717a;
+        --line: #e4e4e7;
+        --accent: #18181b;
+        --accent-text: #fafafa;
+        --danger: #b91c1c;
+        --focus: #a1a1aa;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #09090b;
+          --card: #18181b;
+          --text: #fafafa;
+          --muted: #a1a1aa;
+          --line: #3f3f46;
+          --accent: #fafafa;
+          --accent-text: #18181b;
+          --danger: #fca5a5;
+          --focus: #d4d4d8;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+      }
+      main {
+        width: min(440px, calc(100vw - 32px));
+        padding: 28px 28px 24px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+      }
+      h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+      .lead { margin: 0 0 22px; color: var(--muted); font-size: 13px; }
+      label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+      .field { margin-bottom: 16px; }
+      input[type="text"], input[type="password"] {
+        width: 100%;
+        height: 36px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+      }
+      input:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
+      .hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+      .row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .switch {
+        position: relative;
+        width: 36px;
+        height: 20px;
+        flex: none;
+        margin-top: 2px;
+      }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .switch span {
+        position: absolute;
+        inset: 0;
+        background: #d4d4d8;
+        border-radius: 999px;
+        cursor: pointer;
+      }
+      .switch span::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        background: white;
+        border-radius: 50%;
+        transition: transform 0.15s ease;
+      }
+      .switch input:checked + span { background: var(--accent); }
+      .switch input:checked + span::after { transform: translateX(16px); }
+      .switch input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+      button {
+        width: 100%;
+        height: 36px;
+        margin-top: 8px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--accent);
+        color: var(--accent-text);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.5; cursor: default; }
+      button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+      .error { min-height: 18px; margin: 10px 0 0; color: var(--danger); font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>首次配置</h1>
+      <p class="lead">这些选项只在第一次启动时询问。115 登录和媒体目录仍在设置里。</p>
+      <form id="setup">
+        <div class="field">
+          <label for="dataDir">数据目录</label>
+          <input id="dataDir" type="text" autocomplete="off" required />
+          <p id="dataHint" class="hint"></p>
+        </div>
+        <div class="field">
+          <label for="password">访问密码</label>
+          <input id="password" type="password" autocomplete="new-password" />
+          <p class="hint">留空则不启用访问密码。开启局域网时必填。</p>
+        </div>
+        <div class="field row">
+          <div>
+            <label for="lan">局域网访问</label>
+            <p class="hint">开启后同网段设备可用浏览器访问。Windows 可能会询问防火墙权限。默认端口 8080，之后可在设置里修改。</p>
+          </div>
+          <label class="switch">
+            <input id="lan" type="checkbox" />
+            <span></span>
+          </label>
+        </div>
+        <button id="submit" type="submit">完成并启动</button>
+        <p id="error" class="error"></p>
+      </form>
+    </main>
+    <script>
+      const dataDir = document.getElementById('dataDir')
+      const password = document.getElementById('password')
+      const lan = document.getElementById('lan')
+      const submit = document.getElementById('submit')
+      const error = document.getElementById('error')
+      const dataHint = document.getElementById('dataHint')
+
+      function invoke(cmd, args) {
+        const fn = window.__TAURI__?.core?.invoke || window.__TAURI_INTERNALS__?.invoke
+        if (!fn) return Promise.reject(new Error('请在 Miyabi 桌面窗口中打开'))
+        return fn(cmd, args)
+      }
+
+      invoke('desktop_defaults')
+        .then((defaults) => {
+          dataDir.value = defaults.dataDir || ''
+          dataHint.textContent = defaults.portable
+            ? '便携版的数据会保存在这个文件夹里，整个目录可以一起拷走。'
+            : '安装版默认保存在用户数据目录。'
+        })
+        .catch((err) => {
+          error.textContent = err?.message || String(err)
+          submit.disabled = true
+        })
+
+      document.getElementById('setup').addEventListener('submit', (event) => {
+        event.preventDefault()
+        error.textContent = ''
+        const dir = dataDir.value.trim()
+        const secret = password.value
+        if (!dir) {
+          error.textContent = '请填写数据目录'
+          return
+        }
+        if (lan.checked && !secret.trim()) {
+          error.textContent = '开启局域网访问需要设置访问密码'
+          return
+        }
+        submit.disabled = true
+        submit.textContent = '正在启动…'
+        invoke('complete_setup', { dataDir: dir, password: secret, lan: lan.checked }).catch((err) => {
+          error.textContent = err?.message || String(err)
+          submit.disabled = false
+          submit.textContent = '完成并启动'
+        })
+      })
+    </script>
+  </body>
+</html>

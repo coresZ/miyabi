@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop-remote",
+  "description": "The loopback UI served by the sidecar may read and apply desktop settings.",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*/*", "http://localhost:*/*"]
+  },
+  "permissions": [
+    "core:default",
+    "allow-desktop-defaults",
+    "allow-complete-setup",
+    "allow-desktop-config",
+    "allow-apply-desktop"
+  ]
+}

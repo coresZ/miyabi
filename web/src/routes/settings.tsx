@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { AppearanceSection } from '@/features/settings/appearance-section'
 import { DataSection } from '@/features/settings/data-section'
+import { DesktopSection } from '@/features/settings/desktop-section'
 import { EmbySection } from '@/features/settings/emby-section'
 import { LocalSourceSection } from '@/features/settings/local-sources-section'
 import { NetworkSection } from '@/features/settings/network-section'
@@ -31,7 +32,7 @@ function SettingsPage() {
           <PrivacySection />
           <Separator />
           <NetworkSection />
-          <Separator />
+          <DesktopSection />
           <ScrapingSection />
           <Separator />
           <EmbySection />

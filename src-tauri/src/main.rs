@@ -1,30 +1,43 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-//! Miyabi desktop shell: starts the Go server as a sidecar, waits until it is
-//! reachable, then shows a native window loading the local UI. The window is
-//! external (served by the sidecar), so this shell never bundles the frontend.
+//! Miyabi desktop shell. First launch opens a local setup page. Later launches
+//! start the Go sidecar, then show a native window loading the local UI.
 
+mod commands;
+mod prefs;
 mod sidecar;
 mod window;
 
 use tauri::Manager;
 
+use commands::ShellState;
+use prefs::{Paths, Prefs};
+
 fn main() {
     tauri::Builder::default()
-        // A second launch focuses the existing window instead of starting a
-        // second server; the running instance keeps its own sidecar.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            if let Some(existing) = app.get_webview_window("main") {
-                let _ = existing.show();
-                let _ = existing.set_focus();
-            }
+            window::focus_existing(app);
         }))
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            sidecar::start(app)?;
-            window::open(app.handle(), sidecar::local_url())?;
+            let paths = Paths::resolve(app.handle())?;
+            let ready = Prefs::load(&paths.prefs_path).is_some_and(|prefs| prefs.setup_done);
+            app.manage(ShellState { paths: paths.clone() });
+            if ready {
+                let prefs = Prefs::load(&paths.prefs_path).expect("prefs just loaded");
+                let url = sidecar::start(app.handle(), &prefs)?;
+                window::open_main(app.handle(), url)?;
+            } else {
+                window::open_setup(app.handle())?;
+            }
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![
+            commands::desktop_defaults,
+            commands::complete_setup,
+            commands::desktop_config,
+            commands::apply_desktop,
+        ])
         .build(tauri::generate_context!())
         .expect("error while building the Miyabi desktop shell")
         .run(|_app, event| {

@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Allow the main window to launch the bundled Miyabi server (sidecar).",
-  "windows": ["main"],
+  "description": "Local shell windows may launch the bundled Miyabi server.",
+  "windows": ["main", "setup"],
   "permissions": [
     "core:default",
     {
