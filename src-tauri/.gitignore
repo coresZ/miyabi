@@ -2,9 +2,7 @@
 /target/
 /gen/
 
-# Go sidecar binary (built by scripts/build-desktop.ps1 or CI)
-/binaries/
+# Go server copied here before `tauri build` so the installer nests it under runtime/.
+/runtime/
 
-# Icons are generated from app-icon.png via `tauri icon`
-/icons/
-/app-icon.png
+# Icons live in ../icon/ and are committed there.

@@ -2,6 +2,7 @@ use std::net::UdpSocket;
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::prefs::{self, effective_password, require_lan_password, validate_port, Paths, Prefs};
 use crate::sidecar;
@@ -40,6 +41,27 @@ pub fn desktop_defaults(state: State<'_, ShellState>) -> Defaults {
 }
 
 #[tauri::command]
+pub async fn pick_data_dir(app: AppHandle) -> Result<Option<String>, String> {
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("选择数据目录")
+            .blocking_pick_folder()
+    })
+    .await
+    .map_err(|err| err.to_string())?;
+    match picked {
+        Some(path) => Ok(Some(
+            path.into_path()
+                .map_err(|_| "无法使用所选目录".to_string())?
+                .to_string_lossy()
+                .to_string(),
+        )),
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
 pub fn complete_setup(
     app: AppHandle,
     state: State<'_, ShellState>,
@@ -47,9 +69,13 @@ pub fn complete_setup(
     password: String,
     lan: bool,
 ) -> Result<(), String> {
-    let data_dir = data_dir.trim().to_string();
+    let data_dir = if state.paths.portable {
+        state.paths.default_data_dir.to_string_lossy().to_string()
+    } else {
+        data_dir.trim().to_string()
+    };
     if data_dir.is_empty() {
-        return Err("请填写数据目录".into());
+        return Err("请选择数据目录".into());
     }
     let password = password.trim().to_string();
     require_lan_password(lan, &password)?;
@@ -60,7 +86,7 @@ pub fn complete_setup(
         port: prefs::DEFAULT_PORT,
         password,
     };
-    let url = sidecar::start(&app, &prefs)?;
+    let url = sidecar::start(&prefs)?;
     let mut done = prefs;
     done.setup_done = true;
     if let Err(err) = done.save(&state.paths.prefs_path) {
@@ -117,7 +143,7 @@ pub fn apply_desktop(
         password: next_password,
     };
     next.save(&state.paths.prefs_path)?;
-    match sidecar::restart(&app, &next) {
+    match sidecar::restart(&next) {
         Ok(url) => {
             if let Some(main) = app.get_webview_window("main") {
                 let parsed = url.parse().map_err(|_| "本机地址无效".to_string())?;
@@ -127,7 +153,7 @@ pub fn apply_desktop(
         }
         Err(err) => {
             let _ = previous.save(&state.paths.prefs_path);
-            if sidecar::restart(&app, &previous).is_err() {
+            if sidecar::restart(&previous).is_err() {
                 return Err(format!("{err}。无法重启，已尝试恢复之前的配置"));
             }
             Err(err)

@@ -112,6 +112,26 @@
       }
       button:disabled { opacity: 0.5; cursor: default; }
       button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+      .path-row { display: flex; align-items: center; gap: 8px; }
+      .path {
+        flex: 1;
+        min-width: 0;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        word-break: break-all;
+      }
+      button.secondary {
+        width: auto;
+        margin-top: 0;
+        padding: 0 12px;
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--line);
+        font-weight: 500;
+      }
       .error { min-height: 18px; margin: 10px 0 0; color: var(--danger); font-size: 12px; }
     </style>
   </head>
@@ -120,11 +140,15 @@
       <h1>首次配置</h1>
       <p class="lead">这些选项只在第一次启动时询问。115 登录和媒体目录仍在设置里。</p>
       <form id="setup">
-        <div class="field">
-          <label for="dataDir">数据目录</label>
-          <input id="dataDir" type="text" autocomplete="off" required />
-          <p id="dataHint" class="hint"></p>
+        <div class="field" id="dataField" hidden>
+          <label>数据目录</label>
+          <div class="path-row">
+            <div id="dataDir" class="path"></div>
+            <button id="pick" class="secondary" type="button">选择文件夹</button>
+          </div>
+          <p class="hint">不选则使用上面的默认位置。这里只放数据库、封面和日志，媒体目录仍在设置里添加。</p>
         </div>
+        <p id="portableHint" class="hint" hidden>数据保存在程序旁边的 data 文件夹，整个目录可以一起拷走。</p>
         <div class="field">
           <label for="password">访问密码</label>
           <input id="password" type="password" autocomplete="new-password" />
@@ -146,11 +170,14 @@
     </main>
     <script>
       const dataDir = document.getElementById('dataDir')
+      const dataField = document.getElementById('dataField')
+      const portableHint = document.getElementById('portableHint')
       const password = document.getElementById('password')
       const lan = document.getElementById('lan')
       const submit = document.getElementById('submit')
       const error = document.getElementById('error')
-      const dataHint = document.getElementById('dataHint')
+      let portable = false
+      let selectedDir = ''
 
       function invoke(cmd, args) {
         const fn = window.__TAURI__?.core?.invoke || window.__TAURI_INTERNALS__?.invoke
@@ -160,23 +187,36 @@
 
       invoke('desktop_defaults')
         .then((defaults) => {
-          dataDir.value = defaults.dataDir || ''
-          dataHint.textContent = defaults.portable
-            ? '便携版的数据会保存在这个文件夹里，整个目录可以一起拷走。'
-            : '安装版默认保存在用户数据目录。'
+          portable = Boolean(defaults.portable)
+          selectedDir = defaults.dataDir || ''
+          dataDir.textContent = selectedDir
+          dataField.hidden = portable
+          portableHint.hidden = !portable
         })
         .catch((err) => {
           error.textContent = err?.message || String(err)
           submit.disabled = true
         })
 
+      document.getElementById('pick').addEventListener('click', () => {
+        error.textContent = ''
+        invoke('pick_data_dir')
+          .then((picked) => {
+            if (!picked) return
+            selectedDir = picked
+            dataDir.textContent = picked
+          })
+          .catch((err) => {
+            error.textContent = err?.message || String(err)
+          })
+      })
+
       document.getElementById('setup').addEventListener('submit', (event) => {
         event.preventDefault()
         error.textContent = ''
-        const dir = dataDir.value.trim()
         const secret = password.value
-        if (!dir) {
-          error.textContent = '请填写数据目录'
+        if (!portable && !selectedDir.trim()) {
+          error.textContent = '请选择数据目录'
           return
         }
         if (lan.checked && !secret.trim()) {
@@ -185,7 +225,7 @@
         }
         submit.disabled = true
         submit.textContent = '正在启动…'
-        invoke('complete_setup', { dataDir: dir, password: secret, lan: lan.checked }).catch((err) => {
+        invoke('complete_setup', { dataDir: selectedDir, password: secret, lan: lan.checked }).catch((err) => {
           error.textContent = err?.message || String(err)
           submit.disabled = false
           submit.textContent = '完成并启动'

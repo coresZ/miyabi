@@ -1,13 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Local shell windows may launch the bundled Miyabi server.",
+  "description": "Local shell windows. The Go server is started by the shell, not by the webview.",
   "windows": ["main", "setup"],
-  "permissions": [
-    "core:default",
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [{ "name": "miyabi-server", "sidecar": true, "args": true }]
-    }
-  ]
+  "permissions": ["core:default"]
 }

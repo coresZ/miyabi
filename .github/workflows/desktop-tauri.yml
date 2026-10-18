@@ -1,7 +1,7 @@
 name: Build desktop (Tauri)
 
 # 与 windows-portable.yml（浏览器版便携包）和 docker-publish.yml 相互独立：
-# 这里构建 Tauri 桌面端，产出 NSIS 安装包 + 便携 zip（壳 exe + Go sidecar）。
+# 这里构建 Tauri 桌面端，产出 NSIS 安装包 + 便携 zip（Miyabi.exe + runtime/）。
 
 on:
   workflow_dispatch:
@@ -85,20 +85,12 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
-      - name: Build Go sidecar
-        shell: pwsh
+      - name: Build Go server
         run: |
-          $triple = (& rustc -vV | Select-String '^host:').Line.Split(' ')[1].Trim()
-          New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
-          # Sidecar named "miyabi-server" so it never collides with the shell
-          # "Miyabi.exe" on case-insensitive Windows filesystems.
-          go build -trimpath -ldflags "-s -w -H=windowsgui" -o "src-tauri/binaries/miyabi-server-$triple.exe" ./cmd
-          "TRIPLE=$triple" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Generate icons
-        run: |
-          node scripts/gen-icon.mjs src-tauri/app-icon.png 1024
-          pnpm dlx @tauri-apps/cli@^2 icon src-tauri/app-icon.png
+          New-Item -ItemType Directory -Force -Path src-tauri/runtime | Out-Null
+          # Bundled as a resource, so the installer nests it under runtime/
+          # instead of dropping a second exe next to Miyabi.exe.
+          go build -trimpath -ldflags "-s -w -H=windowsgui" -o "src-tauri/runtime/miyabi-server.exe" ./cmd
 
       - name: Build desktop app (installer)
         run: pnpm dlx @tauri-apps/cli@^2 build
@@ -107,7 +99,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $package = "miyabi-desktop-$env:VERSION-windows-x86_64"
+          $package = "miyabi-$env:VERSION-windows-x86_64-tauri"
           $stage = "dist/$package"
           if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
@@ -118,30 +110,32 @@ jobs:
           $nsis = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
           if (-not $nsis) { throw 'the NSIS installer was not produced' }
 
-          # Portable: shell exe + Go sidecar (must sit next to each other) + license.
+          # Portable: shell + runtime/ (server and marker) + license.
           Copy-Item $shell (Join-Path $stage 'Miyabi.exe')
-          Copy-Item "src-tauri/binaries/miyabi-server-$env:TRIPLE.exe" (Join-Path $stage 'miyabi-server.exe')
+          New-Item -ItemType Directory -Force -Path (Join-Path $stage 'runtime') | Out-Null
+          Copy-Item "src-tauri/runtime/miyabi-server.exe" (Join-Path $stage 'runtime/miyabi-server.exe')
+          # Marker only. The installer has no such file, so the same exe can tell the two apart.
+          New-Item -ItemType File -Force -Path (Join-Path $stage 'runtime/portable') | Out-Null
           Copy-Item LICENSE $stage
           Copy-Item docs/desktop-usage.md (Join-Path $stage '使用说明.md')
-          # Marker only. The installer has no such file, so the same exe can tell the two apart.
-          New-Item -ItemType File -Force -Path (Join-Path $stage 'portable') | Out-Null
-          if (Test-Path "dist/$package.zip") { Remove-Item -Force "dist/$package.zip" }
-          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath "dist/$package.zip"
-          Copy-Item $nsis.FullName "dist/miyabi-desktop-$env:VERSION-setup.exe"
+          $portableZip = "dist/$package-portable.zip"
+          if (Test-Path $portableZip) { Remove-Item -Force $portableZip }
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $portableZip
+          Copy-Item $nsis.FullName "dist/$package-setup.exe"
 
-      # 两个产物分开上传：安装包(.exe) 与 便携版(.zip) 各自一个 artifact。
+      # archive:false 直接上传原文件。默认会再套一层 zip，下载名还不带扩展名。
       - name: Upload installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: miyabi-desktop-windows-x86_64-setup
-          path: dist/*-setup.exe
+          path: dist/*-tauri-setup.exe
+          archive: false
           if-no-files-found: error
 
       - name: Upload portable
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: miyabi-desktop-windows-x86_64-portable
-          path: dist/*.zip
+          path: dist/*-tauri-portable.zip
+          archive: false
           if-no-files-found: error
 
   publish:
@@ -153,11 +147,12 @@ jobs:
       contents: write
     steps:
       - name: Download the packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
-          pattern: miyabi-desktop-windows-x86_64-*
+          pattern: miyabi-*-windows-x86_64-tauri-*
           merge-multiple: true
           path: dist
+          skip-decompress: true
 
       - name: Attach to the release
         env:
@@ -177,4 +172,4 @@ jobs:
             exit 0
           fi
 
-          gh release upload "${TAG}" dist/* --clobber
+          gh release upload "${TAG}" dist/*-tauri-setup.exe dist/*-tauri-portable.zip --clobber

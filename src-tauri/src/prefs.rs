@@ -1,5 +1,6 @@
-//! Desktop-only preferences. Installer and portable builds share one shell;
-//! a `portable` marker next to the executable is the only difference.
+//! Desktop-only preferences. Installer and portable builds share one shell.
+//! The portable marker lives in `runtime/`, next to the Go server, so the
+//! folder the user opens only shows Miyabi.exe.
 
 use std::path::{Path, PathBuf};
 
@@ -34,11 +35,12 @@ impl Paths {
             .parent()
             .ok_or_else(|| "无法定位程序目录".to_string())?
             .to_path_buf();
-        let portable = exe_dir.join(MARKER).is_file();
+        let runtime = exe_dir.join("runtime");
+        let portable = runtime.join(MARKER).is_file();
         if portable {
             Ok(Self {
                 portable: true,
-                prefs_path: exe_dir.join(FILE_NAME),
+                prefs_path: runtime.join(FILE_NAME),
                 default_data_dir: exe_dir.join("data"),
             })
         } else {

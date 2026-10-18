@@ -1,4 +1,4 @@
-//! Setup is a local page. The main window loads the Go sidecar over loopback.
+//! Setup is a local page. The main window loads the Go server over loopback.
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 

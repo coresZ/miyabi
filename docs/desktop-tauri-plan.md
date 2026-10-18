@@ -53,19 +53,19 @@ src-tauri/                       # 新增：Tauri 壳（纯增量，不动上游
   Cargo.toml
   build.rs
   tauri.conf.json
-  capabilities/default.json      # shell:allow-execute（sidecar 作用域）
-  .gitignore                     # 忽略 target/ gen/ binaries/ icons/ app-icon.png
+  capabilities/default.json      # main/setup 只要 core:default（后端由壳启动）
+  .gitignore                     # 忽略 target/ gen/ runtime/
   MODIFICATIONS.md               # 本目录改动记录
   stub/index.html                # frontendDist 占位（真实 UI 由 Go 提供）
   src/
     main.rs                      # 入口 + 插件 + setup
     sidecar.rs                   # 启动/就绪等待/退出（唯一的“契约适配”文件）
     window.rs                    # 创建外部 URL 窗口
-  binaries/                      # 构建时放入 Go sidecar（ignored）
-  icons/                         # 由 `tauri icon` 生成（ignored）
+  runtime/                       # 构建时放入 miyabi-server.exe（ignored，装进 runtime/）
+icon/                            # 应用图标（已提交）：icon-*.png + miyabi.ico
 scripts/
-  build-desktop.ps1              # 新增：编前端 + Go sidecar + 图标 + tauri build
-  gen-icon.mjs                   # 新增：无依赖生成占位图标 PNG
+  build-desktop.ps1              # 新增：编前端 + Go 后端 + tauri build
+  gen-icon.mjs                   # 旧占位图标生成器，桌面构建已不再使用
 .github/workflows/desktop-tauri.yml    # 新增：桌面构建 CI，产出 NSIS 安装包 + 便携 zip
 docs/desktop-tauri-plan.md       # 本文
 ```
@@ -80,7 +80,7 @@ docs/desktop-tauri-plan.md       # 本文
 
 | 契约 | 取值 / 位置 |
 |---|---|
-| 可执行名 | `miyabi-server`（Windows `miyabi-server.exe`；**故意不叫 `miyabi`，避免与壳 `Miyabi.exe` 在 Windows 大小写不敏感下重名**） |
+| 可执行名 | `runtime/miyabi-server.exe`（与壳分目录，顶层只显示 `Miyabi.exe`；**故意不叫 `miyabi`，避免与壳 `Miyabi.exe` 在 Windows 大小写不敏感下重名**） |
 | 监听地址 | 环境变量 `MIYABI_LISTEN`（默认 `:8080`），见 `internal/config/config.go:54` |
 | 数据目录 | 环境变量 `MIYABI_DATA_DIR`，见 `internal/config/config.go:55` |
 | 便携配置 | exe 同目录 `miyabi.env`，见 `internal/config/portable.go` |
@@ -96,14 +96,14 @@ docs/desktop-tauri-plan.md       # 本文
 - Rust 工具链 + Tauri CLI：`cargo install tauri-cli`（或 `pnpm add -D @tauri-apps/cli`）。
 - Go 工具链（已有，见 `scripts/dev.bat`）。
 
-### 5.2 构建 Go sidecar
-- 目标三元组从 `rustc -vV` 读取（如 `x86_64-pc-windows-msvc`）。
-- Tauri `externalBin` 要求文件名带三元组：
+### 5.2 构建 Go 后端
+- 直接编到 `src-tauri/runtime/miyabi-server.exe`，随 resources 装进 `runtime/`：
   ```powershell
-  $triple = (rustc -vV | Select-String 'host:').ToString().Split()[-1]
-  go build -tags prod -o "src-tauri/binaries/miyabi-server-$triple.exe" ./cmd
+  New-Item -ItemType Directory -Force -Path src-tauri/runtime | Out-Null
+  go build -trimpath -ldflags "-s -w -H=windowsgui" -o "src-tauri/runtime/miyabi-server.exe" ./cmd
   ```
-- 说明：Go 端**不需要改动**；如需隐藏控制台窗口可用 `-ldflags "-H windowsgui"`（由构建脚本决定，不动源码）。
+- 不用 `externalBin`：sidecar 会被安装器放到壳旁边，顶层就会出现两个 exe。resources 保留 `runtime/` 这一层。
+- 说明：Go 端**不需要改动**；`-H=windowsgui` 由构建脚本决定，不动源码。
 
 ### 5.3 Tauri 壳配置
 - `tauri.conf.json`：
@@ -112,40 +112,40 @@ docs/desktop-tauri-plan.md       # 本文
     "productName": "Miyabi",
     "identifier": "com.ppxb.miyabi.desktop",
     "bundle": {
-      "externalBin": ["binaries/miyabi-server"],
+      "resources": { "runtime/": "runtime/" },
       "windows": { "webviewInstallMode": { "type": "embedBootstrapper" } }
     },
     "build": { "frontendDist": "stub" }   // UI 由 Go 提供，仅需最小占位
   }
   ```
-- `capabilities/default.json` 授予 `shell:allow-execute`（sidecar）与 `single-instance`。
+- `capabilities/default.json` 只要 `core:default`；后端由壳用普通子进程启动，webview 不需要 shell 权限。
 - 主窗口**不**写进配置的 `app.windows`，改在 Rust `setup` 里按就绪结果动态创建（见下）。
 
 ### 5.4 启动 / 就绪 / 退出（`src-tauri/src/main.rs` + `sidecar.rs`）
 1. `setup`：
-   - 选端口（见 §6），`Command::new_sidecar("miyabi-server")`，注入 `MIYABI_LISTEN`、`MIYABI_DATA_DIR`，spawn。
+   - 选端口（见 §6），以普通子进程启动 `runtime/miyabi-server.exe`（`std::process::Command`），注入 `MIYABI_LISTEN`、`MIYABI_DATA_DIR`，spawn。
    - TCP 连接 `127.0.0.1:<port>`，带超时（如 30s）；失败弹原生错误并退出。上游已删除 `/api/health`。
    - 通过后 `WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))` 建窗。
-2. 退出：监听 `RunEvent::ExitRequested` / 主窗口 `Destroyed` → 结束 sidecar（Windows 建议用 Job Object 保证子进程随父进程退出，避免残留）。
-3. 单实例：`tauri-plugin-single-instance`。二次启动时先探活：若已有实例在跑，则聚焦既有窗口/ephemeral 复用，而不是再起 sidecar。
+2. 退出：监听 `RunEvent::Exit` → kill 并 wait 后端（Windows 建议用 Job Object 兜底，避免残留）。
+3. 单实例：`tauri-plugin-single-instance`。二次启动时聚焦既有窗口，而不是再起后端。
 
-> 直接复用上游已有的二次启动语义：`cmd/cmd.go` 在便携模式且端口已被占用时直接打开浏览器——桌面端把“打开浏览器”换成“连接到既有实例并聚焦窗口”。注入 `MIYABI_LISTEN` / `MIYABI_DATA_DIR` 后 Go 端退出便携模式，因此 sidecar 不会再拉起浏览器。
+> 直接复用上游已有的二次启动语义：`cmd/cmd.go` 在便携模式且端口已被占用时直接打开浏览器——桌面端把“打开浏览器”换成“连接到既有实例并聚焦窗口”。注入 `MIYABI_LISTEN` / `MIYABI_DATA_DIR` 后 Go 端退出便携模式，因此后端不会再拉起浏览器。
 
 ### 5.5 WebView2
 - `webviewInstallMode`: `embedBootstrapper`（离线引导安装）或 `fixedRuntime`（完全自带，避免依赖系统是否安装）；开发阶段可 `downloadBootstrapper`。
 
 ### 5.6 构建与运行
-- **安装包**：`tauri build` → Windows **NSIS 安装包**（sidecar 一并打入）。
-- **便携版**：不安装，直接跑的 zip = `Miyabi.exe`（壳）+ `miyabi-server.exe`（Go sidecar，必须与壳同目录）+ `LICENSE` + `使用说明.md`。
+- **安装包**：`tauri build` → Windows **NSIS 安装包**（`runtime/` 作为资源一并打入）。
+- **便携版**：不安装，直接跑的 zip = `Miyabi.exe` + `runtime/`（`miyabi-server.exe` 与 `portable` 标记）+ `LICENSE` + `使用说明.md`。顶层只有一个 exe。
 - 本地一键：`scripts/build-desktop.ps1`（本机需 Rust）；或交给 CI。
-- dev 预览需本机 Rust：先 `pnpm --dir web build`（内嵌前端），再编 sidecar，最后 `pnpm dlx @tauri-apps/cli@^2 dev`。本项目不做本地调试，故不提供 dev 脚本。
+- dev 预览需本机 Rust：先 `pnpm --dir web build`（内嵌前端），再编 `runtime/miyabi-server.exe`，最后 `pnpm dlx @tauri-apps/cli@^2 dev`。本项目不做本地调试，故不提供 dev 脚本。
 
 ### 5.7 CI（新增，不动上游）
 `.github/workflows/desktop-tauri.yml`（名称 `Build desktop (Tauri)`，与 `Build Windows portable`、`Publish Miyabi image` 明显区分）：
 - 触发：`workflow_dispatch`（带 `version` 输入）、`feat/desktop-*` 分支推送、`v*.*.*` tag。
-- 步骤：装 Go/Rust/Node → 建前端（`web build`，供 `go:embed`）→ 建 Go sidecar（triple 命名）→ `tauri icon` → `tauri build`。
-- 产物：`miyabi-desktop-<version>-setup.exe`（NSIS 安装包）+ `miyabi-desktop-<version>-windows-x86_64.zip`（便携），**各自独立**。
-- 上传：分成两个 artifact（`...-setup` / `...-portable`；注意 artifact 在 GitHub 侧一律以 zip 呈现，名字不带扩展名）；tag 时以**原始文件**（.exe / .zip 各带后缀）附加到 Release。
+- 步骤：装 Go/Rust/Node → 建前端（`web build`，供 `go:embed`）→ 建 `runtime/miyabi-server.exe` → `tauri build`（图标用仓库根的 `icon/miyabi.ico`）。
+- 产物：`miyabi-<version>-windows-x86_64-tauri-setup.exe`（NSIS 安装包）+ `miyabi-<version>-windows-x86_64-tauri-portable.zip`（便携），**各自独立**。上传用 `archive: false`，下载名就是文件名。
+- 上传：分成两个 artifact（`...-tauri-setup.exe` / `...-tauri-portable.zip`），都用 `archive: false`，下载名就是文件名，不会再多一层 zip。
 
 ---
 
@@ -155,8 +155,8 @@ docs/desktop-tauri-plan.md       # 本文
 - **端口**：局域网关闭时绑定 `127.0.0.1:0` 取空闲端口。局域网开启时使用设置里的端口（首次默认 `8080`），先探测占用再传给 sidecar。
 - **数据目录**：
   - 安装版：`%APPDATA%\com.ppxb.miyabi.desktop`（通过 `MIYABI_DATA_DIR` 注入）。
-  - 便携版：exe 同级 `data\`。用 exe 旁边的空文件 `portable` 区分，不看 sidecar 是否同目录（安装包里 sidecar 也在旁边）。
-- **桌面配置**：`desktop.json`。安装版在 AppData；便携版在 exe 旁边，不放进 `data\`。首次启动由本地向导写入，之后局域网端口和访问密码在设置页修改，保存时重启 sidecar。
+  - 便携版：壳同级 `data\`。用 `runtime/portable` 空文件区分（安装版没有），不看后端是否同目录。
+- **桌面配置**：`desktop.json`。安装版在 AppData；便携版在 `runtime/` 里，不放进 `data\`。首次启动由本地向导写入，之后局域网端口和访问密码在设置页修改，保存时重启后端。
 
 ### 6.2 局域网访问（LAN 发布）
 桌面端提供「局域网访问」开关（默认**关**）。它不引入任何新后端能力，只是改变 sidecar 的监听地址：
@@ -222,7 +222,8 @@ git merge upstream/master
 - [ ] M3 打包：Windows NSIS/MSI，sidecar 打包含入。
 - [ ] M4 局域网：绑定开关（`MIYABI_LISTEN`）+ 访问密码 + 地址展示/复制 + 防火墙引导。
 - [ ] M5 CI：`desktop-tauri.yml` 出产物；WebView2 策略确定。
-- [ ] M6 打磨：应用图标、自动更新（Tauri updater）、代码签名。
+- [x] M6 图标：`icon/miyabi.ico`（白色透明底，16–256 多尺寸）已接入 `bundle.icon`。
+- [ ] M6 打磨：自动更新（Tauri updater）、代码签名。
 
 ---
 
