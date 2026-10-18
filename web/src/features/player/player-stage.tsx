@@ -15,6 +15,7 @@ export type PlayerInstance = {
   next: () => void
   prev: () => void
   seek: (seconds: number) => void
+  seekBy: (delta: number) => void
   stop: () => void
   setControlsHidden: (hidden: boolean) => void
   isControlsHidden: () => boolean
@@ -93,12 +94,16 @@ export function PlayerStage(props: PlayerStageProps) {
   }
   return (
     <div
-      ref={hostRef}
       className={cn(
-        'aspect-video w-full overflow-hidden rounded-2xl bg-black',
+        'aspect-video w-full overflow-hidden rounded-2xl bg-black lg:h-full',
         props.cover && 'miyabi-player-cover',
         props.className
       )}
-    />
+    >
+      {/* The player kernel owns this element's class (`.miyabi-player`). Keeping
+          it separate from the sized wrapper stops React from clobbering it on
+          mode changes, which used to collapse the player height. */}
+      <div ref={hostRef} className="size-full" />
+    </div>
   )
 }

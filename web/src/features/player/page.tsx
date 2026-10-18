@@ -177,6 +177,27 @@ export function PlayerPage() {
       void setPlayerWindowMode('windowed')
     }
   }, [desktopShell])
+
+  // Borderless covers the window, so the stable scrollbar gutter must go too;
+  // otherwise a strip of background stays visible on the right edge.
+  useEffect(() => {
+    if (!borderless) return
+    document.documentElement.classList.add('player-borderless')
+    return () => document.documentElement.classList.remove('player-borderless')
+  }, [borderless])
+
+  // Arrow keys seek by 3 seconds; typing in a field must not move the video.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+      const target = event.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      event.preventDefault()
+      playerRef.current?.seekBy(event.key === 'ArrowLeft' ? -3 : 3)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const [viewport, setViewport] = useState(() => ({
     height: typeof window === 'undefined' ? 0 : window.innerHeight,
     playerBottom: 0
@@ -592,18 +613,6 @@ export function PlayerPage() {
           </div>
         </section>
 
-        {/* Soft left edge for the drawer: the panel itself stays opaque, only
-            this strip fades into the video. */}
-        {borderless ? (
-          <div
-            aria-hidden
-            className={cn(
-              'pointer-events-none fixed inset-y-0 right-[min(20rem,80vw)] z-40 w-8 bg-gradient-to-l from-card to-transparent transition-opacity duration-200',
-              railOpen ? 'opacity-100' : 'opacity-0'
-            )}
-          />
-        ) : null}
-
         <section
           inert={collapsed && isDesktop && !borderless ? true : undefined}
           style={isDesktop ? undefined : { height: dragHeight ?? sheetHeight }}
@@ -615,7 +624,9 @@ export function PlayerPage() {
             // right edge, so the video owns the whole frame.
             borderless &&
               cn(
-                'fixed inset-y-0 right-0 z-50 w-[20rem] max-w-[80vw] rounded-none rounded-l-2xl bg-card transition-transform duration-200 ease-out',
+                // Same material as the floating navigation: translucent card
+                // with a blur, instead of a gradient edge.
+                'fixed inset-y-0 right-0 z-50 w-[20rem] max-w-[80vw] rounded-none rounded-l-2xl border border-border/70 bg-background/85 ring-0 backdrop-blur transition-transform duration-200 ease-out',
                 railOpen ? 'translate-x-0' : 'translate-x-full'
               ),
             dragging

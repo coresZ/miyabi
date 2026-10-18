@@ -192,6 +192,11 @@
       play: function () { var v = activeVideo(); if (v && v.paused) v.play().catch(function () {}); },
       pause: function () { var v = activeVideo(); if (v && !v.paused) v.pause(); },
       seek: function (seconds) { var v = activeVideo(); if (v) v.currentTime = seconds; },
+      seekBy: function (delta) {
+        var v = activeVideo();
+        if (!v || !isFinite(v.duration)) return;
+        v.currentTime = Math.min(Math.max(0, v.currentTime + delta), v.duration);
+      },
       next: next,
       prev: prev,
       hasNext: function () { return index + 1 < list.length; },

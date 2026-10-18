@@ -156,6 +156,12 @@
     @apply font-sans;
     scrollbar-gutter: stable;
   }
+  /* The borderless player covers the whole window: a stable gutter would leave
+     an empty strip on the right, so it is dropped while that mode is active. */
+  html.player-borderless {
+    scrollbar-gutter: auto;
+    overflow: hidden;
+  }
 
   /* The gutter already reserves the scrollbar, so the dialog lock must not
      add a second margin or the centered lists shift when the dialog closes. */
