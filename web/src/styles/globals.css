@@ -156,4 +156,10 @@
     @apply font-sans;
     scrollbar-gutter: stable;
   }
+
+  /* The gutter already reserves the scrollbar, so the dialog lock must not
+     add a second margin or the centered lists shift when the dialog closes. */
+  body[data-scroll-locked] {
+    margin-right: 0 !important;
+  }
 }
