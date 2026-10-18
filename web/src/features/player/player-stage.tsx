@@ -32,10 +32,13 @@ declare global {
 type PlayerStageProps = {
   className?: string
   poster?: string
+  /** Crops instead of letterboxing when the frame ratio differs from the source. */
+  cover?: boolean
   onReady?: (player: PlayerInstance) => void
   onChange?: (index: number, source: PlayerTrack) => void
   onEnded?: (index: number, hasNext: boolean) => void
   onProgress?: (currentTime: number, duration: number) => void
+  onMetadata?: (width: number, height: number) => void
 }
 
 export function PlayerStage(props: PlayerStageProps) {
@@ -64,7 +67,8 @@ export function PlayerStage(props: PlayerStageProps) {
           onEnded: (index: number, _source: unknown, hasNext: boolean) =>
             current.onEnded?.(index, hasNext),
           onProgress: (currentTime: number, duration: number) =>
-            current.onProgress?.(currentTime, duration)
+            current.onProgress?.(currentTime, duration),
+          onMetadata: (width: number, height: number) => current.onMetadata?.(width, height)
         })
         current.onReady?.(instance)
       })
@@ -90,7 +94,11 @@ export function PlayerStage(props: PlayerStageProps) {
   return (
     <div
       ref={hostRef}
-      className={cn('aspect-video w-full overflow-hidden rounded-2xl bg-black', props.className)}
+      className={cn(
+        'aspect-video w-full overflow-hidden rounded-2xl bg-black',
+        props.cover && 'miyabi-player-cover',
+        props.className
+      )}
     />
   )
 }

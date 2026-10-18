@@ -15,8 +15,15 @@ export function isDesktopWindow(): boolean {
   return invoke() != null
 }
 
-export async function setPlayerWindowMode(mode: PlayerWindowMode): Promise<void> {
+/**
+ * `aspect` (width / height) lets the shell size the borderless window to the
+ * source, so the first frame fills the window instead of being letterboxed.
+ */
+export async function setPlayerWindowMode(
+  mode: PlayerWindowMode,
+  aspect?: number | null
+): Promise<void> {
   const call = invoke()
   if (!call) return
-  await call('set_player_window_mode', { mode })
+  await call('set_player_window_mode', { mode, aspect: aspect ?? null })
 }

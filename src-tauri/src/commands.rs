@@ -199,7 +199,11 @@ pub async fn apply_desktop(
 }
 
 #[tauri::command]
-pub fn set_player_window_mode(app: AppHandle, mode: String) -> Result<(), String> {
+pub fn set_player_window_mode(
+    app: AppHandle,
+    mode: String,
+    aspect: Option<f64>,
+) -> Result<(), String> {
     crate::log::info(format!("player window mode -> {mode}"));
     let window = app
         .get_webview_window("main")
@@ -221,6 +225,11 @@ pub fn set_player_window_mode(app: AppHandle, mode: String) -> Result<(), String
             }
             let _ = window.set_fullscreen(false);
             window.set_decorations(false).map_err(|err| err.to_string())?;
+            // The page crops once the frame stops matching the source, so size
+            // the window to the source ratio first to avoid an immediate crop.
+            if let Some(aspect) = aspect {
+                fit_to_aspect(&window, aspect)?;
+            }
         }
         "fullscreen" => {
             window.set_fullscreen(true).map_err(|err| err.to_string())?;
@@ -228,6 +237,33 @@ pub fn set_player_window_mode(app: AppHandle, mode: String) -> Result<(), String
         _ => return Err("未知的窗口模式".into()),
     }
     Ok(())
+}
+
+/// Resizes the window to `aspect` (width / height) inside the current monitor.
+fn fit_to_aspect(window: &tauri::WebviewWindow, aspect: f64) -> Result<(), String> {
+    if !aspect.is_finite() || !(0.1..10.0).contains(&aspect) {
+        return Ok(());
+    }
+    let size = window.inner_size().map_err(|err| err.to_string())?;
+    let monitor = window
+        .current_monitor()
+        .map_err(|err| err.to_string())?
+        .map(|monitor| *monitor.size());
+    let mut width = f64::from(size.width);
+    let mut height = width / aspect;
+    if let Some(monitor) = monitor {
+        let limit = f64::from(monitor.height);
+        if height > limit {
+            height = limit;
+            width = height * aspect;
+        }
+    }
+    window
+        .set_size(tauri::PhysicalSize::new(
+            width.round().max(320.0) as u32,
+            height.round().max(180.0) as u32,
+        ))
+        .map_err(|err| err.to_string())
 }
 
 /// Runs a blocking task on the thread pool so the webview keeps responding.

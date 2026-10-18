@@ -1,4 +1,5 @@
 import {
+  ArrowLeftIcon,
   ChevronRightIcon,
   EyeIcon,
   EyeOffIcon,
@@ -20,14 +21,15 @@ import {
 
 import { useLocalSources } from '@/api/local-sources'
 import { usePanAccount } from '@/api/pan'
+import { Link } from '@tanstack/react-router'
 import { playableVideoUrl, usePlayables, type Playable, type PlayableKind } from '@/api/playables'
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState, InlineError } from '@/components/error-state'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from 'cn'
+import { useShellChrome } from '@/stores/shell-chrome'
 import { PlayerStage, type PlayerInstance, type PlayerTrack } from './player-stage'
 import { isDesktopWindow, setPlayerWindowMode, type PlayerWindowMode } from './window-mode'
-import { useShellChrome } from '@/stores/shell-chrome'
 
 type SourceOption = {
   id: string
@@ -109,19 +111,44 @@ export function PlayerPage() {
   const setNavHidden = useShellChrome(state => state.setNavHidden)
   const [windowMode, setWindowMode] = useState<PlayerWindowMode>('windowed')
   const [chromeVisible, setChromeVisible] = useState(false)
+  const [sourceAspect, setSourceAspect] = useState<number | null>(null)
+  const [coverVideo, setCoverVideo] = useState(false)
   const borderless = windowMode !== 'windowed'
 
-  const applyWindowMode = useCallback((mode: PlayerWindowMode) => {
-    setWindowMode(mode)
-    void setPlayerWindowMode(mode).catch(() => setWindowMode('windowed'))
-  }, [])
-
-  // A borderless player is only the video: the floating navigation would
-  // otherwise sit on top of it.
+  // A source is cropped only when the window no longer matches its ratio, so a
+  // freshly entered borderless window keeps the full frame.
   useEffect(() => {
-    setNavHidden(borderless)
+    const update = () => {
+      if (!sourceAspect || !borderless) {
+        setCoverVideo(false)
+        return
+      }
+      const frame = window.innerWidth / window.innerHeight
+      setCoverVideo(Math.abs(frame - sourceAspect) > 0.01)
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [sourceAspect, borderless])
+
+  const applyWindowMode = useCallback(
+    (mode: PlayerWindowMode) => {
+      setWindowMode(mode)
+      void setPlayerWindowMode(mode, mode === 'windowed' ? null : sourceAspect).catch(() =>
+        setWindowMode('windowed')
+      )
+    },
+    [sourceAspect]
+  )
+
+  // The play page hides the floating navigation in the desktop shell: on this
+  // page the nav sits on top of the player controls, and the toolbar already
+  // carries a way back to the library.
+  useEffect(() => {
+    if (!desktopShell) return
+    setNavHidden(true)
     return () => setNavHidden(false)
-  }, [borderless, setNavHidden])
+  }, [desktopShell, setNavHidden])
 
   // Escape steps back one level: fullscreen -> borderless -> windowed.
   useEffect(() => {
@@ -432,20 +459,17 @@ export function PlayerPage() {
         </>
       ) : null}
 
-      <header
-        className={cn(
-          'flex flex-none flex-wrap items-end justify-between gap-3',
-          borderless && 'hidden'
-        )}
-      >
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">播放</h1>
-          <p className="mt-1 text-sm text-muted-foreground">选择一个来源，点击右侧目录即可播放</p>
-        </div>
-        <span className="hidden text-xs text-muted-foreground tabular-nums sm:inline">
-          {active.label} · {countLabel}
-        </span>
-      </header>
+      {desktopShell ? null : (
+        <header className="flex flex-none flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">播放</h1>
+            <p className="mt-1 text-sm text-muted-foreground">选择一个来源，点击右侧目录即可播放</p>
+          </div>
+          <span className="hidden text-xs text-muted-foreground tabular-nums sm:inline">
+            {active.label} · {countLabel}
+          </span>
+        </header>
+      )}
 
       <div
         style={
@@ -469,7 +493,13 @@ export function PlayerPage() {
           )}
         >
           <PlayerStage
+            cover={coverVideo}
             className={cn(borderless && 'aspect-auto h-full w-full flex-1 rounded-none')}
+            onMetadata={(width, height) => {
+              const aspect = width / height
+              setSourceAspect(aspect)
+              if (borderless) void setPlayerWindowMode('borderless', aspect)
+            }}
             onReady={player => {
               playerRef.current = player
               player.setQueue(tracks)
@@ -501,6 +531,16 @@ export function PlayerPage() {
               <span className="text-sm text-muted-foreground">未播放</span>
             )}
             <div className="ml-auto flex flex-none gap-2">
+              {desktopShell ? (
+                <Link
+                  to="/"
+                  aria-label="返回媒体库"
+                  title="返回媒体库"
+                  className={cn(buttonVariants({ variant: 'outline', size: 'icon-sm' }))}
+                >
+                  <ArrowLeftIcon />
+                </Link>
+              ) : null}
               <Button
                 variant="outline"
                 size="icon-sm"

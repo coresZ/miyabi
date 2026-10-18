@@ -11,6 +11,9 @@
       '.miyabi-player{position:relative;width:100%;height:100%;background:#000;overflow:hidden}',
       '.miyabi-player-stage{position:relative;width:100%;height:100%;background:#000}',
       '.miyabi-player-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}',
+      // Fill the frame when the window ratio no longer matches the source.
+      '.miyabi-player-cover .miyabi-player-video{object-fit:cover}',
+      '.miyabi-player-cover .miyabi-player-xg video{object-fit:cover}',
       '.miyabi-player-xg{position:absolute;inset:0}',
       '.miyabi-player-xg .xgplayer{width:100%;height:100%}',
       '.miyabi-player:fullscreen .miyabi-player-stage{height:100vh}'
@@ -101,6 +104,16 @@
       });
     }
 
+    // Reports the real frame size so the desktop shell can size the borderless
+    // window to the source instead of guessing 16:9.
+    function bindMetadata(target) {
+      target.addEventListener('loadedmetadata', function () {
+        if (!options.onMetadata) return;
+        if (!target.videoWidth || !target.videoHeight) return;
+        options.onMetadata(target.videoWidth, target.videoHeight);
+      });
+    }
+
     function loadAt(target) {
       teardownEngine();
       var src = list[target];
@@ -117,6 +130,7 @@
         if (kind === 'flv' && typeof global.FlvPlayer === 'function') config.plugins = [global.FlvPlayer];
         xg = new global.Player(config);
         bindEnded(xg.video);
+        bindMetadata(xg.video);
       } else if (kind === 'm3u8' && global.Hls && global.Hls.isSupported()) {
         xgContainer.style.display = 'none';
         video.style.display = '';
@@ -127,12 +141,14 @@
           video.play().catch(function () { /* autoplay may be blocked */ });
         });
         bindEnded(video);
+        bindMetadata(video);
       } else {
         xgContainer.style.display = 'none';
         video.style.display = '';
         video.src = src.url;
         video.play().catch(function () { /* autoplay may be blocked */ });
         bindEnded(video);
+        bindMetadata(video);
       }
       if (controls && typeof controls.setVideo === 'function') {
         setTimeout(function () { controls.setVideo(); }, 0);
