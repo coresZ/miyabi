@@ -109,20 +109,24 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $package = "miyabi-desktop-$env:VERSION-windows-x86_64"
           $stage = "dist/$package"
+          if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
+          # Cargo package name, not productName. productName only names the NSIS installer.
+          $shell = "src-tauri/target/release/miyabi-desktop.exe"
+          if (-not (Test-Path $shell)) { throw "desktop shell was not produced: $shell" }
+          $nsis = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
+          if (-not $nsis) { throw 'the NSIS installer was not produced' }
+
           # Portable: shell exe + Go sidecar (must sit next to each other) + license.
-          Copy-Item "src-tauri/target/release/miyabi-desktop.exe" (Join-Path $stage 'Miyabi.exe')
+          Copy-Item $shell (Join-Path $stage 'Miyabi.exe')
           Copy-Item "src-tauri/binaries/miyabi-server-$env:TRIPLE.exe" (Join-Path $stage 'miyabi-server.exe')
           Copy-Item LICENSE $stage
           Copy-Item docs/desktop-usage.md (Join-Path $stage '使用说明.md')
           # Marker only. The installer has no such file, so the same exe can tell the two apart.
           New-Item -ItemType File -Force -Path (Join-Path $stage 'portable') | Out-Null
+          if (Test-Path "dist/$package.zip") { Remove-Item -Force "dist/$package.zip" }
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath "dist/$package.zip"
-
-          # Installer: rename the NSIS setup so artifacts are unambiguous.
-          $nsis = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
-          if (-not $nsis) { throw 'the NSIS installer was not produced' }
           Copy-Item $nsis.FullName "dist/miyabi-desktop-$env:VERSION-setup.exe"
 
       # 两个产物分开上传：安装包(.exe) 与 便携版(.zip) 各自一个 artifact。

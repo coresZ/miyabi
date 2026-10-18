@@ -21,17 +21,22 @@ pnpm dlx @tauri-apps/cli@^2 icon src-tauri/app-icon.png
 pnpm dlx @tauri-apps/cli@^2 build
 
 # 5. Assemble installer + portable zip (same layout as CI).
+# The release binary keeps the Cargo package name. productName only names the installer.
+$shell = "src-tauri/target/release/miyabi-desktop.exe"
+if (-not (Test-Path $shell)) { throw "desktop shell was not produced: $shell" }
+$nsis = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
+if (-not $nsis) { throw 'the NSIS installer was not produced' }
+
 $version = (Get-Content web/package.json -Raw | ConvertFrom-Json).version
 $package = "miyabi-desktop-$version-windows-x86_64"
 $stage = "dist/$package"
+if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
-Copy-Item "src-tauri/target/release/miyabi-desktop.exe" (Join-Path $stage 'Miyabi.exe')
+Copy-Item $shell (Join-Path $stage 'Miyabi.exe')
 Copy-Item "src-tauri/binaries/miyabi-server-$triple.exe" (Join-Path $stage 'miyabi-server.exe')
 Copy-Item LICENSE $stage
 Copy-Item docs/desktop-usage.md (Join-Path $stage '使用说明.md')
 New-Item -ItemType File -Force -Path (Join-Path $stage 'portable') | Out-Null
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath "dist/$package.zip" -Force
-
-$nsis = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
-if ($nsis) { Copy-Item $nsis.FullName "dist/miyabi-desktop-$version-setup.exe" }
+Copy-Item $nsis.FullName "dist/miyabi-desktop-$version-setup.exe" -Force
 Write-Host "artifacts written to dist/"

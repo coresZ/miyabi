@@ -20,12 +20,12 @@ fn main() {
         }))
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            let paths = Paths::resolve(app.handle())?;
+            let paths = Paths::resolve(app.handle()).map_err(std::io::Error::other)?;
             let ready = Prefs::load(&paths.prefs_path).is_some_and(|prefs| prefs.setup_done);
             app.manage(ShellState { paths: paths.clone() });
             if ready {
                 let prefs = Prefs::load(&paths.prefs_path).expect("prefs just loaded");
-                let url = sidecar::start(app.handle(), &prefs)?;
+                let url = sidecar::start(app.handle(), &prefs).map_err(std::io::Error::other)?;
                 window::open_main(app.handle(), url)?;
             } else {
                 window::open_setup(app.handle())?;

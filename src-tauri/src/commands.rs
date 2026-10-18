@@ -67,7 +67,7 @@ pub fn complete_setup(
         sidecar::shutdown();
         return Err(err);
     }
-    window::open_main(&app, url)?;
+    window::open_main(&app, url).map_err(|err| err.to_string())?;
     if let Some(setup) = app.get_webview_window("setup") {
         let _ = setup.close();
     }

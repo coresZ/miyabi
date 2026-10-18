@@ -25,6 +25,8 @@
 - `src/commands.rs`：`desktop_defaults` / `complete_setup` / `desktop_config` / `apply_desktop`。设置页改局域网端口后重启 sidecar 并重载主窗口。
 - `capabilities/desktop-remote.json`：只允许 `http://127.0.0.1:*/*` 和 `http://localhost:*/*` 调这四个命令。
 - `build.rs`：用 `AppManifest::commands` 生成 `allow-desktop-defaults` 等权限。不声明的话 capability 引用会在构建期直接失败。
+- 命令返回 `Result<(), String>` 时，`tauri::Error` 不能直接 `?`，要 `map_err`。`setup` 里的 `String` 错误同样要转成 `std::error::Error`。
+- 便携 zip 组装前先确认 `target/release/miyabi-desktop.exe` 和 NSIS 都已产出。release 二进制沿用 Cargo 包名，不是 `productName`。
 
 ## 状态
 - M1/M2 骨架：代码已落，**待 CI（GitHub Actions）首次构建验证**（本地未装 Rust）。
