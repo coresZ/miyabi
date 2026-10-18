@@ -5,6 +5,7 @@
 //! local UI.
 
 mod commands;
+mod job;
 mod log;
 mod prefs;
 mod sidecar;

@@ -126,7 +126,7 @@ docs/desktop-tauri-plan.md       # 本文
    - 选端口（见 §6），以普通子进程启动 `runtime/miyabi-server.exe`（`std::process::Command`），注入 `MIYABI_LISTEN`、`MIYABI_DATA_DIR`，spawn。
    - TCP 连接 `127.0.0.1:<port>`，带超时（如 30s）；失败弹原生错误并退出。上游已删除 `/api/health`。
    - 通过后 `WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))` 建窗。
-2. 退出：监听 `RunEvent::Exit` → kill 并 wait 后端（Windows 建议用 Job Object 兜底，避免残留）。
+2. 退出：监听 `RunEvent::Exit` → kill 并 wait 后端；同时把后端加入 `KILL_ON_JOB_CLOSE` 的 Job Object，壳被强杀时由系统回收。
 3. 单实例：`tauri-plugin-single-instance`。二次启动时聚焦既有窗口，而不是再起后端。
 
 > 直接复用上游已有的二次启动语义：`cmd/cmd.go` 在便携模式且端口已被占用时直接打开浏览器——桌面端把“打开浏览器”换成“连接到既有实例并聚焦窗口”。注入 `MIYABI_LISTEN` / `MIYABI_DATA_DIR` 后 Go 端退出便携模式，因此后端不会再拉起浏览器。
@@ -222,6 +222,7 @@ git merge upstream/master
 - [x] M3 打包：Windows NSIS 安装包，Go 后端以 resources 装入 `runtime/`。
 - [x] M4 局域网：设置页开关 + 端口 + 访问密码 + 局域网地址复制。**未做**：Windows 防火墙引导。
 - [x] M5 CI：`desktop-tauri.yml` 出安装包与便携 zip（`archive: false`）；WebView2 用 `embedBootstrapper`。
+- [x] 进程回收：Windows Job Object（`KILL_ON_JOB_CLOSE`），壳被强杀时由系统结束后端。
 - [x] M6 图标：`icon/miyabi.ico`（深色圆角底板，16–256 多尺寸）已接入 `bundle.icon`。
 - [x] M6 图标小尺寸重做：16–1024 全部改为深色圆角底板（`#1b2233`）+ 插画占画布 72%，各尺寸可见比例稳定在 57% 左右；`miyabi.ico` 由 `scripts/build-ico.py` 重新生成（16–128 为 BMP 条目，256 为 PNG）。
 - [x] 图标格式修复：ICO 之前全部用 PNG 压缩，Windows 只认 256 那一档用 PNG，小尺寸必须是 BMP，否则资源管理器列表视图空白。

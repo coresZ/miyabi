@@ -67,6 +67,7 @@ pub fn start(prefs: &Prefs) -> Result<String, String> {
         format!("找不到 runtime\\miyabi-server.exe，请不要把 Miyabi.exe 单独拷走（{err}）")
     })?;
     crate::log::info(format!("server spawned; pid={}", child.id()));
+    crate::job::attach(child.id());
     *CHILD.lock().expect("child lock") = Some(child);
 
     if !wait_ready(port, READY_TIMEOUT) {
