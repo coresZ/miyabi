@@ -3,7 +3,9 @@ import {
   ChevronRightIcon,
   EyeIcon,
   EyeOffIcon,
+  LockIcon,
   Maximize2Icon,
+  PlayIcon,
   SearchIcon,
   XIcon
 } from 'lucide-react'
@@ -24,12 +26,14 @@ import { usePanAccount } from '@/api/pan'
 import { playableVideoUrl, usePlayables, type Playable, type PlayableKind } from '@/api/playables'
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState, InlineError } from '@/components/error-state'
+import { MediaImage } from '@/components/media-image'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from 'cn'
+import { useSettingsStore } from '@/stores/settings'
 import { useShellChrome } from '@/stores/shell-chrome'
 import { PlayerStage, type PlayerInstance, type PlayerTrack } from './player-stage'
 import { readPlayerPrefs, savePlayerPrefs } from './prefs'
-import { isDesktopWindow, setPlayerWindowMode, type PlayerWindowMode } from './window-mode'
+import { enterPlayerImmersive, isDesktopWindow, restoreNormalWindow } from './player-window'
 
 type SourceOption = {
   id: string
@@ -114,41 +118,75 @@ export function PlayerPage() {
   const isDesktop = useIsDesktop()
   const desktopShell = isDesktopWindow()
   const setNavHidden = useShellChrome(state => state.setNavHidden)
-  const [windowMode, setWindowMode] = useState<PlayerWindowMode>('windowed')
+  const nsfwMode = useSettingsStore(state => state.nsfwMode)
+  const [immersive, setImmersive] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
+  const [nsfwRevealed, setNsfwRevealed] = useState(false)
   const [chromeVisible, setChromeVisible] = useState(false)
   const [railOpen, setRailOpen] = useState(false)
   const [prefs, setPrefs] = useState(readPlayerPrefs)
   const prefsTimer = useRef<number | undefined>(undefined)
   const [sourceAspect, setSourceAspect] = useState<number | null>(null)
-  const [coverVideo, setCoverVideo] = useState(false)
-  const borderless = windowMode !== 'windowed'
+  const tracksRef = useRef<PlayerTrack[]>([])
+  const pendingPlayRef = useRef<number | null>(null)
+  const nsfwRevealedRef = useRef(false)
+  const fittedAspectRef = useRef<number | null>(null)
+  const gated = nsfwMode && !nsfwRevealed
 
-  // A source is cropped only when the window no longer matches its ratio, so a
-  // freshly entered borderless window keeps the full frame.
-  useEffect(() => {
-    const update = () => {
-      if (!sourceAspect || !borderless) {
-        setCoverVideo(false)
-        return
-      }
-      const frame = window.innerWidth / window.innerHeight
-      setCoverVideo(Math.abs(frame - sourceAspect) > 0.01)
+  const enterImmersive = useCallback(async () => {
+    setRailOpen(false)
+    setImmersive(true)
+    try {
+      await enterPlayerImmersive(sourceAspect)
+      fittedAspectRef.current = sourceAspect
+    } catch {
+      await restoreNormalWindow().catch(() => {})
+      setImmersive(false)
     }
-    update()
-    window.addEventListener('resize', update)
-    return () => window.removeEventListener('resize', update)
-  }, [sourceAspect, borderless])
+  }, [sourceAspect])
 
-  const applyWindowMode = useCallback(
-    (mode: PlayerWindowMode) => {
-      setWindowMode(mode)
-      if (mode !== 'borderless') setRailOpen(false)
-      void setPlayerWindowMode(mode, mode === 'windowed' ? null : sourceAspect).catch(() =>
-        setWindowMode('windowed')
-      )
+  const exitImmersive = useCallback(async () => {
+    setImmersive(false)
+    setRailOpen(false)
+    fittedAspectRef.current = null
+    await restoreNormalWindow().catch(() => {})
+  }, [])
+
+  // Refit when a new source reports a different aspect while immersive.
+  useEffect(() => {
+    if (!desktopShell || !immersive || fullscreen || !sourceAspect) return
+    if (fittedAspectRef.current === sourceAspect) return
+    fittedAspectRef.current = sourceAspect
+    void enterPlayerImmersive(sourceAspect).catch(() => {})
+  }, [desktopShell, immersive, fullscreen, sourceAspect])
+
+  const onFullscreenChange = useCallback(
+    (active: boolean) => {
+      setFullscreen(active)
+      if (active) return
+      // Exiting fullscreen always returns to the normal page/window, never to
+      // the immersive layout that might have been active before fullscreen.
+      setImmersive(false)
+      setRailOpen(false)
+      fittedAspectRef.current = null
+      if (!desktopShell) return
+      // Tauri restores the pre-fullscreen window itself; let it finish before
+      // applying our snapshot so the two restores cannot race.
+      window.setTimeout(() => {
+        void restoreNormalWindow().catch(() => {})
+      }, 50)
     },
-    [sourceAspect]
+    [desktopShell]
   )
+
+  const revealNsfw = useCallback(() => {
+    nsfwRevealedRef.current = true
+    setNsfwRevealed(true)
+    const index = pendingPlayRef.current
+    if (index == null || !playerRef.current) return
+    playerRef.current.setSources(tracksRef.current, index)
+    pendingPlayRef.current = null
+  }, [])
 
   // The play page hides the floating navigation in the desktop shell: on this
   // page the nav sits on top of the player controls, and the toolbar already
@@ -159,44 +197,56 @@ export function PlayerPage() {
     return () => setNavHidden(false)
   }, [desktopShell, setNavHidden])
 
-  // Escape steps back one level: the catalog drawer first, then fullscreen,
-  // then borderless.
+  // Escape closes the catalog first, then exits immersive. Fullscreen is left
+  // to WebView2/the browser; the page never intercepts it.
   useEffect(() => {
-    if (!borderless && !railOpen) return
+    if (!immersive && !railOpen) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || document.fullscreenElement) return
       event.preventDefault()
       if (railOpen) {
         setRailOpen(false)
         return
       }
-      applyWindowMode(windowMode === 'fullscreen' ? 'borderless' : 'windowed')
+      if (immersive) void exitImmersive()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [borderless, railOpen, windowMode, applyWindowMode])
+  }, [immersive, railOpen, exitImmersive])
 
-  // Leaving the page must restore the title bar, otherwise the window stays
-  // borderless with no way back.
+  // Leaving or reloading the page must restore the normal window; mounting also
+  // clears a stale immersive window left by a reload.
   useEffect(() => {
     if (!desktopShell) return
+    void restoreNormalWindow().catch(() => {})
     return () => {
-      void setPlayerWindowMode('windowed')
+      void restoreNormalWindow().catch(() => {})
     }
   }, [desktopShell])
 
-  // Borderless covers the window, so the stable scrollbar gutter must go too;
+  // Immersive covers the window, so the stable scrollbar gutter must go too;
   // otherwise a strip of background stays visible on the right edge.
-  // Keep the in-player fullscreen icon in step with the window mode.
   useEffect(() => {
-    playerRef.current?.setFullscreenState(windowMode === 'fullscreen')
-  }, [windowMode])
+    if (!immersive) return
+    document.documentElement.classList.add('player-immersive')
+    return () => document.documentElement.classList.remove('player-immersive')
+  }, [immersive])
 
+  // Keep refs readable from the player-ready callback without re-creating it.
   useEffect(() => {
-    if (!borderless) return
-    document.documentElement.classList.add('player-borderless')
-    return () => document.documentElement.classList.remove('player-borderless')
-  }, [borderless])
+    nsfwRevealedRef.current = nsfwRevealed
+  }, [nsfwRevealed])
+
+  // Turning protection on while this page is mounted must not leave the video
+  // playing behind the gate. Settings is a separate route, so this is only a
+  // guard for a same-mount toggle.
+  useEffect(() => {
+    if (!nsfwMode) return
+    nsfwRevealedRef.current = false
+    playerRef.current?.stop()
+    // oxlint-disable-next-line react/set-state-in-effect
+    setPlaying(null)
+  }, [nsfwMode])
 
   // Playback keys (space/K/enter/arrows/volume/mute) live in player-core.js, so
   // the detail dialog gets them too. Only window-level keys belong here.
@@ -253,6 +303,9 @@ export function PlayerPage() {
       ),
     [items]
   )
+  useEffect(() => {
+    tracksRef.current = tracks
+  }, [tracks])
   const movies = useMemo(() => {
     const result: { item: Playable; start: number; count: number }[] = []
     items.reduce((offset, item) => {
@@ -318,12 +371,20 @@ export function PlayerPage() {
     (index: number) => {
       const track = tracks[index]
       if (!track) return
-      playerRef.current?.setSources(tracks, index)
       setCurrent(index)
       setPlaying(track)
       if (!isDesktop) setSnap('half')
+      if (nsfwMode && !nsfwRevealedRef.current) {
+        pendingPlayRef.current = index
+        return
+      }
+      if (!playerRef.current) {
+        pendingPlayRef.current = index
+        return
+      }
+      playerRef.current.setSources(tracks, index)
     },
-    [tracks, isDesktop]
+    [tracks, isDesktop, nsfwMode]
   )
 
   // A deep link (`/play?movie=12`) resolves once the catalog reaches that movie.
@@ -399,9 +460,9 @@ export function PlayerPage() {
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
       const key = event.key.toLowerCase()
       if (key === 'f') {
+        if (gated || !playing) return
         event.preventDefault()
-        if (desktopShell) applyWindowMode(borderless ? 'windowed' : 'borderless')
-        else playerRef.current?.toggleFullscreen()
+        playerRef.current?.toggleFullscreen()
       } else if (key === 'n') {
         event.preventDefault()
         goMovie(1)
@@ -412,7 +473,7 @@ export function PlayerPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [desktopShell, borderless, applyWindowMode, goMovie])
+  }, [gated, playing, goMovie])
   const countLabel = `${tracks.length}${hasNextPage ? '+' : ''} 个文件`
 
   // peek / half 档限制在播放器下方（不遮挡视频底部操作条），full 档才允许覆盖。
@@ -508,12 +569,12 @@ export function PlayerPage() {
         // The floating nav is hidden in the desktop shell, so its reserved lane
         // would just be an empty strip under the player.
         desktopShell ? 'pb-4' : 'pb-24',
-        // Borderless only shows the video: pin the page to the window edges so no
-        // page padding or max-width leaves a gap around the player.
-        borderless && 'fixed inset-0 z-40 h-auto w-auto max-w-none gap-0 bg-black p-0'
+        // Immersive only shows the video: pin the page to the window edges so
+        // no page padding or max-width leaves a gap around the player.
+        immersive && 'fixed inset-0 z-40 h-auto w-auto max-w-none gap-0 bg-black p-0'
       )}
     >
-      {borderless ? (
+      {immersive ? (
         <>
           {/* Invisible hover strip: the window controls appear only when the
               pointer reaches the top edge, so the video keeps the whole frame. */}
@@ -542,25 +603,24 @@ export function PlayerPage() {
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="还原窗口"
-                title="还原窗口"
+                aria-label="退出沉浸"
+                title="退出沉浸"
                 className="text-white hover:bg-white/20 hover:text-white"
-                onClick={() => applyWindowMode('windowed')}
+                onClick={() => void exitImmersive()}
               >
                 <RestoreWindowIcon />
               </Button>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={windowMode === 'fullscreen' ? '退出全屏' : '全屏'}
-                title={windowMode === 'fullscreen' ? '退出全屏' : '全屏'}
-                aria-pressed={windowMode === 'fullscreen'}
+                aria-label={fullscreen ? '退出全屏' : '全屏'}
+                title={fullscreen ? '退出全屏' : '全屏'}
+                aria-pressed={fullscreen}
+                disabled={gated || !playing}
                 className="text-white hover:bg-white/20 hover:text-white"
-                onClick={() =>
-                  applyWindowMode(windowMode === 'fullscreen' ? 'borderless' : 'fullscreen')
-                }
+                onClick={() => playerRef.current?.toggleFullscreen()}
               >
-                {windowMode === 'fullscreen' ? <ExitFullscreenIcon /> : <EnterFullscreenIcon />}
+                {fullscreen ? <ExitFullscreenIcon /> : <EnterFullscreenIcon />}
               </Button>
               <Button
                 variant="ghost"
@@ -598,13 +658,13 @@ export function PlayerPage() {
 
       <div
         style={
-          isDesktop && !borderless
+          isDesktop && !immersive
             ? ({ '--rail-w': collapsed ? '0px' : `${railWidth}px` } as CSSProperties)
             : undefined
         }
         className={cn(
           'relative grid min-h-0 flex-1 grid-rows-[auto] gap-5 lg:grid-cols-[minmax(0,1fr)_var(--rail-w)] lg:grid-rows-1',
-          borderless && 'h-full gap-0 lg:grid-cols-[minmax(0,1fr)]',
+          immersive && 'h-full gap-0 lg:grid-cols-[minmax(0,1fr)]',
           draggingRail
             ? 'lg:transition-none'
             : 'lg:transition-[grid-template-columns] lg:duration-200 lg:ease-out'
@@ -614,44 +674,60 @@ export function PlayerPage() {
           ref={playerSectionRef}
           className={cn(
             'flex min-h-0 min-w-0 flex-col gap-3 self-start lg:self-stretch',
-            borderless && 'gap-0 self-stretch'
+            immersive && 'gap-0 self-stretch'
           )}
         >
-          <PlayerStage
-            cover={coverVideo}
-            prefs={prefs}
-            onToggleFullscreen={
-              desktopShell
-                ? () => applyWindowMode(windowMode === 'fullscreen' ? 'borderless' : 'fullscreen')
-                : undefined
-            }
-            onPrefsChange={next => {
-              setPrefs(next)
-              window.clearTimeout(prefsTimer.current)
-              prefsTimer.current = window.setTimeout(() => savePlayerPrefs(next), 300)
-            }}
-            className={cn(borderless && 'aspect-auto h-full w-full flex-1 rounded-none')}
-            onMetadata={(width, height) => {
-              const aspect = width / height
-              setSourceAspect(aspect)
-              if (borderless) void setPlayerWindowMode('borderless', aspect)
-            }}
-            onReady={player => {
-              playerRef.current = player
-              player.setQueue(tracks)
-              player.setControlsHidden(controlsHidden)
-              player.setFullscreenState(windowMode === 'fullscreen')
-            }}
-            onChange={(index, source) => {
-              setCurrent(index)
-              setPlaying(source)
-            }}
-            onEnded={(_index, hasNext) => {
-              if (!hasNext && hasNextPage) void fetchNextPage()
-            }}
-          />
+          <div className={cn('relative', immersive && 'flex h-full min-h-0 flex-1 flex-col')}>
+            <PlayerStage
+              prefs={prefs}
+              onFullscreenChange={onFullscreenChange}
+              onPrefsChange={next => {
+                setPrefs(next)
+                window.clearTimeout(prefsTimer.current)
+                prefsTimer.current = window.setTimeout(() => savePlayerPrefs(next), 300)
+              }}
+              className={cn(immersive && 'aspect-auto h-full w-full flex-1 rounded-none')}
+              onMetadata={(width, height) => {
+                setSourceAspect(width / height)
+              }}
+              onReady={player => {
+                playerRef.current = player
+                player.setQueue(tracks)
+                player.setControlsHidden(controlsHidden)
+                if (pendingPlayRef.current != null && (!nsfwMode || nsfwRevealedRef.current)) {
+                  player.setSources(tracksRef.current, pendingPlayRef.current)
+                  pendingPlayRef.current = null
+                }
+              }}
+              onChange={(index, source) => {
+                setCurrent(index)
+                setPlaying(source)
+              }}
+              onEnded={(_index, hasNext) => {
+                if (!hasNext && hasNextPage) void fetchNextPage()
+              }}
+            />
+            {gated ? (
+              <div
+                className={cn(
+                  'absolute inset-0 z-50 grid place-items-center bg-black/90 p-6 text-center',
+                  immersive ? 'rounded-none' : 'rounded-2xl'
+                )}
+              >
+                <div className="flex max-w-sm flex-col items-center gap-3 text-white">
+                  <LockIcon className="size-8 text-white/75" />
+                  <p className="text-sm font-semibold">NSFW 保护已开启</p>
+                  <p className="text-xs text-white/60">播放前需要确认</p>
+                  <Button size="sm" variant="secondary" disabled={!playing} onClick={revealNsfw}>
+                    <PlayIcon className="size-4" />
+                    播放
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
 
-          <div className={cn('mt-auto flex min-w-0 items-center gap-3', borderless && 'hidden')}>
+          <div className={cn('mt-auto flex min-w-0 items-center gap-3', immersive && 'hidden')}>
             {playing ? (
               <>
                 <span className="flex-none rounded-full border border-border px-2.5 py-1 text-xs font-semibold tabular-nums">
@@ -692,9 +768,10 @@ export function PlayerPage() {
                 <Button
                   variant="outline"
                   size="icon-sm"
-                  aria-label="无边框播放"
-                  title="无边框播放"
-                  onClick={() => applyWindowMode('borderless')}
+                  aria-label="沉浸播放"
+                  title="沉浸播放"
+                  disabled={gated || !playing}
+                  onClick={() => void enterImmersive()}
                 >
                   <Maximize2Icon />
                 </Button>
@@ -719,15 +796,15 @@ export function PlayerPage() {
         </section>
 
         <section
-          inert={collapsed && isDesktop && !borderless ? true : undefined}
+          inert={collapsed && isDesktop && !immersive ? true : undefined}
           style={isDesktop ? undefined : { height: dragHeight ?? sheetHeight }}
           className={cn(
             'flex min-h-0 flex-col overflow-hidden rounded-2xl bg-card ring-1 ring-border/60 lg:transition-opacity lg:duration-200',
             'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:rounded-b-none max-lg:shadow-[0_-10px_34px_rgba(0,0,0,0.14)]',
-            collapsed && isDesktop && !borderless && 'lg:pointer-events-none lg:opacity-0',
-            // Borderless keeps the catalog off-screen and slides it in from the
+            collapsed && isDesktop && !immersive && 'lg:pointer-events-none lg:opacity-0',
+            // Immersive keeps the catalog off-screen and slides it in from the
             // right edge, so the video owns the whole frame.
-            borderless &&
+            immersive &&
               cn(
                 // Same material as the floating navigation: translucent card
                 // with a blur, instead of a gradient edge.
@@ -739,7 +816,7 @@ export function PlayerPage() {
               : 'max-lg:transition-[height] max-lg:duration-200 max-lg:ease-out'
           )}
           onPointerLeave={() => {
-            if (borderless) setRailOpen(false)
+            if (immersive) setRailOpen(false)
           }}
         >
           <div
@@ -826,10 +903,10 @@ export function PlayerPage() {
                     >
                       <span className="grid aspect-video w-16 flex-none place-items-center overflow-hidden rounded-lg bg-muted text-[0.6rem] text-muted-foreground ring-1 ring-border/60">
                         {entry.item.poster ? (
-                          <img
-                            src={entry.item.poster}
-                            alt=""
-                            className="h-full w-full object-cover"
+                          <MediaImage
+                            source={entry.item.poster}
+                            loading="lazy"
+                            className="object-cover"
                           />
                         ) : (
                           '封面'
@@ -855,7 +932,7 @@ export function PlayerPage() {
           </div>
         </section>
 
-        {isDesktop && !borderless ? (
+        {isDesktop && !immersive ? (
           <button
             type="button"
             aria-label={collapsed ? '展开目录' : '收起目录'}

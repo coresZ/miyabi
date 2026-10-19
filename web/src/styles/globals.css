@@ -156,9 +156,9 @@
     @apply font-sans;
     scrollbar-gutter: stable;
   }
-  /* The borderless player covers the whole window: a stable gutter would leave
+  /* The immersive player covers the whole window: a stable gutter would leave
      an empty strip on the right, so it is dropped while that mode is active. */
-  html.player-borderless {
+  html.player-immersive {
     scrollbar-gutter: auto;
     overflow: hidden;
   }

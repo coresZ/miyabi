@@ -42,8 +42,6 @@ export type PlayerPrefs = {
 type PlayerStageProps = {
   className?: string
   poster?: string
-  /** Crops instead of letterboxing when the frame ratio differs from the source. */
-  cover?: boolean
   prefs?: PlayerPrefs
   onReady?: (player: PlayerInstance) => void
   onChange?: (index: number, source: PlayerTrack) => void
@@ -51,8 +49,6 @@ type PlayerStageProps = {
   onProgress?: (currentTime: number, duration: number) => void
   onMetadata?: (width: number, height: number) => void
   onPrefsChange?: (prefs: PlayerPrefs) => void
-  /** Desktop shell: route the control-bar button to the window mode instead. */
-  onToggleFullscreen?: () => void
   onFullscreenChange?: (active: boolean) => void
 }
 
@@ -92,7 +88,6 @@ export function PlayerStage(props: PlayerStageProps) {
           onMetadata: (width: number, height: number) =>
             handlers.current.onMetadata?.(width, height),
           onPrefsChange: (prefs: PlayerPrefs) => handlers.current.onPrefsChange?.(prefs),
-          onToggleFullscreen: () => handlers.current.onToggleFullscreen?.(),
           onFullscreenChange: (active: boolean) => handlers.current.onFullscreenChange?.(active)
         })
         current.onReady?.(instance)
@@ -120,7 +115,6 @@ export function PlayerStage(props: PlayerStageProps) {
     <div
       className={cn(
         'aspect-video w-full overflow-hidden rounded-2xl bg-black lg:h-full',
-        props.cover && 'miyabi-player-cover',
         props.className
       )}
     >

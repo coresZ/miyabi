@@ -5,7 +5,6 @@ import { ErrorState, InlineError } from '@/components/error-state'
 import type { MovieDetailTarget } from './dialog-context'
 import { MovieHero } from './hero'
 import { MovieMagnets } from './magnets'
-import { MoviePlayer } from './player'
 import { MoviePreviews } from './previews'
 import { MovieRecommendations } from './recommendations'
 import { MovieDetailSkeleton } from './skeleton'
@@ -38,14 +37,11 @@ function LibraryMovieDetail({ movieId }: { movieId: number }) {
           刷新失败，请重试。
         </InlineError>
       ) : null}
-      <MovieHero movie={detail.data} libraryStatus={detail.data.scrape_status} />
-      {detail.data.videos?.length ? (
-        <MoviePlayer
-          videos={detail.data.videos}
-          title={detail.data.title || detail.data.code}
-          movieId={movieId}
-        />
-      ) : null}
+      <MovieHero
+        movie={detail.data}
+        libraryStatus={detail.data.scrape_status}
+        playMovieId={detail.data.videos?.length ? movieId : undefined}
+      />
       <MoviePreviews images={detail.data.preview_images} />
       {detail.data.id ? <LibraryCatalogueExtras movieId={detail.data.id} /> : null}
     </div>

@@ -10,14 +10,10 @@
     style.textContent = [
       '.miyabi-player{position:relative;width:100%;height:100%;background:#000;overflow:hidden}',
       '.miyabi-player-stage{position:relative;width:100%;height:100%;background:#000}',
-      '.miyabi-player-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}',
-      // Fill the frame when the window ratio no longer matches the source.
-      '.miyabi-player-cover .miyabi-player-video{object-fit:cover}',
-      '.miyabi-player-cover .miyabi-player-xg video{object-fit:cover}',
-      '.miyabi-player-snapshot{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:1;transition:opacity .16s ease-out}',
+      '.miyabi-player-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}',      '.miyabi-player-snapshot{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:1;transition:opacity .16s ease-out}',
       '.miyabi-player-xg{position:absolute;inset:0}',
       '.miyabi-player-xg .xgplayer{width:100%;height:100%}',
-      '.miyabi-player:fullscreen .miyabi-player-stage{height:100vh}'
+      '.miyabi-player-stage:fullscreen{width:100vw;height:100vh}'
     ].join('');
     document.head.appendChild(style);
   }
@@ -37,7 +33,9 @@
     container.innerHTML = '';
 
     var stage = document.createElement('div');
-    stage.className = 'miyabi-player-stage';
+    // `video-container` is the hook the vendored control CSS uses for compact and
+    // fullscreen states; the stage is the fullscreen element.
+    stage.className = 'miyabi-player-stage video-container';
     var xgContainer = document.createElement('div');
     xgContainer.id = 'xgplayerContainer';
     xgContainer.className = 'miyabi-player-xg';
@@ -127,6 +125,7 @@
 
     function onFullscreenChange() {
       var active = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      stage.classList.toggle('fullscreen-active', active);
       setFullscreenState(active);
       if (options.onFullscreenChange) options.onFullscreenChange(active);
     }
@@ -324,13 +323,9 @@
       if (v && v.webkitEnterFullscreen) v.webkitEnterFullscreen();
     }
 
-    // The shell routes this to its window mode; the browser falls back to the
-    // element fullscreen implemented above.
+    // The player owns fullscreen in every environment (desktop shell or browser).
+    // Tauri/WebView2 syncs the window to the fullscreen element on Windows.
     function requestFullscreenToggle() {
-      if (typeof options.onToggleFullscreen === 'function') {
-        options.onToggleFullscreen();
-        return;
-      }
       toggleElementFullscreen();
     }
 

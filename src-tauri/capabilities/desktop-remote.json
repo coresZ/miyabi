@@ -10,9 +10,9 @@
     "core:default",
     "allow-desktop-config",
     "allow-apply-desktop",
-    "allow-set-player-window-mode",
+    "allow-enter-player-immersive",
+    "allow-restore-normal-window",
     "core:window:allow-close",
-    "core:window:allow-start-dragging",
-    "core:window:allow-toggle-maximize"
+    "core:window:allow-start-dragging"
   ]
 }

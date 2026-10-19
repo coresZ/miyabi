@@ -198,70 +198,144 @@ pub async fn apply_desktop(
     }
 }
 
+#[derive(Clone)]
+struct WindowSnapshot {
+    inner_size: tauri::PhysicalSize<u32>,
+    outer_position: tauri::PhysicalPosition<i32>,
+    decorated: bool,
+    resizable: bool,
+}
+
+static IMMERSIVE_SNAPSHOT: Mutex<Option<WindowSnapshot>> = Mutex::new(None);
+
+/// Removes the title bar and locks the window to the video aspect ratio.
+/// The normal window is never maximizable; `restore_normal_window` restores the
+/// exact decorations/resizable/size/position captured here.
 #[tauri::command]
-pub fn set_player_window_mode(
-    app: AppHandle,
-    mode: String,
-    aspect: Option<f64>,
-) -> Result<(), String> {
-    crate::log::info(format!("player window mode -> {mode}"));
+pub fn enter_player_immersive(app: AppHandle, aspect: Option<f64>) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "主窗口未打开".to_string())?;
-    match mode.as_str() {
-        "windowed" => {
-            let _ = window.set_fullscreen(false);
-            window.set_decorations(true).map_err(|err| err.to_string())?;
-            if let Some(bounds) = WINDOW_BOUNDS.lock().expect("bounds lock").take() {
-                let _ = window.set_size(bounds.size);
-                let _ = window.set_position(bounds.position);
-            }
-        }
-        "borderless" => {
-            if WINDOW_BOUNDS.lock().expect("bounds lock").is_none() {
-                let size = window.inner_size().map_err(|err| err.to_string())?;
-                let position = window.outer_position().map_err(|err| err.to_string())?;
-                *WINDOW_BOUNDS.lock().expect("bounds lock") = Some(WindowBounds { size, position });
-            }
-            let _ = window.set_fullscreen(false);
-            window.set_decorations(false).map_err(|err| err.to_string())?;
-            // The page crops once the frame stops matching the source, so size
-            // the window to the source ratio first to avoid an immediate crop.
-            if let Some(aspect) = aspect {
-                fit_to_aspect(&window, aspect)?;
-            }
-        }
-        "fullscreen" => {
-            window.set_fullscreen(true).map_err(|err| err.to_string())?;
-        }
-        _ => return Err("未知的窗口模式".into()),
-    }
-    Ok(())
-}
-
-/// Resizes the window to `aspect` (width / height) inside the current monitor.
-fn fit_to_aspect(window: &tauri::WebviewWindow, aspect: f64) -> Result<(), String> {
-    if !aspect.is_finite() || !(0.1..10.0).contains(&aspect) {
-        return Ok(());
-    }
-    let size = window.inner_size().map_err(|err| err.to_string())?;
-    let monitor = window
-        .current_monitor()
-        .map_err(|err| err.to_string())?
-        .map(|monitor| *monitor.size());
-    let mut width = f64::from(size.width);
-    let mut height = width / aspect;
-    if let Some(monitor) = monitor {
-        let limit = f64::from(monitor.height);
-        if height > limit {
-            height = limit;
-            width = height * aspect;
+    {
+        let mut snapshot = IMMERSIVE_SNAPSHOT.lock().expect("snapshot lock");
+        if snapshot.is_none() {
+            *snapshot = Some(WindowSnapshot {
+                inner_size: window.inner_size().map_err(|err| err.to_string())?,
+                outer_position: window.outer_position().map_err(|err| err.to_string())?,
+                decorated: window.is_decorated().map_err(|err| err.to_string())?,
+                resizable: window.is_resizable().map_err(|err| err.to_string())?,
+            });
         }
     }
     window
-        .set_size(tauri::PhysicalSize::new(
-            width.round().max(320.0) as u32,
-            height.round().max(180.0) as u32,
+        .set_decorations(false)
+        .map_err(|err| err.to_string())?;
+    window
+        .set_resizable(false)
+        .map_err(|err| err.to_string())?;
+    // The 1024x640 minimum would clamp a portrait fit and break the ratio.
+    window
+        .set_min_size(None::<tauri::LogicalSize<f64>>)
+        .map_err(|err| err.to_string())?;
+    if let Some(aspect) = aspect {
+        fit_to_aspect(&window, aspect)?;
+    }
+    crate::log::info("player window -> immersive");
+    Ok(())
+}
+
+/// Restores the state captured before entering immersive mode. Idempotent: when
+/// there is no snapshot (fullscreen entered from a normal window) it only makes
+/// sure the window is not fullscreen.
+#[tauri::command]
+pub fn restore_normal_window(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口未打开".to_string())?;
+    let _ = window.set_fullscreen(false);
+    // Keep the snapshot until every restore succeeds, so a failure can retry.
+    let snapshot = IMMERSIVE_SNAPSHOT
+        .lock()
+        .expect("snapshot lock")
+        .clone();
+    if let Some(snapshot) = snapshot {
+        window
+            .set_resizable(snapshot.resizable)
+            .map_err(|err| err.to_string())?;
+        window
+            .set_decorations(snapshot.decorated)
+            .map_err(|err| err.to_string())?;
+        window
+            .set_size(snapshot.inner_size)
+            .map_err(|err| err.to_string())?;
+        window
+            .set_position(snapshot.outer_position)
+            .map_err(|err| err.to_string())?;
+        window
+            .set_min_size(Some(tauri::LogicalSize::<f64>::new(1024.0, 640.0)))
+            .map_err(|err| err.to_string())?;
+        *IMMERSIVE_SNAPSHOT.lock().expect("snapshot lock") = None;
+    } else {
+        // No snapshot: a stale immersive state after a reload. Restore the
+        // minimum without touching the user's size.
+        let _ = window.set_min_size(Some(tauri::LogicalSize::<f64>::new(1024.0, 640.0)));
+    }
+    crate::log::info("player window -> normal");
+    Ok(())
+}
+
+/// Strictly proportional resize: both dimensions are multiplied by the same
+/// factor. It never fixes one side independently and never stretches.
+fn fit_to_aspect(window: &tauri::WebviewWindow, aspect: f64) -> Result<(), String> {
+    if !aspect.is_finite() || !(0.1..=10.0).contains(&aspect) {
+        return Ok(());
+    }
+    let size = window.inner_size().map_err(|err| err.to_string())?;
+    let mut width = f64::from(size.width.max(1));
+    let mut height = width / aspect;
+    let monitor = window.current_monitor().map_err(|err| err.to_string())?;
+    if let Some(monitor) = monitor {
+        let work = monitor.work_area();
+        let work_width = f64::from(work.size.width);
+        let work_height = f64::from(work.size.height);
+        let scale = (work_width / width)
+            .min(work_height / height)
+            .min(1.0);
+        width *= scale;
+        height *= scale;
+
+        let old_outer = window
+            .outer_position()
+            .unwrap_or_else(|_| work.position.clone());
+        let old_size = window
+            .outer_size()
+            .unwrap_or(tauri::PhysicalSize::<u32>::new(
+                width.round() as u32,
+                height.round() as u32,
+            ));
+        let center_x = f64::from(old_outer.x) + f64::from(old_size.width) / 2.0;
+        let center_y = f64::from(old_outer.y) + f64::from(old_size.height) / 2.0;
+        let min_x = f64::from(work.position.x);
+        let min_y = f64::from(work.position.y);
+        let max_x = (min_x + work_width - width).max(min_x);
+        let max_y = (min_y + work_height - height).max(min_y);
+        let x = (center_x - width / 2.0).clamp(min_x, max_x);
+        let y = (center_y - height / 2.0).clamp(min_y, max_y);
+        window
+            .set_size(tauri::PhysicalSize::<u32>::new(
+                width.round().max(1.0) as u32,
+                height.round().max(1.0) as u32,
+            ))
+            .map_err(|err| err.to_string())?;
+        window
+            .set_position(tauri::PhysicalPosition::new(x.round() as i32, y.round() as i32))
+            .map_err(|err| err.to_string())?;
+        return Ok(());
+    }
+    window
+        .set_size(tauri::PhysicalSize::<u32>::new(
+            width.round().max(1.0) as u32,
+            height.round().max(1.0) as u32,
         ))
         .map_err(|err| err.to_string())
 }
@@ -275,13 +349,6 @@ where
     tauri::async_runtime::spawn_blocking(task)
         .await
         .map_err(|err| err.to_string())?
-}
-
-static WINDOW_BOUNDS: Mutex<Option<WindowBounds>> = Mutex::new(None);
-
-struct WindowBounds {
-    size: tauri::PhysicalSize<u32>,
-    position: tauri::PhysicalPosition<i32>,
 }
 
 /// Best-effort LAN addresses. A UDP connect does not send a packet; it only

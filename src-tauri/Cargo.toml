@@ -1,6 +1,6 @@
 [package]
 name = "miyabi-desktop"
-version = "0.4.11"
+version = "0.4.12"
 description = "Miyabi desktop shell (Tauri v2 + Go server)"
 edition = "2021"
 rust-version = "1.77"

@@ -7,7 +7,8 @@ fn main() {
                 "complete_setup",
                 "desktop_config",
                 "apply_desktop",
-                "set_player_window_mode",
+                "enter_player_immersive",
+                "restore_normal_window",
             ]),
         ),
     )

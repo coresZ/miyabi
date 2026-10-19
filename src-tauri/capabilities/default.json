@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Local shell windows. The Go server is started by the shell, not by the webview.",
-  "windows": ["main", "setup"],
+  "windows": ["main", "setup", "splash"],
   "permissions": ["core:default"]
 }
