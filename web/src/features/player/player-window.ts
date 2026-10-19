@@ -26,19 +26,3 @@ export async function restoreNormalWindow(): Promise<void> {
   if (!call) return
   await call('restore_normal_window')
 }
-
-export type PlayerResizeDirection = 'NorthWest' | 'SouthEast'
-
-/** Resize the frameless immersive window from one of its two corner handles. */
-export async function startWindowResize(direction: PlayerResizeDirection): Promise<void> {
-  const w = window as Window & {
-    __TAURI__?: {
-      window?: {
-        getCurrentWindow?: () => {
-          startResizeDragging?: (direction: PlayerResizeDirection) => Promise<void>
-        }
-      }
-    }
-  }
-  await w.__TAURI__?.window?.getCurrentWindow?.().startResizeDragging?.(direction)
-}

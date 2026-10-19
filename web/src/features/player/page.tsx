@@ -29,16 +29,11 @@ import { ErrorState, InlineError } from '@/components/error-state'
 import { MediaImage } from '@/components/media-image'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from 'cn'
-import { getUiState, updateUiState, useUiState } from '@/stores/ui-state'
+import { useUiState } from '@/stores/ui-state'
 import { useShellChrome } from '@/stores/shell-chrome'
 import { PlayerStage, type PlayerInstance, type PlayerTrack } from './player-stage'
 import { readPlayerPrefs, savePlayerPrefs } from './prefs'
-import {
-  enterPlayerImmersive,
-  isDesktopWindow,
-  restoreNormalWindow,
-  startWindowResize
-} from './player-window'
+import { enterPlayerImmersive, isDesktopWindow, restoreNormalWindow } from './player-window'
 
 type SourceOption = {
   id: string
@@ -60,19 +55,6 @@ const SHEET_SNAPS: SheetSnap[] = ['peek', 'half', 'full']
 const SHEET_SNAP_VH: Record<SheetSnap, number> = { peek: 30, half: 56, full: 88 }
 
 const DEFAULT_RAIL = 320
-const MIN_RAIL = 200
-const MAX_RAIL = 520
-const RAIL_COLLAPSE_AT = 150
-
-function readRailPref(key: 'width'): number
-function readRailPref(key: 'collapsed'): boolean
-function readRailPref(key: 'width' | 'collapsed'): number | boolean {
-  const rail = getUiState().rail
-  if (key === 'width') {
-    return Math.min(MAX_RAIL, Math.max(MIN_RAIL, rail.width || DEFAULT_RAIL))
-  }
-  return rail.collapsed
-}
 
 function useIsDesktop() {
   const [isDesktop, setIsDesktop] = useState(
@@ -101,9 +83,7 @@ export function PlayerPage() {
   const [term, setTerm] = useState('')
   const [current, setCurrent] = useState(-1)
   const [playing, setPlaying] = useState<PlayerTrack | null>(null)
-  const [collapsed, setCollapsed] = useState(() => readRailPref('collapsed'))
-  const [railWidth, setRailWidth] = useState(() => readRailPref('width'))
-  const [draggingRail, setDraggingRail] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
   const [controlsHidden, setControlsHidden] = useState(false)
   const [snap, setSnap] = useState<SheetSnap>('half')
   const [dragging, setDragging] = useState(false)
@@ -113,8 +93,6 @@ export function PlayerPage() {
   const sentinelRef = useRef<HTMLDivElement>(null)
   const searchTimer = useRef<number | undefined>(undefined)
   const dragRef = useRef<{ startY: number; startHeight: number; height: number } | null>(null)
-  const railDragRef = useRef<{ startX: number; startWidth: number } | null>(null)
-  const railMovedRef = useRef(false)
   const isDesktop = useIsDesktop()
   const desktopShell = isDesktopWindow()
   const setNavHidden = useShellChrome(state => state.setNavHidden)
@@ -353,10 +331,6 @@ export function PlayerPage() {
     }
   }, [])
 
-  useEffect(() => {
-    updateUiState({ rail: { width: railWidth, collapsed } })
-  }, [railWidth, collapsed])
-
   const onSearch = (value: string) => {
     setSearch(value)
     window.clearTimeout(searchTimer.current)
@@ -521,45 +495,7 @@ export function PlayerPage() {
     setSnap(nearest)
   }
 
-  // 桌面右栏：把手拖拽调宽 / 点击收起展开 / 双击复位
-  const onRailDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (!isDesktop) return
-    railMovedRef.current = false
-    railDragRef.current = { startX: event.clientX, startWidth: collapsed ? 0 : railWidth }
-    setDraggingRail(true)
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-
-  const onRailMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const drag = railDragRef.current
-    if (!drag) return
-    const next = drag.startWidth + (drag.startX - event.clientX)
-    if (Math.abs(next - drag.startWidth) > 3) railMovedRef.current = true
-    if (next < RAIL_COLLAPSE_AT) {
-      setCollapsed(true)
-      return
-    }
-    setCollapsed(false)
-    setRailWidth(Math.min(MAX_RAIL, Math.max(MIN_RAIL, next)))
-  }
-
-  const onRailUp = () => {
-    railDragRef.current = null
-    setDraggingRail(false)
-  }
-
-  const onRailClick = () => {
-    if (railMovedRef.current) {
-      railMovedRef.current = false
-      return
-    }
-    setCollapsed(value => !value)
-  }
-
-  const resetRail = () => {
-    setRailWidth(DEFAULT_RAIL)
-    setCollapsed(false)
-  }
+  const toggleRail = () => setCollapsed(value => !value)
 
   return (
     <main
@@ -640,25 +576,6 @@ export function PlayerPage() {
               </Button>
             </div>
           </div>
-          {/* Only the two conflict-free corners resize the frameless window. */}
-          <div
-            aria-hidden
-            className="absolute top-0 left-0 z-[60] size-3 cursor-nwse-resize touch-none"
-            onPointerDown={(event: ReactPointerEvent<HTMLDivElement>) => {
-              event.preventDefault()
-              event.stopPropagation()
-              void startWindowResize('NorthWest')
-            }}
-          />
-          <div
-            aria-hidden
-            className="absolute right-0 bottom-0 z-[60] size-3 cursor-nwse-resize touch-none"
-            onPointerDown={(event: ReactPointerEvent<HTMLDivElement>) => {
-              event.preventDefault()
-              event.stopPropagation()
-              void startWindowResize('SouthEast')
-            }}
-          />
         </>
       ) : null}
 
@@ -677,15 +594,13 @@ export function PlayerPage() {
       <div
         style={
           isDesktop && !immersive
-            ? ({ '--rail-w': collapsed ? '0px' : `${railWidth}px` } as CSSProperties)
+            ? ({ '--rail-w': collapsed ? '0px' : `${DEFAULT_RAIL}px` } as CSSProperties)
             : undefined
         }
         className={cn(
           'relative grid min-h-0 flex-1 grid-rows-[auto] gap-5 lg:grid-cols-[minmax(0,1fr)_var(--rail-w)] lg:grid-rows-1',
           immersive && 'h-full gap-0 lg:grid-cols-[minmax(0,1fr)]',
-          draggingRail
-            ? 'lg:transition-none'
-            : 'lg:transition-[grid-template-columns] lg:duration-200 lg:ease-out'
+          'lg:transition-[grid-template-columns] lg:duration-200 lg:ease-out'
         )}
       >
         <section
@@ -961,18 +876,13 @@ export function PlayerPage() {
             type="button"
             aria-label={collapsed ? '展开目录' : '收起目录'}
             aria-expanded={!collapsed}
-            title="点击收起 / 展开，拖拽调宽，双击复位"
-            onPointerDown={onRailDown}
-            onPointerMove={onRailMove}
-            onPointerUp={onRailUp}
-            onPointerCancel={onRailUp}
-            onClick={onRailClick}
-            onDoubleClick={resetRail}
+            title="点击收起 / 展开"
+            onClick={toggleRail}
             style={{
               left: 'min(calc(100% - var(--rail-w) - 10px), calc(100% - 12px))',
-              transition: draggingRail ? 'none' : 'left 200ms ease-out'
+              transition: 'left 200ms ease-out'
             }}
-            className="absolute top-1/2 z-10 grid h-[54px] w-[22px] -translate-x-1/2 -translate-y-1/2 cursor-col-resize touch-none place-items-center rounded-full border border-border bg-background text-foreground shadow-sm"
+            className="absolute top-1/2 z-10 grid h-[54px] w-[22px] -translate-x-1/2 -translate-y-1/2 cursor-pointer place-items-center rounded-full border border-border bg-background text-foreground shadow-sm"
           >
             <ChevronRightIcon
               className={cn('size-[13px] transition-transform', collapsed && 'rotate-180')}

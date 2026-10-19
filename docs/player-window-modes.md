@@ -1,12 +1,12 @@
 # 窗口、沉浸播放、播放器全屏与 NSFW 保护
 
 > 状态：方案（未改代码）。
-> 基线：0.4.13（2026-10-19）。
-> 本轮定稿：沉浸支持左上/右下两角手动缩放；全屏 `contain`；详情页播放改成封面上的透明播放按钮；所有退出回“进入沉浸前的播放页 + 原始窗口状态”；NSFW 保护补到播放页；UI 偏好落 `ui-state.json`。
+> 基线：0.4.14（2026-10-19）。
+> 本轮定稿：正常窗口固定；沉浸窗口按当前视频比例 fit、不允许手动缩放；右侧目录固定 320px、只保留展开/收起；全屏 `contain`；详情页播放改成封面上的透明播放按钮；所有退出回“进入沉浸前的播放页 + 原始窗口状态”；NSFW 保护补到播放页；UI 偏好落 `ui-state.json`。
 
 ## 1. 定稿规则
 
-1. **正常界面**：**没有系统最大化**；标题栏以实际 `is_decorated()` 为准（有则原生，无则保持无），可缩放状态也按实际 `is_resizable()` 保留；播放器在普通页面布局里。
+1. **正常界面**：**固定窗口**（`resizable(false)`、`maximizable(false)`）；初始尺寸取当前显示器逻辑工作区的 80%，标题栏以实际 `is_decorated()` 为准。
 2. **沉浸播放**：`decorations=false`，没有标题栏；窗口由程序**严格按视频宽高比等比例**调整（不单独改宽或高）；**不提供用户手动拖边缩放**。
 3. **播放器全屏**：只对播放器 stage 调 Fullscreen API；画面 `contain`；窗口跟随全屏。
 4. **所有退出都回正常**：
@@ -25,8 +25,8 @@
 
 | 界面 | 标题栏 | 窗口 | 页面 | 退出 |
 | --- | --- | --- | --- | --- |
-| 正常 | 按实际状态（不会新增最大化） | 原始尺寸/位置，按实际 resizable | 播放器 + 目录 | — |
-| 沉浸 | **无** | 程序严格等比例 fit；左上/右下两角可手动缩放 | 播放器铺满，目录右侧抽屉，顶部悬浮条 | `Esc` / 退出按钮 / 离开页面 |
+| 正常 | 按实际状态（固定，不可拉伸） | 工作区 80% 的初始尺寸/位置 | 播放器 + 目录 | — |
+| 沉浸 | **无** | 程序按当前视频比例 fit；不可手动缩放 | 播放器铺满，目录右侧抽屉，顶部悬浮条 | `Esc` / 退出按钮 / 离开页面 |
 | 全屏 | 无（系统全屏） | 当前显示器 | 只有播放器 stage | `Esc` / 控制条退出全屏 |
 
 **没有“全屏 → 沉浸”这条边。** 全屏退出永远回正常；想再沉浸就重新点“沉浸播放”。
@@ -105,7 +105,7 @@ enter_player_immersive(aspect):
        resizable: window.is_resizable()
      }
   window.set_decorations(false)             // 正常本来没有标题栏时是 no-op
-  window.set_resizable(true)                // 左上/右下两角热区要能拖
+  window.set_resizable(false)               // 正常窗口固定，沉浸也不允许系统拖边
   fit_to_aspect(aspect)                     // 严格等比例整体缩放；工作区内，保持可见
   // 重复调用只重新 fit，不覆盖快照
 
@@ -124,7 +124,7 @@ restore_normal_window():
 - **快照只在“正常 → 沉浸”时拍一次**；记录的是实际 decorations/resizable，不是假设“正常一定有标题栏、一定可缩放”。
 - **正常窗口没有系统最大化**：`open_main` 明确 `.maximizable(false)`，快照不记录也不恢复 maximized；退出沉浸不会调用 `maximize()`。
 - 全屏不拍壳快照：从正常进全屏，退出由系统恢复；从沉浸进全屏，快照已经是原始正常状态。
-- 沉浸中程序化 `set_size` 不受影响；左上/右下两个 12×12 热区调用 `startResizeDragging` 手动缩放，退出仍按快照还原。
+- 沉浸中程序化 `set_size` 不受 `resizable(false)` 影响；没有手动缩放热区，窗口只在进入/切视频时按比例 fit，退出仍按快照还原。
 - `restore_normal_window()` 必须幂等：刷新、重复调用、全屏退出都能安全执行；失败时保留快照以便重试。
 - 正常窗口原本无标题栏（`decorated=false`）时，退出沉浸仍然无标题栏；不要硬编码 `set_decorations(true)`。
 
@@ -157,10 +157,11 @@ restore_normal_window():
 
 ### 8.2 窗口大小
 
-- **手动缩放只用两个角**：左上 `NorthWest`、右下 `SouthEast`，各 12×12px，`pointerdown` 调 `startResizeDragging`；不做四边和另外两个角，避免挡住顶部按钮和控制条。`enter_player_immersive` 里 `set_resizable(true)`，退出恢复快照里的实际 `resizable`。
+- **不做手动缩放**：`enter_player_immersive` 里 `set_resizable(false)`；窗口大小只由进入/切视频时的比例 fit 决定，退出恢复快照里的实际 `resizable`。
+- 正常窗口本身固定（`resizable(false)`、`maximizable(false)`），初始尺寸取逻辑工作区的 80%，避免不同分辨率下占屏比例差异过大。
 - **严格等比例**：只按视频宽高比整体缩放（宽度和高度乘同一个系数），不单独改宽或高，避免拉伸。
 - 进入时按视频比例 fit：限制在当前显示器工作区内；超出时整体缩小，不裁边、不拉伸；没有元数据时先保持当前尺寸，拿到元数据再 fit。
-- 沉浸时临时把最小尺寸降到 320×180：避免竖屏视频的 fit 被 1024×640 夹变形，也避免角热区把窗口拖没；退出恢复 1024×640。fit 只在工作区内整体缩放，不拉伸。
+- 正常窗口固定，不再设置最小尺寸；沉浸窗口只按视频比例 fit，程序化 `set_size` 不受 `resizable(false)` 影响；退出恢复进入前的快照。
 - Windows 上无边框窗口原生边缘缩放不可靠（tauri#8519、#9268），所以不把它作为功能；程序化 `set_size` 不受影响。
 - 不假设正常窗口可缩放；退出时按快照里的 `resizable` 恢复。
 - 窗口仍可通过顶部悬浮条拖动。
@@ -262,7 +263,7 @@ restore_normal_window():
 
 新增：
 
-- `enter_player_immersive(aspect: Option<f64>)`：拍快照（尺寸/位置/实际 decorated/resizable）、`decorations(false)`、`resizable(true)`、fit；
+- `enter_player_immersive(aspect: Option<f64>)`：拍快照（尺寸/位置/实际 decorated/resizable）、`decorations(false)`、`resizable(false)`、fit；
 - `restore_normal_window()`：`set_fullscreen(false)`、按快照恢复 `resizable` / `decorations` / 尺寸 / 位置；
 - `WindowSnapshot { inner_size, outer_position, decorated, resizable }`；
 - 权限：`allow-enter-player-immersive`、`allow-restore-normal-window`。
@@ -315,7 +316,7 @@ restore_normal_window():
 
 1. 正常窗口（无最大化）→ 沉浸 → 退出：尺寸、位置、实际标题栏状态（有/无）完全一致。
 2. 正常窗口没有最大化按钮/状态：`maximizable(false)` 生效；进入沉浸前后都不出现最大化。
-3. 沉浸无标题栏；悬浮条可拖动；左上/右下两角可拖拽缩放；退出按钮可见。
+3. 沉浸无标题栏；悬浮条可拖动；不可手动缩放；退出按钮可见。
 4. 沉浸窗口的宽高比与视频一致：fit 前后不拉伸；min size/工作区冲突时只整体缩放，不单独改某一边。
 5. `Esc` 退出沉浸 → 正常；顶部按钮退出 → 正常。
 6. 正常 → 全屏 → `Esc`：回正常，尺寸/标题栏状态不变；画面 `contain`。
@@ -347,7 +348,7 @@ restore_normal_window():
 
 **事实**：Emby / 网络 / 本地源 / 115 / 访问密码 / 数据目录 / LAN 都是服务端或 `desktop.json` 的真持久化；只有设备 UI 偏好曾经走 localStorage。
 
-**为什么看起来没持久化**：非 LAN 模式每次启动随机选 loopback 端口（`sidecar.rs::free_port`），localStorage 按 `协议://host:port` 隔离；端口一变就是新 origin，NSFW/主题/音量/目录宽度全部回默认。这不是配置没存，是存错了作用域。
+**为什么看起来没持久化**：非 LAN 模式每次启动随机选 loopback 端口（`sidecar.rs::free_port`），localStorage 按 `协议://host:port` 隔离；端口一变就是新 origin，NSFW/主题/音量/倍速全部回默认。这不是配置没存，是存错了作用域。
 
 **方案**：同目录 `ui-state.json`：
 
@@ -356,7 +357,6 @@ restore_normal_window():
   "nsfwMode": false,
   "theme": "system",
   "player": { "volume": 1, "muted": false, "rate": 1 },
-  "rail": { "width": 320, "collapsed": false },
   "gif": { "fps": 10, "scale": 75, "loop": "infinite" }
 }
 ```
@@ -368,13 +368,13 @@ restore_normal_window():
 - 控制条不再单独存 `playbackRate`，倍速只走 `ui-state.player.rate`；GIF 面板经 `window.MiyabiUiState` 桥接。
 - 升级后第一次启动旧随机端口下的值读不到，需要重新关一次 NSFW/设一次主题；之后不再丢。
 
-## 12. 实现记录（0.4.13）
+## 12. 实现记录（0.4.14）
 
 已按本文落地：
 
 - 壳：`enter_player_immersive` / `restore_normal_window` 取代 `set_player_window_mode`；主窗口与 setup 都 `.maximizable(false)`；快照记录实际 `decorated` / `resizable`，不涉及最大化。
 - 全屏：内核直接 `requestFullscreen()`，`PlayerStage` 不再转发；退出时页面 `restoreNormalWindow()`。
-- 沉浸：`windowMode` 三态删除，改为 `immersive` 布尔；`player-borderless` 改名 `player-immersive`；`cover` 逻辑删除，统一 `contain`；左上/右下两个角热区可缩放。
+- 沉浸：`windowMode` 三态删除，改为 `immersive` 布尔；`player-borderless` 改名 `player-immersive`；`cover` 逻辑删除，统一 `contain`；按视频比例 fit、不提供手动缩放。
 - 布局：播放器外层 wrapper 改为 `relative flex min-h-0 flex-1 flex-col`，修复 NSFW 遮罩包一层后播放器缩成 16:9 靠顶部的问题。
 - 持久化：新增 `ui-state.json` + `load_ui_state` / `save_ui_state`；`main.tsx` 渲染前预加载；NSFW / 主题 / 播放器 / 目录 / GIF 偏好不再依赖 localStorage 的 origin。
 - 详情：新增 `PlayOverlay`，列表复用；详情封面加播放按钮；删除 `movie-detail/player.tsx`。
@@ -387,7 +387,9 @@ restore_normal_window():
 - 全屏 `contain`。
 - 详情页独立播放弹窗删除，统一走 `/play?movie=<id>`；封面用和列表一样的透明播放按钮。
 - 退出回“进入沉浸前的播放页 + 原始窗口状态”（尺寸/位置/实际 decorations/实际 resizable；不涉及最大化）。
+- 正常窗口固定（`resizable(false)`、`maximizable(false)`），初始尺寸为逻辑工作区的 80%。
+- 右侧目录固定 320px，点击手柄只有“展开 / 收起”两个状态，不再拖拽调宽。
 - **正常窗口没有系统最大化**：`open_main` 明确 `.maximizable(false)`；壳不实现最大化，快照不记录 maximized，退出不调用 `maximize()`；也不强行加/去标题栏。
 - NSFW 补到播放页：目录缩略图遮挡 + 视频 gate；gate 每次进入播放页确认一次，本次访问内不再重复拦截；视频和缩略图一并拦截。
 
-> “壳只能等比例调整大小”按“沉浸窗口由壳调整时严格保持视频宽高比”理解；正常窗口没有最大化，是否可缩放按实际 `resizable` 保留。如果你指的是正常窗口也要锁比例，需要另说。
+> “壳只能等比例调整大小”按“沉浸窗口由壳调整时严格保持视频宽高比”理解；正常窗口固定，不可缩放。

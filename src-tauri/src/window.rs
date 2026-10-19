@@ -62,14 +62,13 @@ pub fn open_main(app: &AppHandle, url: String) -> tauri::Result<()> {
         return Ok(());
     }
     let parsed: tauri::Url = url.parse().expect("local url must be valid");
+    let (width, height) = initial_window_size(app);
     WebviewWindowBuilder::new(app, "main", WebviewUrl::External(parsed))
         .title("miyabi")
-        .inner_size(1280.0, 820.0)
-        // Keep the lg breakpoint reachable: below 1024 the player would fall
-        // back to the mobile sheet inside a desktop window.
-        .min_inner_size(1024.0, 640.0)
-        // Maximizing changes the player window enough to break the page layout;
-        // the shell only supports normal resizing and the player's own modes.
+        .inner_size(width, height)
+        // The normal window is fixed: only the immersive player may change size,
+        // and only through the shell's aspect-fitted command.
+        .resizable(false)
         .maximizable(false)
         .center()
         // Hidden until the page has loaded, so the first frame is never empty.
@@ -86,6 +85,31 @@ pub fn open_main(app: &AppHandle, url: String) -> tauri::Result<()> {
         })
         .build()?;
     Ok(())
+}
+
+/// Sizes the normal window to 80% of the monitor's logical work area, with a
+/// small floor for tiny screens. Logical units keep the CSS layout stable across
+/// DPI scales; the fraction keeps the window's share of the screen stable.
+fn initial_window_size(app: &AppHandle) -> (f64, f64) {
+    let (work_width, work_height) = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|monitor| {
+            let scale = monitor.scale_factor();
+            (
+                f64::from(monitor.work_area().size.width) / scale,
+                f64::from(monitor.work_area().size.height) / scale,
+            )
+        })
+        .unwrap_or((1600.0, 1000.0));
+    let width = (work_width * 0.8)
+        .max(960.0_f64.min(work_width * 0.95))
+        .min(work_width * 0.95);
+    let height = (work_height * 0.8)
+        .max(600.0_f64.min(work_height * 0.95))
+        .min(work_height * 0.95);
+    (width.round(), height.round())
 }
 
 pub fn focus_existing(app: &AppHandle) {

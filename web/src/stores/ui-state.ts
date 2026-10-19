@@ -9,7 +9,6 @@ export type UiState = {
   nsfwMode: boolean
   theme: 'system' | 'light' | 'dark'
   player: { volume: number; muted: boolean; rate: number }
-  rail: { width: number; collapsed: boolean }
   gif: { fps: number; scale: number; loop: 'infinite' | 'once' }
 }
 
@@ -17,7 +16,6 @@ export const DEFAULT_UI_STATE: UiState = {
   nsfwMode: true,
   theme: 'system',
   player: { volume: 1, muted: false, rate: 1 },
-  rail: { width: 320, collapsed: false },
   gif: { fps: 10, scale: 75, loop: 'infinite' }
 }
 
@@ -46,7 +44,6 @@ function clamp(value: unknown, min: number, max: number, fallback: number): numb
 function normalize(raw: unknown): UiState {
   const input = (raw ?? {}) as Partial<UiState>
   const player = input.player ?? DEFAULT_UI_STATE.player
-  const rail = input.rail ?? DEFAULT_UI_STATE.rail
   const gif = input.gif ?? DEFAULT_UI_STATE.gif
   return {
     nsfwMode: input.nsfwMode === undefined ? DEFAULT_UI_STATE.nsfwMode : Boolean(input.nsfwMode),
@@ -55,10 +52,6 @@ function normalize(raw: unknown): UiState {
       volume: clamp(player.volume, 0, 1, DEFAULT_UI_STATE.player.volume),
       muted: Boolean(player.muted),
       rate: clamp(player.rate, 0.25, 4, DEFAULT_UI_STATE.player.rate)
-    },
-    rail: {
-      width: clamp(rail.width, 200, 520, DEFAULT_UI_STATE.rail.width),
-      collapsed: Boolean(rail.collapsed)
     },
     gif: {
       fps: clamp(gif.fps, 1, 30, DEFAULT_UI_STATE.gif.fps),
@@ -97,8 +90,6 @@ function readBrowser(): unknown {
   if (theme === 'light' || theme === 'dark' || theme === 'system') legacy.theme = theme
   const player = readJson('miyabi.player.prefs') as UiState['player'] | null
   if (player) legacy.player = player
-  const rail = readJson('miyabi.play.rail') as UiState['rail'] | null
-  if (rail) legacy.rail = rail
   const gif = readJson('player.gifCapture.settings') as UiState['gif'] | null
   if (gif) legacy.gif = gif
   if (legacy.player && !legacy.player.rate) {
@@ -165,7 +156,7 @@ export function updateUiState(patch: Partial<UiState> | ((current: UiState) => P
   emit()
   // Discrete settings must survive an immediate close; slider-like values can
   // wait for the debounce.
-  if ('nsfwMode' in next || 'theme' in next || 'rail' in next) {
+  if ('nsfwMode' in next || 'theme' in next) {
     window.clearTimeout(saveTimer)
     flush()
   } else {

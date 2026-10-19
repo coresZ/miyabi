@@ -245,7 +245,7 @@ pub fn enter_player_immersive(app: AppHandle, aspect: Option<f64>) -> Result<(),
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "主窗口未打开".to_string())?;
-    {
+    let base_width = {
         let mut snapshot = IMMERSIVE_SNAPSHOT.lock().expect("snapshot lock");
         if snapshot.is_none() {
             *snapshot = Some(WindowSnapshot {
@@ -255,20 +255,18 @@ pub fn enter_player_immersive(app: AppHandle, aspect: Option<f64>) -> Result<(),
                 resizable: window.is_resizable().map_err(|err| err.to_string())?,
             });
         }
-    }
+        snapshot
+            .as_ref()
+            .map(|snapshot| f64::from(snapshot.inner_size.width))
+    };
     window
         .set_decorations(false)
         .map_err(|err| err.to_string())?;
     window
-        .set_resizable(true)
-        .map_err(|err| err.to_string())?;
-    // The 1024x640 minimum would clamp a portrait fit and break the ratio.
-    // A small floor still prevents the corner handles from collapsing the window.
-    window
-        .set_min_size(Some(tauri::LogicalSize::<f64>::new(320.0, 180.0)))
+        .set_resizable(false)
         .map_err(|err| err.to_string())?;
     if let Some(aspect) = aspect {
-        fit_to_aspect(&window, aspect)?;
+        fit_to_aspect(&window, aspect, base_width)?;
     }
     crate::log::info("player window -> immersive");
     Ok(())
@@ -301,14 +299,7 @@ pub fn restore_normal_window(app: AppHandle) -> Result<(), String> {
         window
             .set_position(snapshot.outer_position)
             .map_err(|err| err.to_string())?;
-        window
-            .set_min_size(Some(tauri::LogicalSize::<f64>::new(1024.0, 640.0)))
-            .map_err(|err| err.to_string())?;
         *IMMERSIVE_SNAPSHOT.lock().expect("snapshot lock") = None;
-    } else {
-        // No snapshot: a stale immersive state after a reload. Restore the
-        // minimum without touching the user's size.
-        let _ = window.set_min_size(Some(tauri::LogicalSize::<f64>::new(1024.0, 640.0)));
     }
     crate::log::info("player window -> normal");
     Ok(())
@@ -316,12 +307,18 @@ pub fn restore_normal_window(app: AppHandle) -> Result<(), String> {
 
 /// Strictly proportional resize: both dimensions are multiplied by the same
 /// factor. It never fixes one side independently and never stretches.
-fn fit_to_aspect(window: &tauri::WebviewWindow, aspect: f64) -> Result<(), String> {
+fn fit_to_aspect(
+    window: &tauri::WebviewWindow,
+    aspect: f64,
+    base_width: Option<f64>,
+) -> Result<(), String> {
     if !aspect.is_finite() || !(0.1..=10.0).contains(&aspect) {
         return Ok(());
     }
     let size = window.inner_size().map_err(|err| err.to_string())?;
-    let mut width = f64::from(size.width.max(1));
+    let mut width = base_width
+        .unwrap_or_else(|| f64::from(size.width))
+        .max(1.0);
     let mut height = width / aspect;
     let monitor = window.current_monitor().map_err(|err| err.to_string())?;
     if let Some(monitor) = monitor {
