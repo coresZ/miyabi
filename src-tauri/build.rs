@@ -9,6 +9,7 @@ fn main() {
                 "apply_desktop",
                 "enter_player_immersive",
                 "restore_normal_window",
+                "resize_player_immersive",
                 "load_ui_state",
                 "save_ui_state",
             ]),

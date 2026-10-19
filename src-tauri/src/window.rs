@@ -87,9 +87,12 @@ pub fn open_main(app: &AppHandle, url: String) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Sizes the normal window to 80% of the monitor's logical work area, with a
-/// small floor for tiny screens. Logical units keep the CSS layout stable across
-/// DPI scales; the fraction keeps the window's share of the screen stable.
+/// Fixed catalog width, shared by the normal play window sizing and the
+/// immersive player fit (the normal player area excludes this column).
+pub const CATALOG_WIDTH: f64 = 320.0;
+
+/// Sizes the normal window so the play page fills it exactly: the player is
+/// 16:9 at 80% of the monitor's logical work height, plus the fixed catalog.
 fn initial_window_size(app: &AppHandle) -> (f64, f64) {
     let (work_width, work_height) = app
         .primary_monitor()
@@ -103,12 +106,27 @@ fn initial_window_size(app: &AppHandle) -> (f64, f64) {
             )
         })
         .unwrap_or((1600.0, 1000.0));
-    let width = (work_width * 0.8)
-        .max(960.0_f64.min(work_width * 0.95))
-        .min(work_width * 0.95);
-    let height = (work_height * 0.8)
-        .max(600.0_f64.min(work_height * 0.95))
-        .min(work_height * 0.95);
+    let max_width = work_width * 0.95;
+    let max_height = work_height * 0.95;
+
+    let mut height = work_height * 0.8;
+    let mut player_width = height * 16.0 / 9.0;
+    let mut width = player_width + CATALOG_WIDTH;
+    if width > max_width {
+        width = max_width;
+        player_width = (width - CATALOG_WIDTH).max(1.0);
+        height = player_width * 9.0 / 16.0;
+    }
+    if height > max_height {
+        height = max_height;
+        player_width = height * 16.0 / 9.0;
+        width = player_width + CATALOG_WIDTH;
+        if width > max_width {
+            width = max_width;
+            player_width = (width - CATALOG_WIDTH).max(1.0);
+            height = player_width * 9.0 / 16.0;
+        }
+    }
     (width.round(), height.round())
 }
 

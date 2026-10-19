@@ -1,12 +1,12 @@
 # 窗口、沉浸播放、播放器全屏与 NSFW 保护
 
 > 状态：方案（未改代码）。
-> 基线：0.4.14（2026-10-19）。
-> 本轮定稿：正常窗口固定；沉浸窗口按当前视频比例 fit、不允许手动缩放；右侧目录固定 320px、只保留展开/收起；全屏 `contain`；详情页播放改成封面上的透明播放按钮；所有退出回“进入沉浸前的播放页 + 原始窗口状态”；NSFW 保护补到播放页；UI 偏好落 `ui-state.json`。
+> 基线：0.4.15（2026-10-20）。
+> 本轮定稿：正常窗口固定，尺寸按播放页内容（16:9 播放器 + 320 目录）计算；播放器/目录贴窗口边界，信息条改为叠加；沉浸窗口保持播放器单窗（目录为悬浮抽屉），可按视频比例缩放；全屏 `contain`；详情页播放改成封面上的透明播放按钮；所有退出回“进入沉浸前的播放页 + 原始窗口状态”；NSFW 保护补到播放页；UI 偏好落 `ui-state.json`。
 
 ## 1. 定稿规则
 
-1. **正常界面**：**固定窗口**（`resizable(false)`、`maximizable(false)`）；初始尺寸取当前显示器逻辑工作区的 80%，标题栏以实际 `is_decorated()` 为准。
+1. **正常界面**：**固定窗口**（`resizable(false)`、`maximizable(false)`）；尺寸按播放页内容计算：高度取逻辑工作区 80%，播放器宽 = 高度 × 16/9，窗口宽 = 播放器宽 + 320 目录；播放器/目录贴窗口边界，信息条叠加。
 2. **沉浸播放**：`decorations=false`，没有标题栏；窗口由程序**严格按视频宽高比等比例**调整（不单独改宽或高）；**不提供用户手动拖边缩放**。
 3. **播放器全屏**：只对播放器 stage 调 Fullscreen API；画面 `contain`；窗口跟随全屏。
 4. **所有退出都回正常**：
@@ -25,8 +25,8 @@
 
 | 界面 | 标题栏 | 窗口 | 页面 | 退出 |
 | --- | --- | --- | --- | --- |
-| 正常 | 按实际状态（固定，不可拉伸） | 工作区 80% 的初始尺寸/位置 | 播放器 + 目录 | — |
-| 沉浸 | **无** | 程序按当前视频比例 fit；不可手动缩放 | 播放器铺满，目录右侧抽屉，顶部悬浮条 | `Esc` / 退出按钮 / 离开页面 |
+| 正常 | 按实际状态（固定，不可拉伸） | 播放页内容尺寸（16:9 播放器 + 320 目录） | 播放器 + 目录，贴窗口边界 | — |
+| 沉浸 | **无** | 播放器单窗；程序按视频比例 fit；左上/右下角比例缩放 | 播放器铺满，目录右侧抽屉，顶部悬浮条 | `Esc` / 退出按钮 / 离开页面 |
 | 全屏 | 无（系统全屏） | 当前显示器 | 只有播放器 stage | `Esc` / 控制条退出全屏 |
 
 **没有“全屏 → 沉浸”这条边。** 全屏退出永远回正常；想再沉浸就重新点“沉浸播放”。
@@ -105,7 +105,7 @@ enter_player_immersive(aspect):
        resizable: window.is_resizable()
      }
   window.set_decorations(false)             // 正常本来没有标题栏时是 no-op
-  window.set_resizable(false)               // 正常窗口固定，沉浸也不允许系统拖边
+  window.set_resizable(false)               // 原生拖边关闭；沉浸用自定义比例命令
   fit_to_aspect(aspect)                     // 严格等比例整体缩放；工作区内，保持可见
   // 重复调用只重新 fit，不覆盖快照
 
@@ -124,7 +124,7 @@ restore_normal_window():
 - **快照只在“正常 → 沉浸”时拍一次**；记录的是实际 decorations/resizable，不是假设“正常一定有标题栏、一定可缩放”。
 - **正常窗口没有系统最大化**：`open_main` 明确 `.maximizable(false)`，快照不记录也不恢复 maximized；退出沉浸不会调用 `maximize()`。
 - 全屏不拍壳快照：从正常进全屏，退出由系统恢复；从沉浸进全屏，快照已经是原始正常状态。
-- 沉浸中程序化 `set_size` 不受 `resizable(false)` 影响；没有手动缩放热区，窗口只在进入/切视频时按比例 fit，退出仍按快照还原。
+- 沉浸中程序化 `set_size` 不受 `resizable(false)` 影响；左上/右下两个 12×12 热区通过 `resize_player_immersive(width, anchor)` 按视频比例缩放，锚定对角；退出仍按快照还原。
 - `restore_normal_window()` 必须幂等：刷新、重复调用、全屏退出都能安全执行；失败时保留快照以便重试。
 - 正常窗口原本无标题栏（`decorated=false`）时，退出沉浸仍然无标题栏；不要硬编码 `set_decorations(true)`。
 
@@ -157,8 +157,8 @@ restore_normal_window():
 
 ### 8.2 窗口大小
 
-- **不做手动缩放**：`enter_player_immersive` 里 `set_resizable(false)`；窗口大小只由进入/切视频时的比例 fit 决定，退出恢复快照里的实际 `resizable`。
-- 正常窗口本身固定（`resizable(false)`、`maximizable(false)`），初始尺寸取逻辑工作区的 80%，避免不同分辨率下占屏比例差异过大。
+- **正常固定，沉浸可比例缩放**：正常窗口 `resizable(false)`；沉浸也 `resizable(false)` 关掉原生拖边，但页面左上/右下两个 12×12 热区用 pointer 拖拽 + `resize_player_immersive(width, anchor)`，由壳按视频比例算另一边并锚定对角，所以比例不会乱。
+- 正常窗口尺寸 = 逻辑工作区 80% 高度 × 16:9 播放器宽 + 320 目录；播放器/目录贴窗口边界，信息条绝对定位在播放器顶部。
 - **严格等比例**：只按视频宽高比整体缩放（宽度和高度乘同一个系数），不单独改宽或高，避免拉伸。
 - 进入时按视频比例 fit：限制在当前显示器工作区内；超出时整体缩小，不裁边、不拉伸；没有元数据时先保持当前尺寸，拿到元数据再 fit。
 - 正常窗口固定，不再设置最小尺寸；沉浸窗口只按视频比例 fit，程序化 `set_size` 不受 `resizable(false)` 影响；退出恢复进入前的快照。
@@ -180,6 +180,7 @@ restore_normal_window():
 
 ### 8.4 页面布局
 
+- 正常桌面：main 去掉 max-width / 内边距 / 栅格 gap；播放器贴左/上/下，目录固定 320 贴右，目录高度 = 窗口内容高度；信息条改为播放器顶部渐隐叠加，不占布局高度。浏览器/移动端保持原布局。
 - 沉浸：`fixed inset-0` 黑色背景；播放器铺满；目录右侧抽屉；顶部悬浮条；`html.player-immersive` 去掉 scrollbar gutter。
 - 退出：移除 fixed 布局，恢复普通播放页（播放器 + 右侧目录），不重新加载播放器，播放进度不丢。
 - 页面挂载/卸载/刷新时的 `restore_normal_window()` 只在桌面壳调用；浏览器没有壳窗口状态。
@@ -264,6 +265,7 @@ restore_normal_window():
 新增：
 
 - `enter_player_immersive(aspect: Option<f64>)`：拍快照（尺寸/位置/实际 decorated/resizable）、`decorations(false)`、`resizable(false)`、fit；
+- `resize_player_immersive(width, anchor)`：保持当前视频比例，宽度为物理像素，壳算高度并锚定 `NorthWest`/`SouthEast`；
 - `restore_normal_window()`：`set_fullscreen(false)`、按快照恢复 `resizable` / `decorations` / 尺寸 / 位置；
 - `WindowSnapshot { inner_size, outer_position, decorated, resizable }`；
 - 权限：`allow-enter-player-immersive`、`allow-restore-normal-window`。
@@ -316,7 +318,7 @@ restore_normal_window():
 
 1. 正常窗口（无最大化）→ 沉浸 → 退出：尺寸、位置、实际标题栏状态（有/无）完全一致。
 2. 正常窗口没有最大化按钮/状态：`maximizable(false)` 生效；进入沉浸前后都不出现最大化。
-3. 沉浸无标题栏；悬浮条可拖动；不可手动缩放；退出按钮可见。
+3. 沉浸无标题栏；悬浮条可拖动；左上/右下角可拖拽，窗口比例始终等于视频比例；退出按钮可见。
 4. 沉浸窗口的宽高比与视频一致：fit 前后不拉伸；min size/工作区冲突时只整体缩放，不单独改某一边。
 5. `Esc` 退出沉浸 → 正常；顶部按钮退出 → 正常。
 6. 正常 → 全屏 → `Esc`：回正常，尺寸/标题栏状态不变；画面 `contain`。
@@ -368,7 +370,7 @@ restore_normal_window():
 - 控制条不再单独存 `playbackRate`，倍速只走 `ui-state.player.rate`；GIF 面板经 `window.MiyabiUiState` 桥接。
 - 升级后第一次启动旧随机端口下的值读不到，需要重新关一次 NSFW/设一次主题；之后不再丢。
 
-## 12. 实现记录（0.4.14）
+## 12. 实现记录（0.4.15）
 
 已按本文落地：
 
@@ -387,7 +389,8 @@ restore_normal_window():
 - 全屏 `contain`。
 - 详情页独立播放弹窗删除，统一走 `/play?movie=<id>`；封面用和列表一样的透明播放按钮。
 - 退出回“进入沉浸前的播放页 + 原始窗口状态”（尺寸/位置/实际 decorations/实际 resizable；不涉及最大化）。
-- 正常窗口固定（`resizable(false)`、`maximizable(false)`），初始尺寸为逻辑工作区的 80%。
+- 正常窗口固定（`resizable(false)`、`maximizable(false)`），尺寸按播放页内容：逻辑工作区 80% 高度 × 16:9 播放器 + 320 目录；播放器/目录贴边，信息条改为播放器顶部叠加。
+- 沉浸按视频比例 fit，左上/右下角自定义比例缩放；原生拖边关闭。
 - 右侧目录固定 320px，点击手柄只有“展开 / 收起”两个状态，不再拖拽调宽。
 - **正常窗口没有系统最大化**：`open_main` 明确 `.maximizable(false)`；壳不实现最大化，快照不记录 maximized，退出不调用 `maximize()`；也不强行加/去标题栏。
 - NSFW 补到播放页：目录缩略图遮挡 + 视频 gate；gate 每次进入播放页确认一次，本次访问内不再重复拦截；视频和缩略图一并拦截。

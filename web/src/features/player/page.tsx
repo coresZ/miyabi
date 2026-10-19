@@ -33,7 +33,13 @@ import { useUiState } from '@/stores/ui-state'
 import { useShellChrome } from '@/stores/shell-chrome'
 import { PlayerStage, type PlayerInstance, type PlayerTrack } from './player-stage'
 import { readPlayerPrefs, savePlayerPrefs } from './prefs'
-import { enterPlayerImmersive, isDesktopWindow, restoreNormalWindow } from './player-window'
+import {
+  enterPlayerImmersive,
+  isDesktopWindow,
+  resizePlayerImmersive,
+  restoreNormalWindow,
+  type PlayerResizeAnchor
+} from './player-window'
 
 type SourceOption = {
   id: string
@@ -93,6 +99,14 @@ export function PlayerPage() {
   const sentinelRef = useRef<HTMLDivElement>(null)
   const searchTimer = useRef<number | undefined>(undefined)
   const dragRef = useRef<{ startY: number; startHeight: number; height: number } | null>(null)
+  const resizeRef = useRef<{
+    anchor: PlayerResizeAnchor
+    startScreenX: number
+    startScreenY: number
+    startWidth: number
+  } | null>(null)
+  const resizeTarget = useRef<{ width: number; anchor: PlayerResizeAnchor } | null>(null)
+  const resizeFrame = useRef<number | null>(null)
   const isDesktop = useIsDesktop()
   const desktopShell = isDesktopWindow()
   const setNavHidden = useShellChrome(state => state.setNavHidden)
@@ -201,13 +215,13 @@ export function PlayerPage() {
     }
   }, [desktopShell])
 
-  // Immersive covers the window, so the stable scrollbar gutter must go too;
-  // otherwise a strip of background stays visible on the right edge.
+  // The desktop play page fills the window edge-to-edge: drop the stable
+  // scrollbar gutter (and its 15px strip) for both normal and immersive modes.
   useEffect(() => {
-    if (!immersive) return
+    if (!desktopShell) return
     document.documentElement.classList.add('player-immersive')
     return () => document.documentElement.classList.remove('player-immersive')
-  }, [immersive])
+  }, [desktopShell])
 
   // Keep refs readable from the player-ready callback without re-creating it.
   useEffect(() => {
@@ -497,13 +511,60 @@ export function PlayerPage() {
 
   const toggleRail = () => setCollapsed(value => !value)
 
+  const onResizeDown = (event: ReactPointerEvent<HTMLDivElement>, anchor: PlayerResizeAnchor) => {
+    if (!sourceAspect) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    resizeRef.current = {
+      anchor,
+      startScreenX: event.screenX,
+      startScreenY: event.screenY,
+      startWidth: window.innerWidth * window.devicePixelRatio
+    }
+  }
+
+  const onResizeMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = resizeRef.current
+    if (!drag || !sourceAspect) return
+    event.preventDefault()
+    const dpr = window.devicePixelRatio
+    const dx = (event.screenX - drag.startScreenX) * dpr
+    const dy = (event.screenY - drag.startScreenY) * dpr
+    const sign = drag.anchor === 'SouthEast' ? 1 : -1
+    const horizontal = sign * dx
+    const vertical = sign * dy * sourceAspect
+    const delta = Math.abs(horizontal) >= Math.abs(vertical) ? horizontal : vertical
+    const width = Math.max(320 * dpr, drag.startWidth + delta)
+    resizeTarget.current = { width, anchor: drag.anchor }
+    if (resizeFrame.current != null) return
+    resizeFrame.current = window.requestAnimationFrame(() => {
+      resizeFrame.current = null
+      const target = resizeTarget.current
+      resizeTarget.current = null
+      if (target) void resizePlayerImmersive(target.width, target.anchor).catch(() => {})
+    })
+  }
+
+  const onResizeUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    resizeRef.current = null
+    if (resizeFrame.current != null) return
+    const target = resizeTarget.current
+    resizeTarget.current = null
+    if (target) void resizePlayerImmersive(target.width, target.anchor).catch(() => {})
+  }
+
   return (
     <main
       className={cn(
-        'mx-auto flex h-dvh w-full max-w-[84rem] flex-col gap-5 overflow-hidden bg-background px-4 pt-7',
+        'mx-auto flex h-dvh w-full flex-col overflow-hidden bg-background',
+        desktopShell ? 'max-w-none gap-0 p-0' : 'max-w-[84rem] gap-5 px-4 pt-7',
         // The floating nav is hidden in the desktop shell, so its reserved lane
         // would just be an empty strip under the player.
-        desktopShell ? 'pb-4' : 'pb-24',
+        desktopShell ? 'pb-0' : 'pb-24',
         // Immersive only shows the video: pin the page to the window edges so
         // no page padding or max-width leaves a gap around the player.
         immersive && 'fixed inset-0 z-40 h-auto w-auto max-w-none gap-0 bg-black p-0'
@@ -576,6 +637,23 @@ export function PlayerPage() {
               </Button>
             </div>
           </div>
+          {/* Aspect-locked resize corners; the shell derives the other side. */}
+          <div
+            aria-hidden
+            className="absolute top-0 left-0 z-[60] size-3 cursor-nwse-resize touch-none"
+            onPointerDown={event => onResizeDown(event, 'NorthWest')}
+            onPointerMove={onResizeMove}
+            onPointerUp={onResizeUp}
+            onPointerCancel={onResizeUp}
+          />
+          <div
+            aria-hidden
+            className="absolute right-0 bottom-0 z-[60] size-3 cursor-nwse-resize touch-none"
+            onPointerDown={event => onResizeDown(event, 'SouthEast')}
+            onPointerMove={onResizeMove}
+            onPointerUp={onResizeUp}
+            onPointerCancel={onResizeUp}
+          />
         </>
       ) : null}
 
@@ -598,7 +676,8 @@ export function PlayerPage() {
             : undefined
         }
         className={cn(
-          'relative grid min-h-0 flex-1 grid-rows-[auto] gap-5 lg:grid-cols-[minmax(0,1fr)_var(--rail-w)] lg:grid-rows-1',
+          'relative grid min-h-0 flex-1 grid-rows-[auto] lg:grid-cols-[minmax(0,1fr)_var(--rail-w)] lg:grid-rows-1',
+          desktopShell ? 'gap-0' : 'gap-5',
           immersive && 'h-full gap-0 lg:grid-cols-[minmax(0,1fr)]',
           'lg:transition-[grid-template-columns] lg:duration-200 lg:ease-out'
         )}
@@ -606,7 +685,8 @@ export function PlayerPage() {
         <section
           ref={playerSectionRef}
           className={cn(
-            'flex min-h-0 min-w-0 flex-col gap-3 self-start lg:self-stretch',
+            'relative flex min-h-0 min-w-0 flex-col gap-3 self-start lg:self-stretch',
+            desktopShell && 'gap-0',
             immersive && 'gap-0 self-stretch'
           )}
         >
@@ -620,7 +700,10 @@ export function PlayerPage() {
                 setPrefs(next)
                 savePlayerPrefs(next)
               }}
-              className={cn(immersive && 'aspect-auto h-full w-full flex-1 rounded-none')}
+              className={cn(
+                immersive && 'aspect-auto h-full w-full flex-1 rounded-none',
+                desktopShell && 'rounded-none'
+              )}
               onMetadata={(width, height) => {
                 setSourceAspect(width / height)
               }}
@@ -661,21 +744,50 @@ export function PlayerPage() {
             ) : null}
           </div>
 
-          <div className={cn('mt-auto flex min-w-0 items-center gap-3', immersive && 'hidden')}>
+          <div
+            className={cn(
+              'flex min-w-0 items-center gap-3',
+              desktopShell
+                ? 'absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/80 via-black/45 to-transparent px-4 py-2 text-white'
+                : 'mt-auto',
+              immersive && 'hidden'
+            )}
+          >
             {playing ? (
               <>
-                <span className="flex-none rounded-full border border-border px-2.5 py-1 text-xs font-semibold tabular-nums">
+                <span
+                  className={cn(
+                    'flex-none rounded-full border border-border px-2.5 py-1 text-xs font-semibold tabular-nums',
+                    desktopShell && 'border-white/30 text-white'
+                  )}
+                >
                   {playing.code}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">{playing.name}</span>
+                <span
+                  className={cn(
+                    'min-w-0 flex-1 truncate text-sm font-medium',
+                    desktopShell && 'text-white'
+                  )}
+                >
+                  {playing.name}
+                </span>
                 {activeMovie && activeMovie.count > 1 ? (
-                  <span className="flex-none text-xs text-muted-foreground tabular-nums">
+                  <span
+                    className={cn(
+                      'flex-none text-xs tabular-nums',
+                      desktopShell ? 'text-white/70' : 'text-muted-foreground'
+                    )}
+                  >
                     第 {partIndex} / {activeMovie.count} 段
                   </span>
                 ) : null}
               </>
             ) : (
-              <span className="text-sm text-muted-foreground">未播放</span>
+              <span
+                className={cn('text-sm', desktopShell ? 'text-white/70' : 'text-muted-foreground')}
+              >
+                未播放
+              </span>
             )}
             <div className="ml-auto flex flex-none gap-2">
               {desktopShell ? (
@@ -683,44 +795,52 @@ export function PlayerPage() {
                   to="/"
                   aria-label="返回媒体库"
                   title="返回媒体库"
-                  className={cn(buttonVariants({ variant: 'outline', size: 'icon-sm' }))}
+                  className={cn(
+                    buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+                    'text-white hover:bg-white/20 hover:text-white'
+                  )}
                 >
                   <ArrowLeftIcon />
                 </Link>
               ) : null}
               <Button
-                variant="outline"
+                variant={desktopShell ? 'ghost' : 'outline'}
                 size="icon-sm"
                 aria-pressed={controlsHidden}
                 aria-label={controlsHidden ? '显示控制面板' : '收起控制面板'}
                 title={controlsHidden ? '显示控制面板' : '收起控制面板'}
+                className={cn(desktopShell && 'text-white hover:bg-white/20 hover:text-white')}
                 onClick={() => setControlsHidden(value => !value)}
               >
                 {controlsHidden ? <EyeOffIcon /> : <EyeIcon />}
               </Button>
               {desktopShell ? (
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="icon-sm"
                   aria-label="沉浸播放"
                   title="沉浸播放"
                   disabled={gated || !playing}
+                  className="text-white hover:bg-white/20 hover:text-white"
                   onClick={() => void enterImmersive()}
                 >
                   <Maximize2Icon />
                 </Button>
               ) : null}
               <Button
-                variant="outline"
+                variant={desktopShell ? 'ghost' : 'outline'}
                 size="sm"
                 disabled={movieIndex <= 0}
+                className={cn(desktopShell && 'text-white hover:bg-white/20 hover:text-white')}
                 onClick={() => goMovie(-1)}
               >
                 上一部
               </Button>
               <Button
+                variant={desktopShell ? 'ghost' : 'default'}
                 size="sm"
                 disabled={movieIndex < 0 || movieIndex + 1 >= movies.length}
+                className={cn(desktopShell && 'text-white hover:bg-white/20 hover:text-white')}
                 onClick={() => goMovie(1)}
               >
                 下一部
@@ -734,6 +854,7 @@ export function PlayerPage() {
           style={isDesktop || immersive ? undefined : { height: dragHeight ?? sheetHeight }}
           className={cn(
             'flex min-h-0 flex-col overflow-hidden rounded-2xl bg-card ring-1 ring-border/60 lg:transition-opacity lg:duration-200',
+            desktopShell && 'rounded-none ring-0',
             !immersive &&
               'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:rounded-b-none max-lg:shadow-[0_-10px_34px_rgba(0,0,0,0.14)]',
             collapsed && isDesktop && !immersive && 'lg:pointer-events-none lg:opacity-0',

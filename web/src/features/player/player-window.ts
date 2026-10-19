@@ -26,3 +26,15 @@ export async function restoreNormalWindow(): Promise<void> {
   if (!call) return
   await call('restore_normal_window')
 }
+
+export type PlayerResizeAnchor = 'NorthWest' | 'SouthEast'
+
+/** Aspect-locked resize; `width` is in physical pixels. */
+export async function resizePlayerImmersive(
+  width: number,
+  anchor: PlayerResizeAnchor
+): Promise<void> {
+  const call = invoke()
+  if (!call) return
+  await call('resize_player_immersive', { width, anchor })
+}

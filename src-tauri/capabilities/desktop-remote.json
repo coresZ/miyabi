@@ -12,6 +12,7 @@
     "allow-apply-desktop",
     "allow-enter-player-immersive",
     "allow-restore-normal-window",
+    "allow-resize-player-immersive",
     "allow-load-ui-state",
     "allow-save-ui-state",
     "core:window:allow-close",

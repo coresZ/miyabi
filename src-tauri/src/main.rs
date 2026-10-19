@@ -54,6 +54,7 @@ fn main() {
             commands::apply_desktop,
             commands::enter_player_immersive,
             commands::restore_normal_window,
+            commands::resize_player_immersive,
             commands::load_ui_state,
             commands::save_ui_state,
         ])

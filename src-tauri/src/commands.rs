@@ -236,6 +236,7 @@ struct WindowSnapshot {
 }
 
 static IMMERSIVE_SNAPSHOT: Mutex<Option<WindowSnapshot>> = Mutex::new(None);
+static IMMERSIVE_ASPECT: Mutex<Option<f64>> = Mutex::new(None);
 
 /// Removes the title bar and locks the window to the video aspect ratio.
 /// The normal window is never maximizable; `restore_normal_window` restores the
@@ -245,6 +246,7 @@ pub fn enter_player_immersive(app: AppHandle, aspect: Option<f64>) -> Result<(),
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "主窗口未打开".to_string())?;
+    let scale = window.scale_factor().map_err(|err| err.to_string())?;
     let base_width = {
         let mut snapshot = IMMERSIVE_SNAPSHOT.lock().expect("snapshot lock");
         if snapshot.is_none() {
@@ -255,9 +257,9 @@ pub fn enter_player_immersive(app: AppHandle, aspect: Option<f64>) -> Result<(),
                 resizable: window.is_resizable().map_err(|err| err.to_string())?,
             });
         }
-        snapshot
-            .as_ref()
-            .map(|snapshot| f64::from(snapshot.inner_size.width))
+        snapshot.as_ref().map(|snapshot| {
+            (f64::from(snapshot.inner_size.width) - window::CATALOG_WIDTH * scale).max(1.0)
+        })
     };
     window
         .set_decorations(false)
@@ -266,10 +268,83 @@ pub fn enter_player_immersive(app: AppHandle, aspect: Option<f64>) -> Result<(),
         .set_resizable(false)
         .map_err(|err| err.to_string())?;
     if let Some(aspect) = aspect {
+        *IMMERSIVE_ASPECT.lock().expect("aspect lock") = Some(aspect);
         fit_to_aspect(&window, aspect, base_width)?;
     }
     crate::log::info("player window -> immersive");
     Ok(())
+}
+
+/// Resizes the player-only immersive window while keeping the current video
+/// aspect. The page sends a physical width; the shell derives height and keeps
+/// the opposite corner fixed.
+#[tauri::command]
+pub fn resize_player_immersive(
+    app: AppHandle,
+    width: f64,
+    anchor: String,
+) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口未打开".to_string())?;
+    let aspect = *IMMERSIVE_ASPECT.lock().expect("aspect lock");
+    let Some(aspect) = aspect else {
+        return Ok(());
+    };
+    if !width.is_finite() || width <= 0.0 || !(0.1..=10.0).contains(&aspect) {
+        return Ok(());
+    }
+    let Some(monitor) = window.current_monitor().map_err(|err| err.to_string())? else {
+        return Ok(());
+    };
+    let work = monitor.work_area();
+    let scale = monitor.scale_factor();
+    let max_width = f64::from(work.size.width);
+    let max_height = f64::from(work.size.height);
+    let min_width = 320.0 * scale;
+    let min_height = 180.0 * scale;
+
+    let mut target_width = width.max(min_width);
+    let mut target_height = target_width / aspect;
+    let fit = (max_width / target_width)
+        .min(max_height / target_height)
+        .min(1.0);
+    target_width *= fit;
+    target_height *= fit;
+    if target_width < min_width || target_height < min_height {
+        let grow = (min_width / target_width).max(min_height / target_height);
+        let grown_width = target_width * grow;
+        let grown_height = target_height * grow;
+        if grown_width <= max_width && grown_height <= max_height {
+            target_width = grown_width;
+            target_height = grown_height;
+        }
+    }
+
+    let current = window.inner_size().map_err(|err| err.to_string())?;
+    let position = window.outer_position().map_err(|err| err.to_string())?;
+    let mut x = position.x;
+    let mut y = position.y;
+    if anchor == "NorthWest" {
+        x = position.x + current.width as i32 - target_width.round() as i32;
+        y = position.y + current.height as i32 - target_height.round() as i32;
+    }
+    let min_x = work.position.x;
+    let min_y = work.position.y;
+    let max_x = (min_x + work.size.width as i32 - target_width.round() as i32).max(min_x);
+    let max_y = (min_y + work.size.height as i32 - target_height.round() as i32).max(min_y);
+    let x = x.clamp(min_x, max_x);
+    let y = y.clamp(min_y, max_y);
+
+    window
+        .set_size(tauri::PhysicalSize::<u32>::new(
+            target_width.round().max(1.0) as u32,
+            target_height.round().max(1.0) as u32,
+        ))
+        .map_err(|err| err.to_string())?;
+    window
+        .set_position(tauri::PhysicalPosition::new(x, y))
+        .map_err(|err| err.to_string())
 }
 
 /// Restores the state captured before entering immersive mode. Idempotent: when
@@ -281,6 +356,7 @@ pub fn restore_normal_window(app: AppHandle) -> Result<(), String> {
         .get_webview_window("main")
         .ok_or_else(|| "主窗口未打开".to_string())?;
     let _ = window.set_fullscreen(false);
+    *IMMERSIVE_ASPECT.lock().expect("aspect lock") = None;
     // Keep the snapshot until every restore succeeds, so a failure can retry.
     let snapshot = IMMERSIVE_SNAPSHOT
         .lock()
