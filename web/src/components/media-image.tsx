@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 
 import { imageURL } from '@/api/client'
 import { cn } from 'cn'
-import { useSettingsStore } from '@/stores/settings'
+import { useUiState } from '@/stores/ui-state'
 
 type MediaImageProps = {
   source: string
@@ -16,7 +16,7 @@ type MediaImageProps = {
 }
 
 export function MediaImage(props: MediaImageProps) {
-  const nsfwMode = useSettingsStore(state => state.nsfwMode)
+  const nsfwMode = useUiState(state => state.nsfwMode)
   return (
     <MediaImageContent
       key={JSON.stringify([props.source, props.original, nsfwMode])}

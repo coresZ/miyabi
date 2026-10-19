@@ -29,11 +29,16 @@ import { ErrorState, InlineError } from '@/components/error-state'
 import { MediaImage } from '@/components/media-image'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from 'cn'
-import { useSettingsStore } from '@/stores/settings'
+import { getUiState, updateUiState, useUiState } from '@/stores/ui-state'
 import { useShellChrome } from '@/stores/shell-chrome'
 import { PlayerStage, type PlayerInstance, type PlayerTrack } from './player-stage'
 import { readPlayerPrefs, savePlayerPrefs } from './prefs'
-import { enterPlayerImmersive, isDesktopWindow, restoreNormalWindow } from './player-window'
+import {
+  enterPlayerImmersive,
+  isDesktopWindow,
+  restoreNormalWindow,
+  startWindowResize
+} from './player-window'
 
 type SourceOption = {
   id: string
@@ -54,7 +59,6 @@ type SheetSnap = 'peek' | 'half' | 'full'
 const SHEET_SNAPS: SheetSnap[] = ['peek', 'half', 'full']
 const SHEET_SNAP_VH: Record<SheetSnap, number> = { peek: 30, half: 56, full: 88 }
 
-const RAIL_PREF_KEY = 'miyabi.play.rail'
 const DEFAULT_RAIL = 320
 const MIN_RAIL = 200
 const MAX_RAIL = 520
@@ -63,21 +67,17 @@ const RAIL_COLLAPSE_AT = 150
 function readRailPref(key: 'width'): number
 function readRailPref(key: 'collapsed'): boolean
 function readRailPref(key: 'width' | 'collapsed'): number | boolean {
-  try {
-    const raw = window.localStorage.getItem(RAIL_PREF_KEY)
-    const parsed = raw ? (JSON.parse(raw) as { width?: number; collapsed?: boolean }) : {}
-    if (key === 'width') {
-      const width = Number(parsed.width)
-      return Number.isFinite(width) ? Math.min(MAX_RAIL, Math.max(MIN_RAIL, width)) : DEFAULT_RAIL
-    }
-    return !!parsed.collapsed
-  } catch {
-    return key === 'width' ? DEFAULT_RAIL : false
+  const rail = getUiState().rail
+  if (key === 'width') {
+    return Math.min(MAX_RAIL, Math.max(MIN_RAIL, rail.width || DEFAULT_RAIL))
   }
+  return rail.collapsed
 }
 
 function useIsDesktop() {
-  const [isDesktop, setIsDesktop] = useState(false)
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+  )
   useEffect(() => {
     const query = window.matchMedia('(min-width: 1024px)')
     const update = () => setIsDesktop(query.matches)
@@ -118,14 +118,13 @@ export function PlayerPage() {
   const isDesktop = useIsDesktop()
   const desktopShell = isDesktopWindow()
   const setNavHidden = useShellChrome(state => state.setNavHidden)
-  const nsfwMode = useSettingsStore(state => state.nsfwMode)
+  const nsfwMode = useUiState(state => state.nsfwMode)
   const [immersive, setImmersive] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [nsfwRevealed, setNsfwRevealed] = useState(false)
   const [chromeVisible, setChromeVisible] = useState(false)
   const [railOpen, setRailOpen] = useState(false)
   const [prefs, setPrefs] = useState(readPlayerPrefs)
-  const prefsTimer = useRef<number | undefined>(undefined)
   const [sourceAspect, setSourceAspect] = useState<number | null>(null)
   const tracksRef = useRef<PlayerTrack[]>([])
   const pendingPlayRef = useRef<number | null>(null)
@@ -355,7 +354,7 @@ export function PlayerPage() {
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem(RAIL_PREF_KEY, JSON.stringify({ width: railWidth, collapsed }))
+    updateUiState({ rail: { width: railWidth, collapsed } })
   }, [railWidth, collapsed])
 
   const onSearch = (value: string) => {
@@ -641,6 +640,25 @@ export function PlayerPage() {
               </Button>
             </div>
           </div>
+          {/* Only the two conflict-free corners resize the frameless window. */}
+          <div
+            aria-hidden
+            className="absolute top-0 left-0 z-[60] size-3 cursor-nwse-resize touch-none"
+            onPointerDown={(event: ReactPointerEvent<HTMLDivElement>) => {
+              event.preventDefault()
+              event.stopPropagation()
+              void startWindowResize('NorthWest')
+            }}
+          />
+          <div
+            aria-hidden
+            className="absolute right-0 bottom-0 z-[60] size-3 cursor-nwse-resize touch-none"
+            onPointerDown={(event: ReactPointerEvent<HTMLDivElement>) => {
+              event.preventDefault()
+              event.stopPropagation()
+              void startWindowResize('SouthEast')
+            }}
+          />
         </>
       ) : null}
 
@@ -677,14 +695,15 @@ export function PlayerPage() {
             immersive && 'gap-0 self-stretch'
           )}
         >
-          <div className={cn('relative', immersive && 'flex h-full min-h-0 flex-1 flex-col')}>
+          <div
+            className={cn('relative flex min-h-0 flex-col', (isDesktop || immersive) && 'flex-1')}
+          >
             <PlayerStage
               prefs={prefs}
               onFullscreenChange={onFullscreenChange}
               onPrefsChange={next => {
                 setPrefs(next)
-                window.clearTimeout(prefsTimer.current)
-                prefsTimer.current = window.setTimeout(() => savePlayerPrefs(next), 300)
+                savePlayerPrefs(next)
               }}
               className={cn(immersive && 'aspect-auto h-full w-full flex-1 rounded-none')}
               onMetadata={(width, height) => {
@@ -797,10 +816,11 @@ export function PlayerPage() {
 
         <section
           inert={collapsed && isDesktop && !immersive ? true : undefined}
-          style={isDesktop ? undefined : { height: dragHeight ?? sheetHeight }}
+          style={isDesktop || immersive ? undefined : { height: dragHeight ?? sheetHeight }}
           className={cn(
             'flex min-h-0 flex-col overflow-hidden rounded-2xl bg-card ring-1 ring-border/60 lg:transition-opacity lg:duration-200',
-            'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:rounded-b-none max-lg:shadow-[0_-10px_34px_rgba(0,0,0,0.14)]',
+            !immersive &&
+              'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:rounded-b-none max-lg:shadow-[0_-10px_34px_rgba(0,0,0,0.14)]',
             collapsed && isDesktop && !immersive && 'lg:pointer-events-none lg:opacity-0',
             // Immersive keeps the catalog off-screen and slides it in from the
             // right edge, so the video owns the whole frame.
@@ -811,9 +831,10 @@ export function PlayerPage() {
                 'fixed inset-y-0 right-0 z-50 w-[20rem] max-w-[80vw] rounded-none rounded-l-2xl border border-border/70 bg-background/85 ring-0 backdrop-blur transition-transform duration-200 ease-out',
                 railOpen ? 'translate-x-0' : 'translate-x-full'
               ),
-            dragging
-              ? 'max-lg:transition-none'
-              : 'max-lg:transition-[height] max-lg:duration-200 max-lg:ease-out'
+            !immersive &&
+              (dragging
+                ? 'max-lg:transition-none'
+                : 'max-lg:transition-[height] max-lg:duration-200 max-lg:ease-out')
           )}
           onPointerLeave={() => {
             if (immersive) setRailOpen(false)
@@ -824,7 +845,10 @@ export function PlayerPage() {
             onPointerMove={onHandleMove}
             onPointerUp={onHandleUp}
             onPointerCancel={onHandleUp}
-            className="flex flex-none cursor-grab touch-none items-center justify-center py-2.5 active:cursor-grabbing lg:hidden"
+            className={cn(
+              'flex flex-none cursor-grab touch-none items-center justify-center py-2.5 active:cursor-grabbing lg:hidden',
+              immersive && 'hidden'
+            )}
           >
             <span className="h-1 w-9 rounded-full bg-border" />
           </div>

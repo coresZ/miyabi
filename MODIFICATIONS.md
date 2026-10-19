@@ -30,12 +30,12 @@
 - `tauri.conf.json`：`productName = miyabi`、`mainBinaryName = miyabi`（安装版与便携版都叫 `miyabi.exe`）、`bundle.icon = ["../icon/miyabi.ico"]`、`bundle.resources = { "runtime/": "runtime/" }`（后端作为资源装进 `runtime/`，不用 `externalBin`，否则安装器会把第二个 exe 摊在壳旁边）、`webviewInstallMode = embedBootstrapper`、`frontendDist = stub`。
 - `capabilities/default.json`：`main` / `setup` / `splash` 只给 `core:default`。
 - `capabilities/desktop-setup.json`：本地 `setup` 窗口才能调 `desktop_defaults` / `pick_data_dir` / `complete_setup`。
-- `capabilities/desktop-remote.json`：只允许 `http://127.0.0.1:*/*` 与 `http://localhost:*/*` 调 `desktop_config` / `apply_desktop` / `enter_player_immersive` / `restore_normal_window`，外加 `core:window` 的 close / start-dragging。
+- `capabilities/desktop-remote.json`：只允许 `http://127.0.0.1:*/*` 与 `http://localhost:*/*` 调 `desktop_config` / `apply_desktop` / `enter_player_immersive` / `restore_normal_window` / `load_ui_state` / `save_ui_state`，外加 `core:window` 的 close / start-dragging / start-resize-dragging。
 - `src/main.rs`：Builder + 插件 + `setup` 开 splash、`spawn_blocking` 跑启动流程（配置未完成→开 setup；否则等后端就绪→开主窗口）+ 退出回收。splash 至少停留 600ms，避免一闪而过。
 - `src/sidecar.rs`：**唯一的上游契约适配点**——选端口、起 `runtime/miyabi-server.exe`（`MIYABI_LISTEN` / `MIYABI_DATA_DIR` / 可选 `MIYABI_ACCESS_PASSWORD`）、TCP 就绪等待、退出 kill。上游已删 `/api/health` 与 `healthcheck`，不要再改成 HTTP 探活。
 - `src/window.rs`：`WebviewWindowBuilder`；splash 320×320、无边框、不进任务栏、固定深色底；主窗口隐藏创建，`PageLoadEvent::Finished` 后再显示并关 splash（中间不留空窗）；主窗口与 setup 都 `maximizable(false)`（最大化会打乱播放页布局）；主窗口最小 1024×640（低于 `lg` 会掉进移动布局）。
-- `src/prefs.rs`：`desktop.json`；`runtime/` 里存在空文件 `portable` 才算便携版（安装版写 AppData，便携版写 `runtime/`，数据目录固定壳旁边 `data/`）。
-- `src/commands.rs`：`desktop_defaults` / `pick_data_dir` / `complete_setup` / `desktop_config` / `apply_desktop` / `enter_player_immersive` / `restore_normal_window`。阻塞操作（起停后端、写配置）一律 `spawn_blocking`，文件夹选择用非阻塞 `pick_folder`。窗口：`enter_player_immersive` 拍快照（inner_size / outer_position / 实际 decorated / 实际 resizable）、去标题栏、`resizable(false)`、按视频宽高比严格等比例 fit（宽高同系数，工作区内夹取并居中）；`restore_normal_window` 按快照恢复并清空，幂等，不涉及 maximize。
+- `src/prefs.rs`：`desktop.json`；`runtime/` 里存在空文件 `portable` 才算便携版（安装版写 AppData，便携版写 `runtime/`，数据目录固定壳旁边 `data/`）。同目录的 `ui-state.json` 存设备 UI 偏好（NSFW / 主题 / 播放器音量与倍速 / 目录宽度 / GIF 设置），与端口无关。
+- `src/commands.rs`：`desktop_defaults` / `pick_data_dir` / `complete_setup` / `desktop_config` / `apply_desktop` / `enter_player_immersive` / `restore_normal_window` / `load_ui_state` / `save_ui_state`。阻塞操作（起停后端、写配置）一律 `spawn_blocking`，文件夹选择用非阻塞 `pick_folder`。窗口：`enter_player_immersive` 拍快照（inner_size / outer_position / 实际 decorated / 实际 resizable）、去标题栏、`resizable(true)`（左上/右下角热区要能拖）、按视频宽高比严格等比例 fit（宽高同系数，工作区内夹取并居中）；`restore_normal_window` 按快照恢复并清空，幂等，不涉及 maximize。`load_ui_state` / `save_ui_state` 读写 `ui-state.json`（临时文件 + rename，避免半截 JSON）。
 - `src/log.rs`：`miyabi-desktop.log` 与配置同目录，记录启动、端口、后端进程、开窗、设置重启；2MB 轮转。
 - `src/job.rs`：Windows Job Object（`KILL_ON_JOB_CLOSE`），壳被强杀时由系统回收后端；直接声明 kernel32 函数，不引 `windows-sys`。
 - `stub/setup.html`：首次配置向导；便携版不问数据目录，安装版用系统文件夹对话框。
@@ -60,8 +60,7 @@
 
 - 来源：原始 `player/` 参考实现；未拷贝 `player.html` 与 `components.css`（后者含全局选择器，会冲突）。
 - `js/player-core.js`：框架无关内核。
-  - `MiyabiPlayer.create(container, { sources, poster, startIndex, continueOnEnded, volume, muted, rate, onChange, onEnded, onProgress, onMetadata, onPrefsChange, onFullscreenChange })`
-  - 实例：`play / pause / seek / seekBy / setVolume / next / prev / hasNext / hasPrev / current / setSources / setQueue / stop / setControlsHidden / isControlsHidden / toggleFullscreen / setFullscreenState / destroy`
+  - `MiyabiPlayer.create(container, { sources, poster, startIndex, continueOnEnded, volume, muted, rate, onChange, onEnded, onProgress, onMetadata, onPrefsChange, onFullscreenChange })`  - 实例：`play / pause / seek / seekBy / setVolume / next / prev / hasNext / hasPrev / current / setSources / setQueue / stop / setControlsHidden / isControlsHidden / toggleFullscreen / setFullscreenState / destroy`
   - 路由：flv/mkv → xgplayer，m3u8 → hls.js，其余原生 video；统一挂 `TmPlayerControls`。
   - 约定：原生 video `id=videoPlayer`，xgplayer 容器 `id=xgplayerContainer`，GIF 面板 `#gcPanel`。
   - 按键：`Space`/`K`/`Enter` 播放暂停、`←→` ±3s、`Shift+←→` ±30s、`↑↓` 音量、`M` 静音；输入框聚焦与按钮聚焦时不抢。
@@ -69,13 +68,20 @@
   - 切源：`teardownEngine()` 前把当前帧画到 canvas 作为覆盖层，新源 `loadeddata` 后移除；跨域污染则跳过。
   - `ended` / `loadedmetadata` / `fullscreenchange` 监听按元素加标记只绑一次，避免换源时重复触发。
   - `stage` 同时带 `video-container` 类，作为随包控制条 CSS 的紧凑/全屏状态钩子。
-- `js/tm-player-controls.js`：控制条。全屏状态由外部 `setFullscreen(active)` 推送，不再嗅探 DOM；面板空闲收起由 `_scheduleAutoHide()` 接线。
-- `js/gif-capture.js`：面板挂载到 `document.fullscreenElement` 或 `.miyabi-player-stage`，不再挂 `body`（否则全屏时不显示）。
+- `js/tm-player-controls.js`：控制条。全屏状态由外部 `setFullscreen(active)` 推送，不再嗅探 DOM；面板空闲收起由 `_scheduleAutoHide()` 接线。倍速滑块不再写 `localStorage.playbackRate`，初始值读当前 video 的 `playbackRate`（由播放器 prefs 注入），变化经 `ratechange` 回写。
+- `js/gif-capture.js`：面板挂载到 `document.fullscreenElement` 或 `.miyabi-player-stage`，不再挂 `body`（否则全屏时不显示）。GIF 设置优先经 `window.MiyabiUiState` 读写 `ui-state.json`，浏览器才回退 localStorage。
 - 验证：`node --check web/public/player/js/*.js`。
+
+## web/src/
+
+- `main.tsx`：启动时先 `await loadUiState()` 再 `createRoot`；主题从 `ui-state.json` 注入 `ThemeProvider`，`ThemeSync` 把 next-themes 的变化写回。
+- `stores/ui-state.ts`：设备 UI 偏好的唯一来源（NSFW / 主题 / 播放器 / 目录 / GIF）。桌面壳经 `load_ui_state` / `save_ui_state` 读写 `ui-state.json`，保存 250ms 防抖并在 `pagehide` 立即 flush；浏览器回退 `localStorage['miyabi-ui-state']`，并一次性迁移旧键。`useUiState` 用 `useSyncExternalStore` 订阅。
+- `providers`/`router` 等入口不变。
 
 ## web/src/components/
 
 - `floating-nav.tsx`：底部悬浮导航。桌面断点图标 `size-6`、按钮 `sm:size-10`、内边距 `sm:p-2`；移动端 `size-11` / `size-5`。
+- `media-image.tsx` / `movie-detail/recommendations.tsx`：NSFW 判断改从 `useUiState(state => state.nsfwMode)` 读取（原 `stores/settings.ts` 已删除）。
 - `movie/movie-card.tsx`：封面图片层用 `group-hover` / `group-focus-within` 压暗到 0.82，依赖外层容器的 `group`；组件本身不持有播放入口。
 - `movie/play-overlay.tsx`：透明播放按钮，列表与详情共用。`Link` 到 `/play?movie=<id>`，圆形按钮 hover/focus 淡入；`hideOnTouch` 时触屏隐藏（列表保留“点封面进详情”），详情不传时触屏也可见。
 
@@ -84,18 +90,19 @@
 用途：播放单页 `/play`。
 
 - `page.tsx`
-  - 布局：桌面左播放器 + 右目录（`--rail-w` 可拖拽调宽、点击收起、双击复位，写 `localStorage`）；移动端目录为底部抽屉（`peek/half/full`）。
+  - 布局：桌面左播放器 + 右目录（`--rail-w` 可拖拽调宽、点击收起、双击复位，写 `ui-state.json`）；移动端目录为底部抽屉（`peek/half/full`）。
   - 桌面壳里不渲染页头、隐藏底部悬浮导航，工具栏补「返回媒体库」；底部留白改 `pb-4`。
   - 上一部 / 下一部按影片边界跳转，连播仍走 track 级。
   - 深链：解析 `?movie=<id>`，在目录中定位并播第一段；找不到继续翻页（上限 10 页），仍失败且已连 115 时切 remote 重试一次，最后提示。
-  - 沉浸：`enterPlayerImmersive` 去标题栏、禁手动缩放、按视频比例严格等比例 fit；给 `html` 加 `player-immersive`（关掉 `scrollbar-gutter` 的黑带）；目录改为右侧悬浮抽屉，鼠标进右缘 24px 热区滑出；`Escape` 先收抽屉再退沉浸。
+  - 沉浸：`enterPlayerImmersive` 去标题栏、按视频比例严格等比例 fit；左上/右下两个 12×12 热区调用 `startResizeDragging` 手动缩放；给 `html` 加 `player-immersive`（关掉 `scrollbar-gutter` 的黑带）；目录改为右侧悬浮抽屉，鼠标进右缘 24px 热区滑出；`Escape` 先收抽屉再退沉浸。
+  - 播放器外层 wrapper `relative flex min-h-0 flex-1 flex-col`：NSFW 遮罩包一层后仍能撑满左列（曾因 wrapper 只有 `relative` 导致播放器缩成 16:9 靠在顶部）。
   - 全屏：`F` / 控制条 / 顶栏都走 `player.toggleFullscreen()`；`fullscreenchange` 退出时一律 `restoreNormalWindow()` 回正常，不回沉浸。
   - 顶部悬浮条：退出沉浸（窗口图标）/ 全屏（四角括弧）/ 关闭（✕），悬停才淡入。
   - NSFW：`nsfwMode` 开启且本次访问未确认时，不 `setSources`、不自动播放；播放器区域显示遮罩与「播放」按钮，目录可浏览但点选只记 pending；确认后本次访问内不再拦截；缩略图用 `MediaImage` 遮挡。
   - 快捷键：页面只管 `F`（全屏，gate 时忽略）、`N`/`P` 上下部、`Esc`；播放类在内核。
 - `player-stage.tsx`：外层管尺寸，内层 `size-full` 交给内核（内核会给容器加 `.miyabi-player`，避免 React 覆盖 class 导致退出沉浸后塌陷）；所有回调经 `handlers` ref 取最新值；不再转发 `onToggleFullscreen`。
-- `prefs.ts`：`localStorage['miyabi.player.prefs']` 读写音量 / 静音 / 倍速，播放页共用。
-- `player-window.ts`：`isDesktopWindow` / `enterPlayerImmersive` / `restoreNormalWindow`，浏览器下均为空操作。
+- `prefs.ts`：读写 `ui-state.json` 的 `player` 切片（音量 / 静音 / 倍速），播放页共用。
+- `player-window.ts`：`isDesktopWindow` / `enterPlayerImmersive` / `restoreNormalWindow` / `startWindowResize`，浏览器下均为空操作。
 - `web/src/stores/shell-chrome.ts`：`navHidden` 控制播放页隐藏底部导航。
 
 ## web/src/features/library/
@@ -113,6 +120,7 @@
 
 - `desktop-bridge.ts`：没有 `window.__TAURI__` 时不渲染桌面分区。
 - `desktop-section.tsx`：桌面分区（数据目录只读、局域网开关 / 端口 / 访问密码）；保存调用 `apply_desktop` 由壳重启后端；分隔线由组件自身渲染。
+- `privacy-section.tsx`：NSFW 开关读写 `stores/ui-state.ts`，不再用 zustand persist + localStorage。
 
 ## web/src/features/access-gate/
 
@@ -121,4 +129,4 @@
 
 ## docs/
 
-- `player-window-modes.md`：窗口/沉浸/播放器全屏 + 播放入口与 NSFW 的方案与实现记录。定稿：正常窗口**没有系统最大化**（主窗口与 setup 都 `.maximizable(false)`），标题栏/可缩放按实际 `decorations`/`resizable` 状态；沉浸去标题栏、壳严格按视频宽高比等比例 fit、禁止用户手动缩放；全屏只对播放器 stage 调 Fullscreen API、画面 contain；`Esc`/手动退出/全屏退出一律回正常界面并恢复进入沉浸前的窗口快照（尺寸/位置/实际 decorations/实际 resizable，不记录 maximized），不回到沉浸。详情页独立播放弹窗删除，封面用透明播放按钮统一走 `/play`；播放页目录缩略图接入 `MediaImage`，视频在 NSFW 开启时先 gate、每次进入播放页确认一次，点击后才加载播放。含壳的 `enter_player_immersive` / `restore_normal_window` 设计、Tauri 2.6+ WebView2 全屏说明、验收清单。
+- `player-window-modes.md`：窗口/沉浸/播放器全屏 + 播放入口与 NSFW 的方案与实现记录。定稿：正常窗口**没有系统最大化**（主窗口与 setup 都 `.maximizable(false)`），标题栏/可缩放按实际 `decorations`/`resizable` 状态；沉浸去标题栏、壳严格按视频宽高比等比例 fit、左上/右下两角可手动缩放；全屏只对播放器 stage 调 Fullscreen API、画面 contain；`Esc`/手动退出/全屏退出一律回正常界面并恢复进入沉浸前的窗口快照（尺寸/位置/实际 decorations/实际 resizable，不记录 maximized），不回到沉浸。详情页独立播放弹窗删除，封面用透明播放按钮统一走 `/play`；播放页目录缩略图接入 `MediaImage`，视频在 NSFW 开启时先 gate、每次进入播放页确认一次，点击后才加载播放。含 `ui-state.json` 设备 UI 偏好持久化、壳的 `enter_player_immersive` / `restore_normal_window` 设计、Tauri 2.6+ WebView2 全屏说明、验收清单。

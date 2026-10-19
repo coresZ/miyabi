@@ -198,6 +198,35 @@ pub async fn apply_desktop(
     }
 }
 
+#[tauri::command]
+pub fn load_ui_state(state: State<'_, ShellState>) -> Result<serde_json::Value, String> {
+    let path = state.paths.ui_state_path();
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(serde_json::json!({}));
+        }
+        Err(err) => return Err(err.to_string()),
+    };
+    serde_json::from_str(&text).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+pub fn save_ui_state(
+    state: State<'_, ShellState>,
+    value: serde_json::Value,
+) -> Result<(), String> {
+    let path = state.paths.ui_state_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    }
+    let text = serde_json::to_string_pretty(&value).map_err(|err| err.to_string())?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, text).map_err(|err| err.to_string())?;
+    let _ = std::fs::remove_file(&path);
+    std::fs::rename(&tmp, &path).map_err(|err| err.to_string())
+}
+
 #[derive(Clone)]
 struct WindowSnapshot {
     inner_size: tauri::PhysicalSize<u32>,
@@ -231,11 +260,12 @@ pub fn enter_player_immersive(app: AppHandle, aspect: Option<f64>) -> Result<(),
         .set_decorations(false)
         .map_err(|err| err.to_string())?;
     window
-        .set_resizable(false)
+        .set_resizable(true)
         .map_err(|err| err.to_string())?;
     // The 1024x640 minimum would clamp a portrait fit and break the ratio.
+    // A small floor still prevents the corner handles from collapsing the window.
     window
-        .set_min_size(None::<tauri::LogicalSize<f64>>)
+        .set_min_size(Some(tauri::LogicalSize::<f64>::new(320.0, 180.0)))
         .map_err(|err| err.to_string())?;
     if let Some(aspect) = aspect {
         fit_to_aspect(&window, aspect)?;

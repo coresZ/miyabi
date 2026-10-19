@@ -98,6 +98,10 @@
       this.updateVolumeUI();
       this.updateProgressBar();
       this.updateLoopMarkers();
+      if (this.updatePlaybackRateSlider && this.video) {
+        const rate = this.video.playbackRate || 1;
+        this.updatePlaybackRateSlider(((rate - 0.1) / (3 - 0.1)) * 100, true);
+      }
     }
 
     _on(t, type, fn, opts) {
@@ -740,7 +744,6 @@
           current = rate;
           const v = this.video;
           if (v) v.playbackRate = rate;
-          try { localStorage.setItem('playbackRate', String(rate)); } catch (_) {}
           value.textContent = `${rate.toFixed(1)}x`;
           value.classList.remove('tm-speed-value-fast', 'tm-speed-value-slow', 'tm-speed-value-normal');
           if (rate > 1.5) value.classList.add('tm-speed-value-fast');
@@ -793,7 +796,7 @@
       this._on(wrap, 'dblclick', () => applyPct(30));
 
       this.updatePlaybackRateSlider = (pct, silent) => applyPct(pct, silent);
-      const saved = parseFloat(localStorage.getItem('playbackRate') || '1');
+      const saved = this.video && Number.isFinite(this.video.playbackRate) ? this.video.playbackRate : 1;
       applyPct(((saved - min) / (max - min)) * 100, true);
     }
 

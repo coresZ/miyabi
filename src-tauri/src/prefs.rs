@@ -29,6 +29,13 @@ pub struct Paths {
 }
 
 impl Paths {
+    pub fn ui_state_path(&self) -> PathBuf {
+        self.prefs_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("ui-state.json")
+    }
+
     pub fn resolve(app: &AppHandle) -> Result<Self, String> {
         let exe = std::env::current_exe().map_err(|err| err.to_string())?;
         let exe_dir = exe

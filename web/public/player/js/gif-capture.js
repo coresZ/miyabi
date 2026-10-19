@@ -72,11 +72,23 @@
   }
 
   function loadSettings() {
-    try { return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS_KEY) || '{}')); }
-    catch (e) { return Object.assign({}, DEFAULTS); }
+    try {
+      var bridge = typeof window !== 'undefined' ? window.MiyabiUiState : null;
+      if (bridge && typeof bridge.getGif === 'function') {
+        return Object.assign({}, DEFAULTS, bridge.getGif() || {});
+      }
+      return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS_KEY) || '{}'));
+    } catch (e) { return Object.assign({}, DEFAULTS); }
   }
   function saveSettings(s) {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch (e) {}
+    try {
+      var bridge = typeof window !== 'undefined' ? window.MiyabiUiState : null;
+      if (bridge && typeof bridge.saveGif === 'function') {
+        bridge.saveGif(s);
+        return;
+      }
+      localStorage.setItem(LS_KEY, JSON.stringify(s));
+    } catch (e) {}
   }
 
   /* ---------------- 面板 ---------------- */

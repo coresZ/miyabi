@@ -12,7 +12,10 @@
     "allow-apply-desktop",
     "allow-enter-player-immersive",
     "allow-restore-normal-window",
+    "allow-load-ui-state",
+    "allow-save-ui-state",
     "core:window:allow-close",
-    "core:window:allow-start-dragging"
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging"
   ]
 }

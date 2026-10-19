@@ -54,6 +54,8 @@ fn main() {
             commands::apply_desktop,
             commands::enter_player_immersive,
             commands::restore_normal_window,
+            commands::load_ui_state,
+            commands::save_ui_state,
         ])
         .build(tauri::generate_context!())
         .expect("error while building the Miyabi desktop shell")
