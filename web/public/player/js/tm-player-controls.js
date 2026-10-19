@@ -27,6 +27,7 @@
       this.hideDelay = options.hideDelay || 3200;
       this.onUserInteract = options.onUserInteract || null;
       this.onToggleFullscreen = options.onToggleFullscreen || null;
+      this.fullscreenActive = false;
 
       this.root = null;
       this.playPauseButton = null;
@@ -399,9 +400,8 @@
 
       this._on(fsBtn, 'click', (e) => {
         e.stopPropagation();
+        // The icon follows the authoritative state pushed by the page/kernel.
         if (typeof this.onToggleFullscreen === 'function') this.onToggleFullscreen();
-        this.updateWindowButtons();
-        setTimeout(() => this.updateWindowButtons(), 120);
         this.show({ autoHide: false });
         if (typeof this.onUserInteract === 'function') this.onUserInteract();
       });
@@ -412,10 +412,12 @@
     }
 
     _isFullscreen() {
-      const fs = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
-      if (fs) return true;
-      const host = this.videoWrapper || this.host;
-      return !!(host && host.classList && host.classList.contains('fullscreen-active'));
+      return !!this.fullscreenActive;
+    }
+
+    setFullscreen(active) {
+      this.fullscreenActive = !!active;
+      this.updateWindowButtons();
     }
 
     updateWindowButtons() {

@@ -1,4 +1,5 @@
 import { PlayIcon } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import { useMemo, useRef, useState } from 'react'
 
 import type { LocalVideo } from '@/api/library'
@@ -6,10 +7,22 @@ import { playableVideoUrl } from '@/api/playables'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { PlayerStage, type PlayerInstance, type PlayerTrack } from '@/features/player/player-stage'
+import { readPlayerPrefs, savePlayerPrefs } from '@/features/player/prefs'
+import { useCoarsePointer } from '@/lib/pointer'
 
-export function MoviePlayer({ videos, title }: { videos: LocalVideo[]; title: string }) {
+export function MoviePlayer({
+  videos,
+  title,
+  movieId
+}: {
+  videos: LocalVideo[]
+  title: string
+  movieId: number
+}) {
   const [open, setOpen] = useState(false)
   const [index, setIndex] = useState(0)
+  const [prefs, setPrefs] = useState(readPlayerPrefs)
+  const coarse = useCoarsePointer()
   const playerRef = useRef<PlayerInstance | null>(null)
   const tracks = useMemo<PlayerTrack[]>(
     () =>
@@ -22,6 +35,19 @@ export function MoviePlayer({ videos, title }: { videos: LocalVideo[]; title: st
   const play = (target: number) => {
     setIndex(target)
     playerRef.current?.setSources(tracks, target)
+  }
+
+  // Touch devices get the full player page instead of a cramped dialog: it owns
+  // landscape, fullscreen and the catalog.
+  if (coarse) {
+    return (
+      <Button variant="secondary" asChild>
+        <Link to="/play" search={{ movie: movieId }}>
+          <PlayIcon />
+          播放
+        </Link>
+      </Button>
+    )
   }
 
   return (
@@ -38,6 +64,11 @@ export function MoviePlayer({ videos, title }: { videos: LocalVideo[]; title: st
         <DialogTitle className="sr-only">{title || current.name}</DialogTitle>
         <PlayerStage
           className="aspect-auto min-h-0 flex-1 rounded-none"
+          prefs={prefs}
+          onPrefsChange={next => {
+            setPrefs(next)
+            savePlayerPrefs(next)
+          }}
           onReady={player => {
             playerRef.current = player
             player.setSources(tracks, index)

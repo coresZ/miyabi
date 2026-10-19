@@ -46,7 +46,7 @@ pub fn start(prefs: &Prefs) -> Result<String, String> {
         let message = format!("server binary is missing: {}", server.display());
         crate::log::error(&message);
         return Err(format!(
-            "找不到 runtime\\miyabi-server.exe，请不要把 Miyabi.exe 单独拷走（{}）",
+            "找不到 runtime\\miyabi-server.exe，请不要把 miyabi.exe 单独拷走（{}）",
             server.display()
         ));
     }
@@ -64,7 +64,7 @@ pub fn start(prefs: &Prefs) -> Result<String, String> {
 
     let child = command.spawn().map_err(|err| {
         crate::log::error(format!("cannot spawn {}: {err}", server.display()));
-        format!("找不到 runtime\\miyabi-server.exe，请不要把 Miyabi.exe 单独拷走（{err}）")
+        format!("找不到 runtime\\miyabi-server.exe，请不要把 miyabi.exe 单独拷走（{err}）")
     })?;
     crate::log::info(format!("server spawned; pid={}", child.id()));
     crate::job::attach(child.id());

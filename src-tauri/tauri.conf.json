@@ -1,7 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Miyabi",
-  "version": "0.4.10",
+  "productName": "miyabi",
+  "mainBinaryName": "miyabi",
+  "version": "0.4.11",
   "identifier": "com.ppxb.miyabi.desktop",
   "build": {
     "frontendDist": "stub"

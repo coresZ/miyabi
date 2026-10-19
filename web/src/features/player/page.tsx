@@ -4,9 +4,7 @@ import {
   EyeIcon,
   EyeOffIcon,
   Maximize2Icon,
-  Minimize2Icon,
   SearchIcon,
-  SquareIcon,
   XIcon
 } from 'lucide-react'
 import {
@@ -18,10 +16,11 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent
 } from 'react'
+import { Link, useSearch } from '@tanstack/react-router'
+import { toast } from 'sonner'
 
 import { useLocalSources } from '@/api/local-sources'
 import { usePanAccount } from '@/api/pan'
-import { Link } from '@tanstack/react-router'
 import { playableVideoUrl, usePlayables, type Playable, type PlayableKind } from '@/api/playables'
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState, InlineError } from '@/components/error-state'
@@ -29,6 +28,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from 'cn'
 import { useShellChrome } from '@/stores/shell-chrome'
 import { PlayerStage, type PlayerInstance, type PlayerTrack } from './player-stage'
+import { readPlayerPrefs, savePlayerPrefs } from './prefs'
 import { isDesktopWindow, setPlayerWindowMode, type PlayerWindowMode } from './window-mode'
 
 type SourceOption = {
@@ -85,6 +85,11 @@ function useIsDesktop() {
 }
 
 export function PlayerPage() {
+  const routeSearch = useSearch({ from: '/play' })
+  const targetMovie = routeSearch.movie
+  const appliedTarget = useRef<number | null>(null)
+  const lookupAttempts = useRef(0)
+  const triedRemote = useRef(false)
   const sources = useLocalSources()
   const pan = usePanAccount()
   const [sourceID, setSourceID] = useState(ALL_LOCAL.id)
@@ -112,6 +117,8 @@ export function PlayerPage() {
   const [windowMode, setWindowMode] = useState<PlayerWindowMode>('windowed')
   const [chromeVisible, setChromeVisible] = useState(false)
   const [railOpen, setRailOpen] = useState(false)
+  const [prefs, setPrefs] = useState(readPlayerPrefs)
+  const prefsTimer = useRef<number | undefined>(undefined)
   const [sourceAspect, setSourceAspect] = useState<number | null>(null)
   const [coverVideo, setCoverVideo] = useState(false)
   const borderless = windowMode !== 'windowed'
@@ -180,24 +187,19 @@ export function PlayerPage() {
 
   // Borderless covers the window, so the stable scrollbar gutter must go too;
   // otherwise a strip of background stays visible on the right edge.
+  // Keep the in-player fullscreen icon in step with the window mode.
+  useEffect(() => {
+    playerRef.current?.setFullscreenState(windowMode === 'fullscreen')
+  }, [windowMode])
+
   useEffect(() => {
     if (!borderless) return
     document.documentElement.classList.add('player-borderless')
     return () => document.documentElement.classList.remove('player-borderless')
   }, [borderless])
 
-  // Arrow keys seek by 3 seconds; typing in a field must not move the video.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-      const target = event.target as HTMLElement | null
-      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
-      event.preventDefault()
-      playerRef.current?.seekBy(event.key === 'ArrowLeft' ? -3 : 3)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  // Playback keys (space/K/enter/arrows/volume/mute) live in player-core.js, so
+  // the detail dialog gets them too. Only window-level keys belong here.
   const [viewport, setViewport] = useState(() => ({
     height: typeof window === 'undefined' ? 0 : window.innerHeight,
     playerBottom: 0
@@ -312,20 +314,105 @@ export function PlayerPage() {
     }, 250)
   }
 
-  const play = (index: number) => {
-    const track = tracks[index]
-    if (!track) return
-    playerRef.current?.setSources(tracks, index)
-    setCurrent(index)
-    setPlaying(track)
-    if (!isDesktop) setSnap('half')
-  }
+  const play = useCallback(
+    (index: number) => {
+      const track = tracks[index]
+      if (!track) return
+      playerRef.current?.setSources(tracks, index)
+      setCurrent(index)
+      setPlaying(track)
+      if (!isDesktop) setSnap('half')
+    },
+    [tracks, isDesktop]
+  )
+
+  // A deep link (`/play?movie=12`) resolves once the catalog reaches that movie.
+  useEffect(() => {
+    appliedTarget.current = null
+    lookupAttempts.current = 0
+    triedRemote.current = false
+  }, [targetMovie])
+
+  useEffect(() => {
+    if (!targetMovie || appliedTarget.current === targetMovie) return
+    // Wait for the first page: right after switching scope the query is empty
+    // and hasNextPage is false, which must not read as "exhausted".
+    if (!query.data) return
+    const entry = movies.find(candidate => candidate.item.movie_id === targetMovie)
+    if (entry) {
+      appliedTarget.current = targetMovie
+      // Defer so the deep link does not set state during the effect pass.
+      window.setTimeout(() => play(entry.start), 0)
+      document
+        .querySelector(`[data-movie-id="${targetMovie}"]`)
+        ?.scrollIntoView({ block: 'nearest' })
+      return
+    }
+    if (!hasNextPage) {
+      // A movie opened from the 115 library is not in the local catalog: retry
+      // once against the remote scope before giving up.
+      if (!triedRemote.current && active.scope === 'local' && pan.data?.connected) {
+        triedRemote.current = true
+        lookupAttempts.current = 0
+        setSourceID('remote')
+        return
+      }
+      appliedTarget.current = targetMovie
+      toast.error('当前来源里没有这部影片')
+      return
+    }
+    if (isFetchingNextPage || lookupAttempts.current >= 10) return
+    lookupAttempts.current += 1
+    void fetchNextPage()
+  }, [
+    targetMovie,
+    query.data,
+    movies,
+    play,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    active.scope,
+    pan.data?.connected
+  ])
 
   const partIndex = activeMovie ? current - activeMovie.start + 1 : 0
-  const go = (delta: number) => {
-    const next = current + delta
-    if (next >= 0 && next < tracks.length) play(next)
-  }
+  const movieIndex = movies.findIndex(
+    entry => current >= entry.start && current < entry.start + entry.count
+  )
+  // Manual switching is movie-level; autoplay still walks tracks so multi-part
+  // releases continue seamlessly.
+  const goMovie = useCallback(
+    (delta: number) => {
+      if (movieIndex < 0) return
+      const entry = movies[movieIndex + delta]
+      if (entry) play(entry.start)
+    },
+    [movieIndex, movies, play]
+  )
+
+  // Window-level keys only; playback keys live in player-core.js.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return
+      const target = event.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      const key = event.key.toLowerCase()
+      if (key === 'f') {
+        event.preventDefault()
+        if (desktopShell) applyWindowMode(borderless ? 'windowed' : 'borderless')
+        else playerRef.current?.toggleFullscreen()
+      } else if (key === 'n') {
+        event.preventDefault()
+        goMovie(1)
+      } else if (key === 'p') {
+        event.preventDefault()
+        goMovie(-1)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [desktopShell, borderless, applyWindowMode, goMovie])
   const countLabel = `${tracks.length}${hasNextPage ? '+' : ''} 个文件`
 
   // peek / half 档限制在播放器下方（不遮挡视频底部操作条），full 档才允许覆盖。
@@ -460,19 +547,20 @@ export function PlayerPage() {
                 className="text-white hover:bg-white/20 hover:text-white"
                 onClick={() => applyWindowMode('windowed')}
               >
-                <Minimize2Icon />
+                <RestoreWindowIcon />
               </Button>
               <Button
                 variant="ghost"
                 size="icon-sm"
                 aria-label={windowMode === 'fullscreen' ? '退出全屏' : '全屏'}
                 title={windowMode === 'fullscreen' ? '退出全屏' : '全屏'}
+                aria-pressed={windowMode === 'fullscreen'}
                 className="text-white hover:bg-white/20 hover:text-white"
                 onClick={() =>
                   applyWindowMode(windowMode === 'fullscreen' ? 'borderless' : 'fullscreen')
                 }
               >
-                {windowMode === 'fullscreen' ? <SquareIcon /> : <Maximize2Icon />}
+                {windowMode === 'fullscreen' ? <ExitFullscreenIcon /> : <EnterFullscreenIcon />}
               </Button>
               <Button
                 variant="ghost"
@@ -531,6 +619,17 @@ export function PlayerPage() {
         >
           <PlayerStage
             cover={coverVideo}
+            prefs={prefs}
+            onToggleFullscreen={
+              desktopShell
+                ? () => applyWindowMode(windowMode === 'fullscreen' ? 'borderless' : 'fullscreen')
+                : undefined
+            }
+            onPrefsChange={next => {
+              setPrefs(next)
+              window.clearTimeout(prefsTimer.current)
+              prefsTimer.current = window.setTimeout(() => savePlayerPrefs(next), 300)
+            }}
             className={cn(borderless && 'aspect-auto h-full w-full flex-1 rounded-none')}
             onMetadata={(width, height) => {
               const aspect = width / height
@@ -541,6 +640,7 @@ export function PlayerPage() {
               playerRef.current = player
               player.setQueue(tracks)
               player.setControlsHidden(controlsHidden)
+              player.setFullscreenState(windowMode === 'fullscreen')
             }}
             onChange={(index, source) => {
               setCurrent(index)
@@ -599,15 +699,20 @@ export function PlayerPage() {
                   <Maximize2Icon />
                 </Button>
               ) : null}
-              <Button variant="outline" size="sm" disabled={current <= 0} onClick={() => go(-1)}>
-                上一段
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={movieIndex <= 0}
+                onClick={() => goMovie(-1)}
+              >
+                上一部
               </Button>
               <Button
                 size="sm"
-                disabled={current < 0 || current + 1 >= tracks.length}
-                onClick={() => go(1)}
+                disabled={movieIndex < 0 || movieIndex + 1 >= movies.length}
+                onClick={() => goMovie(1)}
               >
-                下一段
+                下一部
               </Button>
             </div>
           </div>
@@ -711,6 +816,7 @@ export function PlayerPage() {
                     <button
                       key={entry.item.movie_id}
                       type="button"
+                      data-movie-id={entry.item.movie_id}
                       onClick={() => play(entry.start)}
                       aria-current={isCurrent ? 'true' : undefined}
                       className={cn(
@@ -774,5 +880,57 @@ export function PlayerPage() {
         ) : null}
       </div>
     </main>
+  )
+}
+
+function RestoreWindowIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="size-4"
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2.5" />
+      <path d="M3 9.5h18" />
+    </svg>
+  )
+}
+
+function EnterFullscreenIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="size-4"
+      aria-hidden="true"
+    >
+      <path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" />
+    </svg>
+  )
+}
+
+function ExitFullscreenIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="size-4"
+      aria-hidden="true"
+    >
+      <path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5" />
+    </svg>
   )
 }

@@ -16,9 +16,12 @@ export type PlayerInstance = {
   prev: () => void
   seek: (seconds: number) => void
   seekBy: (delta: number) => void
+  setVolume: (value: number) => void
   stop: () => void
   setControlsHidden: (hidden: boolean) => void
   isControlsHidden: () => boolean
+  toggleFullscreen: () => void
+  setFullscreenState: (active: boolean) => void
   destroy: () => void
 }
 
@@ -30,16 +33,27 @@ declare global {
   }
 }
 
+export type PlayerPrefs = {
+  volume: number
+  muted: boolean
+  rate: number
+}
+
 type PlayerStageProps = {
   className?: string
   poster?: string
   /** Crops instead of letterboxing when the frame ratio differs from the source. */
   cover?: boolean
+  prefs?: PlayerPrefs
   onReady?: (player: PlayerInstance) => void
   onChange?: (index: number, source: PlayerTrack) => void
   onEnded?: (index: number, hasNext: boolean) => void
   onProgress?: (currentTime: number, duration: number) => void
   onMetadata?: (width: number, height: number) => void
+  onPrefsChange?: (prefs: PlayerPrefs) => void
+  /** Desktop shell: route the control-bar button to the window mode instead. */
+  onToggleFullscreen?: () => void
+  onFullscreenChange?: (active: boolean) => void
 }
 
 export function PlayerStage(props: PlayerStageProps) {
@@ -64,12 +78,22 @@ export function PlayerStage(props: PlayerStageProps) {
         instance = window.MiyabiPlayer.create(hostRef.current, {
           sources: [],
           poster: current.poster,
-          onChange: (index: number, source: PlayerTrack) => current.onChange?.(index, source),
+          volume: current.prefs?.volume,
+          muted: current.prefs?.muted,
+          rate: current.prefs?.rate,
+          // Read through the ref: these callbacks close over page state that
+          // changes after the player is created.
+          onChange: (index: number, source: PlayerTrack) =>
+            handlers.current.onChange?.(index, source),
           onEnded: (index: number, _source: unknown, hasNext: boolean) =>
-            current.onEnded?.(index, hasNext),
+            handlers.current.onEnded?.(index, hasNext),
           onProgress: (currentTime: number, duration: number) =>
-            current.onProgress?.(currentTime, duration),
-          onMetadata: (width: number, height: number) => current.onMetadata?.(width, height)
+            handlers.current.onProgress?.(currentTime, duration),
+          onMetadata: (width: number, height: number) =>
+            handlers.current.onMetadata?.(width, height),
+          onPrefsChange: (prefs: PlayerPrefs) => handlers.current.onPrefsChange?.(prefs),
+          onToggleFullscreen: () => handlers.current.onToggleFullscreen?.(),
+          onFullscreenChange: (active: boolean) => handlers.current.onFullscreenChange?.(active)
         })
         current.onReady?.(instance)
       })

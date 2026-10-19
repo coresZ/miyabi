@@ -8,7 +8,7 @@ pub fn open_setup(app: &AppHandle) -> tauri::Result<()> {
     }
     crate::log::info("opening the setup window");
     WebviewWindowBuilder::new(app, "setup", WebviewUrl::App("setup.html".into()))
-        .title("Miyabi")
+        .title("miyabi")
         .inner_size(560.0, 640.0)
         .min_inner_size(480.0, 560.0)
         .resizable(true)
@@ -28,9 +28,11 @@ pub fn open_main(app: &AppHandle, url: String) -> tauri::Result<()> {
     }
     let parsed: tauri::Url = url.parse().expect("local url must be valid");
     WebviewWindowBuilder::new(app, "main", WebviewUrl::External(parsed))
-        .title("Miyabi")
+        .title("miyabi")
         .inner_size(1280.0, 820.0)
-        .min_inner_size(960.0, 640.0)
+        // Keep the lg breakpoint reachable: below 1024 the player would fall
+        // back to the mobile sheet inside a desktop window.
+        .min_inner_size(1024.0, 640.0)
         .center()
         .build()?;
     Ok(())

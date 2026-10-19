@@ -29,7 +29,7 @@ export function MovieCard({
   return (
     <Card size="sm" className="h-full gap-0 overflow-hidden py-0">
       <div className="relative flex aspect-3/2 items-center justify-center overflow-hidden bg-muted">
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 transition-[filter] duration-150 group-focus-within:brightness-[0.82] group-hover:brightness-[0.82]">
           <MovieCover source={movie.cover ?? ''} loading={coverLoading} onReady={onCoverReady} />
         </div>
         <div className="absolute top-2 left-2 flex max-w-[calc(100%-3.5rem)] flex-wrap gap-1.5">

@@ -1,6 +1,6 @@
 //! Desktop-only preferences. Installer and portable builds share one shell.
 //! The portable marker lives in `runtime/`, next to the Go server, so the
-//! folder the user opens only shows Miyabi.exe.
+//! folder the user opens only shows miyabi.exe.
 
 use std::path::{Path, PathBuf};
 

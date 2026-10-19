@@ -1,7 +1,7 @@
 name: Build desktop (Tauri)
 
 # 与 windows-portable.yml（浏览器版便携包）和 docker-publish.yml 相互独立：
-# 这里构建 Tauri 桌面端，产出 NSIS 安装包 + 便携 zip（Miyabi.exe + runtime/）。
+# 这里构建 Tauri 桌面端，产出 NSIS 安装包 + 便携 zip（miyabi.exe + runtime/）。
 
 on:
   workflow_dispatch:
@@ -47,6 +47,29 @@ jobs:
 
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
+  changelog:
+    name: Generate changelog
+    runs-on: ubuntu-latest
+    needs: version
+    if: github.ref_type == 'tag'
+    outputs:
+      release_body: ${{ steps.git-cliff.outputs.content }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: git-cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: .github/cliff.toml
+          args: -vv --current
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+
   build:
     name: Build windows-x64
     needs: version
@@ -89,11 +112,16 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path src-tauri/runtime | Out-Null
           # Bundled as a resource, so the installer nests it under runtime/
-          # instead of dropping a second exe next to Miyabi.exe.
+          # instead of dropping a second exe next to miyabi.exe.
           go build -trimpath -ldflags "-s -w -H=windowsgui" -o "src-tauri/runtime/miyabi-server.exe" ./cmd
 
       - name: Build desktop app (installer)
         run: pnpm dlx @tauri-apps/cli@^2 build
+
+      # The portable build gets its own identifier so it can run next to an
+      # installed copy: single-instance and the webview profile stop colliding.
+      - name: Build desktop app (portable shell)
+        run: pnpm dlx @tauri-apps/cli@^2 build --no-bundle --config src-tauri/tauri.portable.conf.json
 
       - name: Assemble installers and portable zip
         shell: pwsh
@@ -104,14 +132,16 @@ jobs:
           if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-          # Cargo package name, not productName. productName only names the NSIS installer.
-          $shell = "src-tauri/target/release/miyabi-desktop.exe"
+          # `mainBinaryName = miyabi`: tauri-cli renames the shell binary, so the
+          # installer and this portable zip both ship miyabi.exe.
+          $shell = "src-tauri/target/release/miyabi.exe"
           if (-not (Test-Path $shell)) { throw "desktop shell was not produced: $shell" }
           $nsis = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
           if (-not $nsis) { throw 'the NSIS installer was not produced' }
 
-          # Portable: shell + runtime/ (server and marker) + license.
-          Copy-Item $shell (Join-Path $stage 'Miyabi.exe')
+          # Portable: the second build above, so the shell carries the portable
+          # identifier. Sidecar and marker are shared with the installer build.
+          Copy-Item $shell (Join-Path $stage 'miyabi.exe')
           New-Item -ItemType Directory -Force -Path (Join-Path $stage 'runtime') | Out-Null
           Copy-Item "src-tauri/runtime/miyabi-server.exe" (Join-Path $stage 'runtime/miyabi-server.exe')
           # Marker only. The installer has no such file, so the same exe can tell the two apart.
@@ -140,7 +170,7 @@ jobs:
 
   publish:
     name: Attach packages to the release
-    needs: [version, build]
+    needs: [version, build, changelog]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
@@ -158,18 +188,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.version.outputs.tag }}
+          RELEASE_BODY: ${{ needs.changelog.outputs.release_body }}
         run: |
           set -euo pipefail
 
-          # docker-publish.yml 会为同一个 tag 创建 Release 草稿；等它出现。
+          # docker-publish.yml 通常先建草稿；给它一点时间，避免重复创建。
           for attempt in $(seq 1 30); do
             if gh release view "${TAG}" >/dev/null 2>&1; then break; fi
             sleep 10
           done
 
+          # 仍然没有就自己建，正文用 git-cliff 生成的发布日志，和 docker 工作流一致。
           if ! gh release view "${TAG}" >/dev/null 2>&1; then
-            echo "::warning::release ${TAG} does not exist yet; the packages stay available as workflow artifacts"
-            exit 0
+            printf '%s\n' "${RELEASE_BODY}" > "${RUNNER_TEMP}/release-notes.md"
+            gh release create "${TAG}" \
+              --verify-tag \
+              --title "Release ${TAG}" \
+              --notes-file "${RUNNER_TEMP}/release-notes.md" \
+              --draft
           fi
 
           gh release upload "${TAG}" dist/*-tauri-setup.exe dist/*-tauri-portable.zip --clobber

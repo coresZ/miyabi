@@ -594,12 +594,22 @@
     }
   }
 
+  /* The panel must live inside the player subtree: fixed positioning alone puts
+     it on top, but fullscreen only paints the fullscreen element's subtree. */
+  function mountPanel() {
+    if (!panel) return;
+    var host = document.fullscreenElement || document.querySelector('.miyabi-player-stage');
+    if (!host) return;
+    if (panel.parentNode !== host) host.appendChild(panel);
+  }
+
   /* ---------------- 对外入口 ---------------- */
 
   window.openGifCapture = function () {
     var video = activeVideo();
     if (!video) { alert('请先打开一个视频'); return; }
     var p = ensurePanel();
+    mountPanel();
     var s = loadSettings();
     gcSet('gcFpsSel', String(s.fps));
     /* 兼容旧存档(0.75)与新存档(75) */

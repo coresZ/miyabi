@@ -80,7 +80,7 @@ docs/desktop-tauri-plan.md       # 本文
 
 | 契约 | 取值 / 位置 |
 |---|---|
-| 可执行名 | `runtime/miyabi-server.exe`（与壳分目录，顶层只显示 `Miyabi.exe`；**故意不叫 `miyabi`，避免与壳 `Miyabi.exe` 在 Windows 大小写不敏感下重名**） |
+| 可执行名 | 壳 `miyabi.exe`（`mainBinaryName`），后端 `runtime/miyabi-server.exe`。两者不同名，Windows 大小写不敏感下也不会互相覆盖 |
 | 监听地址 | 环境变量 `MIYABI_LISTEN`（默认 `:8080`），见 `internal/config/config.go:54` |
 | 数据目录 | 环境变量 `MIYABI_DATA_DIR`，见 `internal/config/config.go:55` |
 | 便携配置 | exe 同目录 `miyabi.env`，见 `internal/config/portable.go` |
@@ -109,7 +109,7 @@ docs/desktop-tauri-plan.md       # 本文
 - `tauri.conf.json`：
   ```jsonc
   {
-    "productName": "Miyabi",
+    "productName": "miyabi",
     "identifier": "com.ppxb.miyabi.desktop",
     "bundle": {
       "resources": { "runtime/": "runtime/" },
@@ -136,7 +136,8 @@ docs/desktop-tauri-plan.md       # 本文
 
 ### 5.6 构建与运行
 - **安装包**：`tauri build` → Windows **NSIS 安装包**（`runtime/` 作为资源一并打入）。
-- **便携版**：不安装，直接跑的 zip = `Miyabi.exe` + `runtime/`（`miyabi-server.exe` 与 `portable` 标记）+ `LICENSE` + `使用说明.md`。顶层只有一个 exe。
+- **便携版**：不安装，直接跑的 zip = `miyabi.exe` + `runtime/`（`miyabi-server.exe` 与 `portable` 标记）+ `LICENSE` + `使用说明.md`。顶层只有一个 exe。
+- **两个变体**：安装版用 `com.ppxb.miyabi.desktop`；便携版用 `src-tauri/tauri.portable.conf.json` 覆盖成 `com.ppxb.miyabi.portable` + `productName=miyabi-portable`，所以能和安装版同时运行（单实例、WebView 存储都分开）。CI 先构建安装版，再 `--no-bundle` 构建一次便携壳。
 - 本地一键：`scripts/build-desktop.ps1`（本机需 Rust）；或交给 CI。
 - dev 预览需本机 Rust：先 `pnpm --dir web build`（内嵌前端），再编 `runtime/miyabi-server.exe`，最后 `pnpm dlx @tauri-apps/cli@^2 dev`。本项目不做本地调试，故不提供 dev 脚本。
 
@@ -240,7 +241,7 @@ git merge upstream/master
 
 | 层 | 做法 |
 |---|---|
-| 运行期 | 首次开启局域网时尝试 `netsh advfirewall firewall add rule dir=in action=allow program=<Miyabi.exe>`；无管理员权限则失败，不阻断 |
+| 运行期 | 首次开启局域网时尝试 `netsh advfirewall firewall add rule dir=in action=allow program=<miyabi.exe>`；无管理员权限则失败，不阻断 |
 | 引导 | 设置页局域网区块加一行状态：端口 + 「其他设备打不开？」链接，打开 `control.exe /name Microsoft.WindowsFirewall` |
 | 安装期 | NSIS hook 提权预置入站规则，可选增强 |
 
@@ -263,6 +264,18 @@ git merge upstream/master
 - **`runtime/miyabi-server.exe` 也要单独签名**，否则子进程仍会触发 SmartScreen。
 
 实施顺序建议：防火墙引导 → 代码签名 → 自动更新（更新依赖签名产物）。
+
+### 11.4 播放页后续（未实施）
+
+| 项 | 说明 |
+|---|---|
+| 播放错误可见 | `player-core.js` 只监听 `loadedmetadata` / `ended` / `timeupdate`，没有 `error` / `stalled`。片源 404、鉴权过期、编码不支持时是黑屏，需要错误覆盖层与重试/换源 |
+| 断点续播 | 页面未传 `onProgress`，后端也没有播放进度表；刷新或误关窗口后从头开始 |
+| 卡片「正在播放」状态 | 需要卡片订阅播放会话，等 `usePlayerSession` 落地后再做 |
+| 动作注册表（插件化） | 现在播放入口直接写在 `library/movie-card.tsx`；等第二个入口（下载/稍后看）出现再抽 |
+| 桌面详情统一入口 | 桌面详情仍是内嵌播放器，移动端才跳转 `/play` |
+| 控制条精简 | 12 个跳转按钮、A/B 循环行仍常驻；画中画、单帧截图、填充模式、字幕均未做 |
+| 无边框首次提示 | 进入后没有「按 Esc 退出」的一次性提示 |
 
 ---
 

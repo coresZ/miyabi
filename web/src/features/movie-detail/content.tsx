@@ -40,7 +40,11 @@ function LibraryMovieDetail({ movieId }: { movieId: number }) {
       ) : null}
       <MovieHero movie={detail.data} libraryStatus={detail.data.scrape_status} />
       {detail.data.videos?.length ? (
-        <MoviePlayer videos={detail.data.videos} title={detail.data.title || detail.data.code} />
+        <MoviePlayer
+          videos={detail.data.videos}
+          title={detail.data.title || detail.data.code}
+          movieId={movieId}
+        />
       ) : null}
       <MoviePreviews images={detail.data.preview_images} />
       {detail.data.id ? <LibraryCatalogueExtras movieId={detail.data.id} /> : null}
