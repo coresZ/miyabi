@@ -217,6 +217,18 @@ git merge upstream/master
 
 ---
 
+## GitHub Release 编排
+
+- **唯一发布入口**：`release.yml`，手动 `workflow_dispatch`；输入目标 tag 和 `desktop` / `portable` / `docker` 三个复选框（桌面/便携默认勾选，Docker 默认不勾）。负责生成 changelog、创建草稿，并在选中组件全部成功后正式发布。
+- **构建工作流只构建并上传自己的产物**：
+  - `desktop-tauri.yml`：Windows Tauri 安装包 + 桌面便携 zip；传入 `tag`/`ref` 时按 tag checkout，并在 `upload_release=true` 时上传这两个文件，不创建 Release。
+  - `windows-portable.yml`：浏览器版 Windows 便携 zip + smoke test；传入 `tag`/`ref` 时按 tag checkout，并在 `upload_release=true` 时上传 amd64/arm64 zip，不创建 Release。
+  - `docker-publish.yml`：只由 release 调用，构建并推送 GHCR 镜像（`x.y.z` / `x.y` / `x` / `latest`）；不创建 Release。
+- **创建/发布分离**：`gh release create` 和最终 `gh release edit --draft=false` 只在 `release.yml`；桌面/便携的 release job 只在 `upload_release=true` 时执行 `gh release upload`。
+- 未勾选的组件 job 是 skipped，`publish` 用 `always()` + 结果检查放行 skipped；tag 需要先存在。手动触发构建工作流只用于验证，不会发布 Release。
+
+---
+
 ## 10. 里程碑（待办）
 
 - [x] M1 骨架：`src-tauri/` 建窗口并指向本地服务，已通过 CI 构建。
@@ -224,6 +236,7 @@ git merge upstream/master
 - [x] M3 打包：Windows NSIS 安装包，Go 后端以 resources 装入 `runtime/`。
 - [x] M4 局域网：设置页开关 + 端口 + 访问密码 + 局域网地址复制。**未做**：Windows 防火墙引导。
 - [x] M5 CI：`desktop-tauri.yml` 出安装包与便携 zip（`archive: false`）；WebView2 用 `embedBootstrapper`。
+- [x] Release 编排：`release.yml` 手动选择 tag 和组件，唯一创建/发布 Release；桌面/便携工作流构建并上传自己的产物，Docker 只在勾选时推送镜像。
 - [x] 进程回收：Windows Job Object（`KILL_ON_JOB_CLOSE`），壳被强杀时由系统结束后端。
 - [x] M6 图标：`icon/miyabi.ico`（深色圆角底板，16–256 多尺寸）已接入 `bundle.icon`。
 - [x] M6 图标小尺寸重做：16–1024 全部改为深色圆角底板（`#1b2233`）+ 插画占画布 72%，各尺寸可见比例稳定在 57% 左右；`miyabi.ico` 由 `scripts/build-ico.py` 重新生成（16–128 为 BMP 条目，256 为 PNG）。

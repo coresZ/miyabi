@@ -1,10 +1,30 @@
 name: Build Windows portable
 
-# 与 docker-publish.yml 相互独立：同一个 tag 触发，各自构建、各自上传。
+# 只构建浏览器版便携包；Release 由 release.yml 创建。
+# 传入 tag 时，本工作流只上传自己的便携 zip，不创建 Release。
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_call:
+    inputs:
+      version:
+        description: Release version used in artifact names
+        required: false
+        type: string
+        default: dev
+      tag:
+        description: Existing release tag to upload to; empty means build-only
+        required: false
+        type: string
+        default: ''
+      upload_release:
+        description: Upload the built packages to the existing release
+        required: false
+        type: boolean
+        default: false
+      ref:
+        description: Git ref to build; release passes the tag
+        required: false
+        type: string
+        default: ''
   # 手动触发（不打 tag）用于验证构建：只产出 workflow artifact，不动 Release。
   workflow_dispatch:
     inputs:
@@ -38,7 +58,7 @@ jobs:
 
             echo "tag=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
           else
-            version="${{ inputs.version }}"
+            version="${{ inputs.version || 'dev' }}"
             echo "tag=" >> "${GITHUB_OUTPUT}"
           fi
 
@@ -55,6 +75,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -183,43 +205,34 @@ jobs:
             if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
           }
 
-  publish:
-    name: Attach packages to the release
-    needs: [version, build, smoke]
-    if: github.ref_type == 'tag'
+  release:
+    name: Upload packages to the release
+    needs: [build, smoke]
+    if: inputs.upload_release
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download the packages
+      - name: Download the built packages
         uses: actions/download-artifact@v8
         with:
-          path: dist
           pattern: miyabi-*-windows-*-portable.zip
           merge-multiple: true
-          # 同上：保留上传时的 zip 原样。
+          path: dist
           skip-decompress: true
 
-      - name: Attach to the release
+      - name: Upload to the release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 这个 job 没有 checkout，工作目录里没有 .git，gh 无法推断目标仓库；
-          # 缺了它每个 gh 调用都会失败，之前因此把「附件已就位」误判成成功。
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ needs.version.outputs.tag }}
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-
-          # 与 docker-publish.yml 共用同一个 tag 触发，两者互不等待：
-          # 谁先到谁建草稿，另一方只做自己那部分。Docker 工作流随后补齐正文并取消草稿。
-          if ! gh release view "${TAG}" >/dev/null 2>&1; then
-            # 两边可能同时建，抢输的一方失败后复核一次即可，不当作错误。
-            gh release create "${TAG}" \
-              --verify-tag \
-              --title "Release ${TAG}" \
-              --generate-notes \
-              --draft ||
-              gh release view "${TAG}" >/dev/null 2>&1
+          shopt -s nullglob
+          assets=(dist/*.zip)
+          if (( ${#assets[@]} == 0 )); then
+            echo "::error::no portable packages were downloaded" >&2
+            exit 1
           fi
-
-          gh release upload "${TAG}" dist/*.zip --clobber
+          gh release upload "$TAG" "${assets[@]}" --clobber

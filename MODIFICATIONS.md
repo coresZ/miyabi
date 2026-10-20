@@ -6,9 +6,19 @@
 
 - 前端：`pnpm --dir web exec tsc --noEmit`、`pnpm --dir web exec oxlint src`、`pnpm --dir web exec oxfmt <改动文件> --check`、`pnpm --dir web test`、`pnpm --dir web build`
 - 播放器脚本：`node --check web/public/player/js/player-core.js` 等
-- 桌面壳：本地调试用 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-desktop.ps1`（自动解析 cargo / go / pnpm 与 `cargo metadata` 的 target 目录）；release 产物仍由 CI（`.github/workflows/desktop-tauri.yml`）验证
+- 桌面壳：本地调试用 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-desktop.ps1`（自动解析 cargo / go / pnpm 与 `cargo metadata` 的 target 目录）；release 产物由 `.github/workflows/release.yml` 统一编排，各构建工作流只上传 artifacts
 
 ---
+
+## .github/workflows/
+
+用途：CI 构建与 GitHub Release 编排。
+
+- `release.yml`：**唯一**创建和发布 Release 的工作流，使用 `workflow_dispatch` 手动触发。输入 `tag` + `desktop` / `portable` / `docker` 三个复选框（桌面/便携默认勾选，Docker 默认不勾）；先创建草稿，只调用勾选的构建工作流，全部成功后正式发布。`gh release create/edit` 只在此工作流。
+- `desktop-tauri.yml`：只构建 Windows Tauri 安装包和桌面便携 zip；被 `release.yml` 传入 `tag`、`ref`、`upload_release=true` 时，由本工作流的 `release` job 上传自己的两个文件；支持 `workflow_call`、手动和 `feat/desktop-*` 分支推送，不创建 Release。
+- `windows-portable.yml`：只构建浏览器版 Windows 便携 zip 并跑 amd64 smoke test；被传入 `tag`、`ref`、`upload_release=true` 时上传自己的 amd64/arm64 zip；支持 `workflow_call` 和手动触发，不创建 Release。
+- `docker-publish.yml`：只由 `release.yml` 调用，构建并推送 GHCR 多架构镜像；使用传入的 `version` 打 `x.y.z` / `x.y` / `x` / `latest`，不创建 Release。
+- 发布流程：创建 `v*.*.*` tag → 在 Actions 手动运行 Release，选择 tag 和组件 → 创建草稿 → 勾选的桌面/便携/Docker 并行构建（桌面/便携各自上传产物）→ 正式发布。`contents: write` 只出现在 Release 创建/发布和两个上传 job 中，构建 job 保持只读。
 
 ## icon/
 
@@ -50,7 +60,7 @@
 - 命令返回 `Result<(), String>` 时 `tauri::Error` 不能 `?`，要 `map_err`；`setup` 里的 `String` 错误要转 `std::error::Error`。
 - 产物名：`miyabi-<version>-windows-x86_64-tauri-portable.zip` 与 `...-tauri-setup.exe`；上传用 `archive: false`。
 - 两个变体：安装版 `com.ppxb.miyabi.desktop`；便携版由 `tauri.portable.conf.json` 覆盖为 `com.ppxb.miyabi.portable` + `productName=miyabi-portable`，两者可同时运行。CI/脚本顺序固定为「安装版 → `--no-bundle` 便携壳」，因为共用 `target/release/miyabi.exe`。
-- 发布日志：`desktop-tauri.yml` 在 tag 构建时跑 `git-cliff`（`.github/cliff.toml`，`--current`），若 `docker-publish.yml` 还没建 Release 草稿，就自己用这份正文建；已存在则只上传附件，不改正文。
+- 发布日志：`release.yml` 在手动发布时跑 `git-cliff`（`.github/cliff.toml`，`--current`）并创建草稿；桌面/便携工作流收到 tag 后各自上传平台产物，Docker 只在勾选时推送镜像；全部成功后才正式发布，其他工作流不创建 Release。
 - 启动链路：splash 先出现 → 后台线程起后端（30s 上限）→ 主窗口隐藏创建并加载 → `PageLoadEvent::Finished` 时显示主窗口并关 splash。splash 至少 600ms；配置未完成时走 splash → `setup.html`，向导开成功才关 splash。
 - 兜底：后端启动失败 / 超时，或开窗失败 → splash 保留在原生错误框后方，用户关闭错误框后 `exit(1)`（先关 splash 会因“最后一个窗口关闭”提前退出）；主窗口 10s 内没有加载完成事件会强制显示主窗口并关 splash，不留隐藏空窗。
 - 主题：splash 固定深色，不跟随系统；主窗口和 splash 的 `background_color` 都是 `#09090b`，避免 WebView2 首帧白闪（`Color` 来自 `tauri::utils::config::Color`）。
