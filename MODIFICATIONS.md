@@ -6,7 +6,7 @@
 
 - 前端：`pnpm --dir web exec tsc --noEmit`、`pnpm --dir web exec oxlint src`、`pnpm --dir web exec oxfmt <改动文件> --check`、`pnpm --dir web test`、`pnpm --dir web build`
 - 播放器脚本：`node --check web/public/player/js/player-core.js` 等
-- 桌面壳：本机未装 Rust，编译与产物由 CI（`.github/workflows/desktop-tauri.yml`）验证
+- 桌面壳：本地调试用 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-desktop.ps1`（自动解析 cargo / go / pnpm 与 `cargo metadata` 的 target 目录）；release 产物仍由 CI（`.github/workflows/desktop-tauri.yml`）验证
 
 ---
 
@@ -27,21 +27,22 @@
 
 **文件**
 
+- `Cargo.lock`：已纳入版本管理，固定 Tauri/crate 版本；`scripts/run-desktop.ps1` 检测到它时使用 `--locked`，CI 的 `tauri build` 也会按锁文件解析。
 - `tauri.conf.json`：`productName = miyabi`、`mainBinaryName = miyabi`（安装版与便携版都叫 `miyabi.exe`）、`bundle.icon = ["../icon/miyabi.ico"]`、`bundle.resources = { "runtime/": "runtime/" }`（后端作为资源装进 `runtime/`，不用 `externalBin`，否则安装器会把第二个 exe 摊在壳旁边）、`webviewInstallMode = embedBootstrapper`、`frontendDist = stub`。
 - `capabilities/default.json`：`main` / `setup` / `splash` 只给 `core:default`。
 - `capabilities/desktop-setup.json`：本地 `setup` 窗口才能调 `desktop_defaults` / `pick_data_dir` / `complete_setup`。
 - `capabilities/desktop-remote.json`：只允许 `http://127.0.0.1:*/*` 与 `http://localhost:*/*` 调 `desktop_config` / `apply_desktop` / `enter_player_immersive` / `restore_normal_window` / `resize_player_immersive` / `load_ui_state` / `save_ui_state`，外加 `core:window` 的 close / start-dragging。
 - `src/main.rs`：Builder + 插件 + `setup` 开 splash、`spawn_blocking` 跑启动流程（配置未完成→开 setup；否则等后端就绪→开主窗口）+ 退出回收。splash 至少停留 600ms，避免一闪而过。
 - `src/sidecar.rs`：**唯一的上游契约适配点**——选端口、起 `runtime/miyabi-server.exe`（`MIYABI_LISTEN` / `MIYABI_DATA_DIR` / 可选 `MIYABI_ACCESS_PASSWORD`）、TCP 就绪等待、退出 kill。上游已删 `/api/health` 与 `healthcheck`，不要再改成 HTTP 探活。
-- `src/window.rs`：`WebviewWindowBuilder`；splash 320×320、无边框、不进任务栏、固定深色底；主窗口隐藏创建，`PageLoadEvent::Finished` 后再显示并关 splash（中间不留空窗）；主窗口与 setup 都 `maximizable(false)`；主窗口固定：高度取逻辑工作区 80%，播放器 16:9 + 目录 320，窗口宽 = 播放器宽 + 320，`resizable(false)`。
+- `src/window.rs`：`WebviewWindowBuilder`；splash 320×320、无边框、不进任务栏、固定深色底；主窗口隐藏创建，`PageLoadEvent::Finished` 后再显示并关 splash（中间不留空窗）；主窗口与 setup 都 `maximizable(false)`；setup 固定 560×640（`resizable(false)`），内容不改变窗口大小；主窗口固定：高度取逻辑工作区 80%，播放器 16:9 + 目录 320，窗口宽 = 播放器宽 + 320，`resizable(false)`。
 - `src/prefs.rs`：`desktop.json`；`runtime/` 里存在空文件 `portable` 才算便携版（安装版写 AppData，便携版写 `runtime/`，数据目录固定壳旁边 `data/`）。同目录的 `ui-state.json` 存设备 UI 偏好（NSFW / 主题 / 播放器音量与倍速 / GIF 设置），与端口无关。
 - `src/commands.rs`：`desktop_defaults` / `pick_data_dir` / `complete_setup` / `desktop_config` / `apply_desktop` / `enter_player_immersive` / `restore_normal_window` / `resize_player_immersive` / `load_ui_state` / `save_ui_state`。阻塞操作（起停后端、写配置）一律 `spawn_blocking`，文件夹选择用非阻塞 `pick_folder`。窗口：正常窗口固定（`resizable(false)`、`maximizable(false)`，尺寸按播放页内容：逻辑工作区 80% 高度 × 16:9 播放器 + 320 目录）；`enter_player_immersive` 拍快照（inner_size / outer_position / 实际 decorated / 实际 resizable）、去标题栏、`resizable(false)`、按视频宽高比严格等比例 fit（以正常播放器区宽度为基准，工作区内居中）；`resize_player_immersive` 按视频比例缩放并锚定对角；`restore_normal_window` 按快照恢复并清空，幂等，不涉及 maximize。`load_ui_state` / `save_ui_state` 读写 `ui-state.json`（临时文件 + rename，避免半截 JSON）。
 - `src/log.rs`：`miyabi-desktop.log` 与配置同目录，记录启动、端口、后端进程、开窗、设置重启；2MB 轮转。
 - `src/job.rs`：Windows Job Object（`KILL_ON_JOB_CLOSE`），壳被强杀时由系统回收后端；直接声明 kernel32 函数，不引 `windows-sys`。
-- `stub/setup.html`：首次配置向导；便携版不问数据目录，安装版用系统文件夹对话框。
+- `stub/setup.html`：首次配置向导；便携版不问数据目录，安装版用系统文件夹对话框。数据目录为只读单行输入框，长路径省略（悬停看完整路径），不会换行撑高窗口；setup 固定 560×640。
 - `stub/splash.html` + `stub/splash-icon.png`：自包含启动页（无外部资源）；图标由 `icon/artwork-1024.png` 裁边缩放到 192px。`prefers-reduced-motion` 下停掉动画。
 - `build.rs`：`AppManifest::commands` 生成 `allow-desktop-*` 权限，不声明会在构建期失败。
-- `.gitignore`：忽略 `target/`、`gen/`、`runtime/`。
+- `.gitignore`：忽略 `target/`、`gen/`、`permissions/`（`build.rs` 自动生成）、`runtime/`。
 
 **已知取舍**
 
@@ -53,6 +54,11 @@
 - 兜底：后端启动失败 / 超时，或开窗失败 → splash 保留在原生错误框后方，用户关闭错误框后 `exit(1)`（先关 splash 会因“最后一个窗口关闭”提前退出）；主窗口 10s 内没有加载完成事件会强制显示主窗口并关 splash，不留隐藏空窗。
 - 主题：splash 固定深色，不跟随系统；主窗口和 splash 的 `background_color` 都是 `#09090b`，避免 WebView2 首帧白闪（`Color` 来自 `tauri::utils::config::Color`）。
 - 状态：M1/M2/M3/M5 已落地并通过 CI。未做：防火墙引导、自动更新、代码签名（见 `docs/desktop-tauri-plan.md` §11）。
+
+## scripts/
+
+- `run-desktop.bat`：双击入口。切到仓库根后用 `-ExecutionPolicy Bypass` 调 `run-desktop.ps1`，透传参数（如 `-Force`）；失败时 `pause` 保留窗口，成功启动后随应用退出。
+- `run-desktop.ps1`：Windows 本地 debug 启动，不写死用户目录或 target 路径。cargo 按 PATH → `CARGO_HOME` → `%USERPROFILE%\.cargo\bin` 查找并把所在目录补进当前进程 PATH；go 按 PATH → `GOROOT` → 默认安装目录查找；`web/dist` 缺失或传 `-Force` 时跑 `pnpm install --frozen-lockfile` + `pnpm build`。用 `cargo metadata --no-deps` 读真实 `target_directory`，把 `src-tauri/runtime/miyabi-server.exe` 复制到 `<target>/debug/runtime/`（`sidecar.rs` 按壳 exe 同级 `runtime/` 解析）；构建前把 `TEMP`/`TMP` 指到 `<target>/cl-temp`，避免受限环境里 cl.exe 的 C1083；debug 的 WebView2 数据目录固定到 `<target>/webview2-debug`（可由 `WEBVIEW2_USER_DATA_FOLDER` 覆盖），避免和安装版/便携版争用；debug runtime 放置 `portable` 标记，prefs/数据库/封面/日志落在 `<target>/debug` 下，避免 `%APPDATA%` 权限问题；`Cargo.lock` 存在时追加 `--locked`；最后 `cargo build` + `cargo run`。启动前检测 `miyabi-desktop` 进程，`CARGO_BUILD_TARGET` 非空时直接报错（只支持 host debug）。
 
 ## web/public/player/
 
@@ -96,6 +102,7 @@
   - 深链：解析 `?movie=<id>`，在目录中定位并播第一段；找不到继续翻页（上限 10 页），仍失败且已连 115 时切 remote 重试一次，最后提示。
   - 沉浸：`enterPlayerImmersive` 去标题栏、按视频比例严格等比例 fit；原生拖边关闭，左上/右下两个热区通过 pointer 拖拽调用 `resizePlayerImmersive`，由壳按比例算另一边并锚定对角；给 `html` 加 `player-immersive`（关掉 `scrollbar-gutter` 的黑带）；目录为右侧悬浮抽屉；`Escape` 先收抽屉再退沉浸。
   - 播放器外层 wrapper `relative flex min-h-0 flex-1 flex-col`：NSFW 遮罩包一层后仍能撑满左列（曾因 wrapper 只有 `relative` 导致播放器缩成 16:9 靠在顶部）。
+  - NSFW 遮罩 `z-50`；桌面顶部返回/关闭条提到 `z-[60]`，遮罩不再挡住“返回媒体库”，gate 状态下仍能离开播放页。
   - 全屏：`F` / 控制条 / 顶栏都走 `player.toggleFullscreen()`；`fullscreenchange` 退出时一律 `restoreNormalWindow()` 回正常，不回沉浸。
   - 顶部悬浮条：退出沉浸（窗口图标）/ 全屏（四角括弧）/ 关闭（✕），悬停才淡入。
   - NSFW：`nsfwMode` 开启且本次访问未确认时，不 `setSources`、不自动播放；播放器区域显示遮罩与「播放」按钮，目录可浏览但点选只记 pending；确认后本次访问内不再拦截；缩略图用 `MediaImage` 遮挡。
@@ -129,4 +136,5 @@
 
 ## docs/
 
+- `desktop-tauri-plan.md`：§5.6 本地调试改为 `scripts/run-desktop.ps1`，记录其对 `web/dist`、`miyabi-server.exe`、`target/debug/runtime/` 与 cargo PATH 的处理。
 - `player-window-modes.md`：窗口/沉浸/播放器全屏 + 播放入口与 NSFW 的方案与实现记录。定稿：正常窗口固定（`resizable(false)`、`maximizable(false)`，尺寸按播放页内容：逻辑工作区 80% 高度 × 16:9 播放器 + 320 目录，播放器/目录贴边，信息条叠加）；沉浸为播放器单窗、按视频比例 fit，左上/右下角自定义比例缩放；全屏只对播放器 stage 调 Fullscreen API、画面 contain；`Esc`/手动退出/全屏退出一律回正常界面并恢复进入沉浸前的窗口快照（尺寸/位置/实际 decorations/实际 resizable，不记录 maximized），不回到沉浸。右侧目录固定 320px，手柄只切换展开/收起。详情页独立播放弹窗删除，封面用透明播放按钮统一走 `/play`；播放页目录缩略图接入 `MediaImage`，视频在 NSFW 开启时先 gate、每次进入播放页确认一次，点击后才加载播放。含 `ui-state.json` 设备 UI 偏好持久化、壳的 `enter_player_immersive` / `restore_normal_window` / `resize_player_immersive` 设计、Tauri 2.6+ WebView2 全屏说明、验收清单。

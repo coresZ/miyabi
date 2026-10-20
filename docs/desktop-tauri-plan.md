@@ -139,7 +139,8 @@ docs/desktop-tauri-plan.md       # 本文
 - **便携版**：不安装，直接跑的 zip = `miyabi.exe` + `runtime/`（`miyabi-server.exe` 与 `portable` 标记）+ `LICENSE` + `使用说明.md`。顶层只有一个 exe。
 - **两个变体**：安装版用 `com.ppxb.miyabi.desktop`；便携版用 `src-tauri/tauri.portable.conf.json` 覆盖成 `com.ppxb.miyabi.portable` + `productName=miyabi-portable`，所以能和安装版同时运行（单实例、WebView 存储都分开）。CI 先构建安装版，再 `--no-bundle` 构建一次便携壳。
 - 本地一键：`scripts/build-desktop.ps1`（本机需 Rust）；或交给 CI。
-- dev 预览需本机 Rust：先 `pnpm --dir web build`（内嵌前端），再编 `runtime/miyabi-server.exe`，最后 `pnpm dlx @tauri-apps/cli@^2 dev`。本项目不做本地调试，故不提供 dev 脚本。
+- dev 预览：双击 `scripts\run-desktop.bat`，或在终端执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-desktop.ps1`。脚本自动解析 cargo（PATH / `CARGO_HOME` / 用户目录）、go（PATH / `GOROOT` / 默认安装目录）和 pnpm；`web/dist` 缺失或传 `-Force` 时先构建前端；用 `cargo metadata` 解析真实 target 目录，把 sidecar 复制到 `<target>/debug/runtime/`；debug 使用独立的 WebView2 数据目录 `<target>/webview2-debug`，避免和安装版共用缓存导致启动失败；debug runtime 放置 `portable` 标记，prefs、数据库、封面和日志都落在 `<target>/debug` 下，不写 `%APPDATA%`；最后 `cargo build` + `cargo run`（debug）。仅支持 Windows host 构建。
+- 依赖锁定：`src-tauri/Cargo.lock` 已纳入版本管理；本地脚本检测到它时用 `--locked`，CI 的 `tauri build` 也会按锁文件解析。改依赖后需重新生成并提交。
 
 ### 5.7 CI（新增，不动上游）
 `.github/workflows/desktop-tauri.yml`（名称 `Build desktop (Tauri)`，与 `Build Windows portable`、`Publish Miyabi image` 明显区分）：

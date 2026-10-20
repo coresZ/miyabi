@@ -748,7 +748,7 @@ export function PlayerPage() {
             className={cn(
               'flex min-w-0 items-center gap-3',
               desktopShell
-                ? 'absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/80 via-black/45 to-transparent px-4 py-2 text-white'
+                ? 'absolute inset-x-0 top-0 z-[60] bg-gradient-to-b from-black/80 via-black/45 to-transparent px-4 py-2 text-white'
                 : 'mt-auto',
               immersive && 'hidden'
             )}

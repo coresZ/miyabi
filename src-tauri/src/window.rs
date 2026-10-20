@@ -43,9 +43,10 @@ pub fn open_setup(app: &AppHandle) -> tauri::Result<()> {
     crate::log::info("opening the setup window");
     WebviewWindowBuilder::new(app, "setup", WebviewUrl::App("setup.html".into()))
         .title("miyabi")
+        // Fixed size: the setup form is designed for 560x640 and long paths are
+        // ellipsized instead of growing the window.
         .inner_size(560.0, 640.0)
-        .min_inner_size(480.0, 560.0)
-        .resizable(true)
+        .resizable(false)
         .maximizable(false)
         .center()
         .build()?;

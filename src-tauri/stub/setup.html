@@ -34,8 +34,10 @@
       body {
         margin: 0;
         min-height: 100vh;
+        padding: 24px 0;
         display: grid;
         place-items: center;
+        overflow-y: auto;
         background: var(--bg);
         color: var(--text);
         font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
@@ -116,12 +118,18 @@
       .path {
         flex: 1;
         min-width: 0;
-        padding: 8px 10px;
+        width: 100%;
+        height: 36px;
+        padding: 0 10px;
         border: 1px solid var(--line);
         border-radius: 8px;
+        background: transparent;
         color: var(--muted);
+        font: inherit;
         font-size: 12px;
-        word-break: break-all;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       button.secondary {
         width: auto;
@@ -143,7 +151,7 @@
         <div class="field" id="dataField" hidden>
           <label>数据目录</label>
           <div class="path-row">
-            <div id="dataDir" class="path"></div>
+            <input id="dataDir" class="path" readonly />
             <button id="pick" class="secondary" type="button">选择文件夹</button>
           </div>
           <p class="hint">不选则使用上面的默认位置。这里只放数据库、封面和日志，媒体目录仍在设置里添加。</p>
@@ -185,11 +193,16 @@
         return fn(cmd, args)
       }
 
+      function showDir(path) {
+        dataDir.value = path
+        dataDir.title = path
+      }
+
       invoke('desktop_defaults')
         .then((defaults) => {
           portable = Boolean(defaults.portable)
           selectedDir = defaults.dataDir || ''
-          dataDir.textContent = selectedDir
+          showDir(selectedDir)
           dataField.hidden = portable
           portableHint.hidden = !portable
         })
@@ -204,7 +217,7 @@
           .then((picked) => {
             if (!picked) return
             selectedDir = picked
-            dataDir.textContent = picked
+            showDir(picked)
           })
           .catch((err) => {
             error.textContent = err?.message || String(err)
