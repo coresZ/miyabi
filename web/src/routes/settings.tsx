@@ -11,6 +11,7 @@ import { EmbySection } from '@/features/settings/emby-section'
 import { LocalSourceSection } from '@/features/settings/local-sources-section'
 import { NetworkSection } from '@/features/settings/network-section'
 import { PanSection } from '@/features/settings/pan-section'
+import { PlayerSection } from '@/features/settings/player-section'
 import { PrivacySection } from '@/features/settings/privacy-section'
 import { SubscriptionSection } from '@/features/settings/subscription-section'
 import { ScrapingSection } from '@/features/settings/scraping-section'
@@ -30,6 +31,7 @@ function SettingsPage() {
           <AppearanceSection />
           <Separator />
           <PrivacySection />
+          <PlayerSection />
           <Separator />
           <NetworkSection />
           <DesktopSection />

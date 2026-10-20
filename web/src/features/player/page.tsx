@@ -1,10 +1,10 @@
 import {
   ArrowLeftIcon,
-  ChevronRightIcon,
   EyeIcon,
   EyeOffIcon,
   LockIcon,
   Maximize2Icon,
+  PanelRightIcon,
   PlayIcon,
   SearchIcon,
   XIcon
@@ -111,6 +111,7 @@ export function PlayerPage() {
   const desktopShell = isDesktopWindow()
   const setNavHidden = useShellChrome(state => state.setNavHidden)
   const nsfwMode = useUiState(state => state.nsfwMode)
+  const immersiveSize = useUiState(state => state.player.immersiveSize)
   const [immersive, setImmersive] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [nsfwRevealed, setNsfwRevealed] = useState(false)
@@ -127,14 +128,17 @@ export function PlayerPage() {
   const enterImmersive = useCallback(async () => {
     setRailOpen(false)
     setImmersive(true)
+    // Mark this aspect before the async shell call so the metadata effect does
+    // not issue a second fit and race the selected size.
+    fittedAspectRef.current = sourceAspect
     try {
-      await enterPlayerImmersive(sourceAspect)
-      fittedAspectRef.current = sourceAspect
+      await enterPlayerImmersive(sourceAspect, immersiveSize)
     } catch {
+      fittedAspectRef.current = null
       await restoreNormalWindow().catch(() => {})
       setImmersive(false)
     }
-  }, [sourceAspect])
+  }, [sourceAspect, immersiveSize])
 
   const exitImmersive = useCallback(async () => {
     setImmersive(false)
@@ -143,13 +147,16 @@ export function PlayerPage() {
     await restoreNormalWindow().catch(() => {})
   }, [])
 
-  // Refit when a new source reports a different aspect while immersive.
+  // Refit when a new source reports a different aspect while immersive. When
+  // the first metadata arrives after the entry, apply the saved size policy;
+  // later aspect changes keep the current window width.
   useEffect(() => {
     if (!desktopShell || !immersive || fullscreen || !sourceAspect) return
     if (fittedAspectRef.current === sourceAspect) return
+    const size = fittedAspectRef.current === null ? immersiveSize : undefined
     fittedAspectRef.current = sourceAspect
-    void enterPlayerImmersive(sourceAspect).catch(() => {})
-  }, [desktopShell, immersive, fullscreen, sourceAspect])
+    void enterPlayerImmersive(sourceAspect, size).catch(() => {})
+  }, [desktopShell, immersive, fullscreen, sourceAspect, immersiveSize])
 
   const onFullscreenChange = useCallback(
     (active: boolean) => {
@@ -580,22 +587,38 @@ export function PlayerPage() {
             onPointerEnter={() => setChromeVisible(true)}
             onPointerLeave={() => setChromeVisible(false)}
           />
-          {/* Right-edge strip: the catalog slides in without covering the video. */}
+          {/* Right-edge hover zone: moving the pointer to the edge opens the
+              catalog. It is invisible, so the top bar icon remains the only
+              visible catalog button. */}
           <div
             aria-hidden
-            className="absolute inset-y-0 right-0 z-40 w-6"
+            className="absolute inset-y-0 right-0 z-40 w-16"
             onPointerEnter={() => setRailOpen(true)}
           />
           <div
             data-tauri-drag-region
             className={cn(
-              'absolute inset-x-0 top-0 z-50 flex h-9 items-center justify-end bg-gradient-to-b from-black/70 to-transparent pr-1 transition-opacity duration-200 select-none',
+              'absolute inset-x-0 top-0 z-[60] flex h-9 items-center justify-end bg-gradient-to-b from-black/70 to-transparent pr-1 transition-opacity duration-200 select-none',
               chromeVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
             )}
             onPointerEnter={() => setChromeVisible(true)}
             onPointerLeave={() => setChromeVisible(false)}
           >
             <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={railOpen ? '关闭目录' : '打开目录'}
+                aria-pressed={railOpen}
+                title={railOpen ? '关闭目录' : '打开目录'}
+                className={cn(
+                  'text-white hover:bg-white/20 hover:text-white',
+                  railOpen && 'bg-white/15'
+                )}
+                onClick={() => setRailOpen(value => !value)}
+              >
+                <PanelRightIcon />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -803,6 +826,22 @@ export function PlayerPage() {
                   <ArrowLeftIcon />
                 </Link>
               ) : null}
+              {isDesktop && !immersive ? (
+                <Button
+                  variant={desktopShell ? 'ghost' : 'outline'}
+                  size="icon-sm"
+                  aria-label={collapsed ? '展开目录' : '收起目录'}
+                  aria-pressed={!collapsed}
+                  title={collapsed ? '展开目录' : '收起目录'}
+                  className={cn(
+                    desktopShell && 'text-white hover:bg-white/20 hover:text-white',
+                    desktopShell && !collapsed && 'bg-white/10 text-white'
+                  )}
+                  onClick={toggleRail}
+                >
+                  <PanelRightIcon />
+                </Button>
+              ) : null}
               <Button
                 variant={desktopShell ? 'ghost' : 'outline'}
                 size="icon-sm"
@@ -820,7 +859,7 @@ export function PlayerPage() {
                   size="icon-sm"
                   aria-label="沉浸播放"
                   title="沉浸播放"
-                  disabled={gated || !playing}
+                  disabled={gated || !playing || !sourceAspect}
                   className="text-white hover:bg-white/20 hover:text-white"
                   onClick={() => void enterImmersive()}
                 >
@@ -862,9 +901,10 @@ export function PlayerPage() {
             // right edge, so the video owns the whole frame.
             immersive &&
               cn(
-                // Same material as the floating navigation: translucent card
-                // with a blur, instead of a gradient edge.
-                'fixed inset-y-0 right-0 z-50 w-[20rem] max-w-[80vw] rounded-none rounded-l-2xl border border-border/70 bg-background/85 ring-0 backdrop-blur transition-transform duration-200 ease-out',
+                // Video-first dark glass: the drawer reads as a material over
+                // the frame, not as a solid panel. The header/search get their
+                // own local scrim so text stays legible over bright scenes.
+                'fixed inset-y-0 right-0 z-50 w-[20rem] max-w-[80vw] rounded-none rounded-l-2xl border border-white/10 bg-[rgb(8_8_10_/_0.45)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08),-28px_0_70px_rgba(0,0,0,0.46)] ring-0 backdrop-blur-[30px] backdrop-saturate-[1.6] transition-transform duration-200 ease-out [text-shadow:0_1px_2px_rgba(0,0,0,0.55)]',
                 railOpen ? 'translate-x-0' : 'translate-x-full'
               ),
             !immersive &&
@@ -888,18 +928,42 @@ export function PlayerPage() {
           >
             <span className="h-1 w-9 rounded-full bg-border" />
           </div>
-          <div className="flex-none border-b border-border/60 p-3">
+          <div
+            className={cn(
+              'flex-none border-b p-3',
+              immersive
+                ? 'border-white/10 bg-gradient-to-b from-black/30 to-transparent pt-12'
+                : 'border-border/60'
+            )}
+          >
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold">目录列表</h2>
-              <span className="text-xs text-muted-foreground tabular-nums">{countLabel}</span>
+              <h2 className={cn('text-sm font-bold', immersive && 'text-white')}>目录列表</h2>
+              <span
+                className={cn(
+                  'text-xs tabular-nums',
+                  immersive ? 'text-white/45' : 'text-muted-foreground'
+                )}
+              >
+                {countLabel}
+              </span>
             </div>
             <div className="relative mt-2">
-              <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <SearchIcon
+                className={cn(
+                  'pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2',
+                  immersive ? 'text-white/40' : 'text-muted-foreground'
+                )}
+              />
               <input
                 value={search}
                 onChange={event => onSearch(event.target.value)}
                 placeholder="搜索番号或标题"
-                className="h-9 w-full rounded-lg border border-border bg-background pr-3 pl-8 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className={cn(
+                  'h-9 w-full rounded-lg border pr-3 pl-8 text-sm outline-none focus-visible:ring-2',
+                  immersive
+                    ? 'border-white/10 bg-black/30 text-white placeholder:text-white/40 focus-visible:ring-white/20'
+                    : 'border-border bg-background focus-visible:ring-ring'
+                )}
               />
             </div>
             <div className="mt-2 flex [scrollbar-width:none] gap-1.5 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden">
@@ -915,8 +979,12 @@ export function PlayerPage() {
                   className={cn(
                     'h-7 flex-none rounded-full border px-2.5 text-xs whitespace-nowrap transition-colors',
                     option.id === sourceID
-                      ? 'border-transparent bg-primary text-primary-foreground'
-                      : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
+                      ? immersive
+                        ? 'border-transparent bg-white/10 text-white'
+                        : 'border-transparent bg-primary text-primary-foreground'
+                      : immersive
+                        ? 'border-white/10 text-white/50 hover:bg-white/10 hover:text-white'
+                        : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
                     option.disabled
                       ? 'cursor-not-allowed opacity-45 hover:bg-transparent'
                       : 'cursor-pointer'
@@ -930,9 +998,16 @@ export function PlayerPage() {
 
           <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pt-1.5 pb-24 lg:pb-1.5">
             {isPending ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">加载中…</p>
+              <p
+                className={cn(
+                  'py-8 text-center text-sm',
+                  immersive ? 'text-white/50' : 'text-muted-foreground'
+                )}
+              >
+                加载中…
+              </p>
             ) : isError ? (
-              <div className="p-2">
+              <div className={cn('p-2', immersive && 'text-white')}>
                 <ErrorState message="无法读取播放列表" onRetry={reload} retrying={isFetching} />
               </div>
             ) : movies.length === 0 ? (
@@ -957,11 +1032,22 @@ export function PlayerPage() {
                       onClick={() => play(entry.start)}
                       aria-current={isCurrent ? 'true' : undefined}
                       className={cn(
-                        'flex w-full cursor-pointer items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-muted',
-                        isCurrent && 'bg-accent ring-1 ring-border/60'
+                        'flex w-full cursor-pointer items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors',
+                        immersive ? 'hover:bg-white/10' : 'hover:bg-muted',
+                        isCurrent &&
+                          (immersive
+                            ? 'bg-white/10 ring-1 ring-white/10'
+                            : 'bg-accent ring-1 ring-border/60')
                       )}
                     >
-                      <span className="grid aspect-video w-16 flex-none place-items-center overflow-hidden rounded-lg bg-muted text-[0.6rem] text-muted-foreground ring-1 ring-border/60">
+                      <span
+                        className={cn(
+                          'grid aspect-video w-16 flex-none place-items-center overflow-hidden rounded-lg text-[0.6rem]',
+                          immersive
+                            ? 'bg-white/5 text-white/40 ring-1 ring-white/10'
+                            : 'bg-muted text-muted-foreground ring-1 ring-border/60'
+                        )}
+                      >
                         {entry.item.poster ? (
                           <MediaImage
                             source={entry.item.poster}
@@ -973,7 +1059,12 @@ export function PlayerPage() {
                         )}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="inline-block rounded-full border border-border px-1.5 py-0.5 text-[0.6rem] font-semibold tabular-nums">
+                        <span
+                          className={cn(
+                            'inline-block rounded-full border px-1.5 py-0.5 text-[0.6rem] font-semibold tabular-nums',
+                            immersive ? 'border-white/10 text-white/60' : 'border-border'
+                          )}
+                        >
                           {entry.item.code}
                         </span>
                         <span className="mt-1 block truncate text-sm">
@@ -985,31 +1076,19 @@ export function PlayerPage() {
                 })}
                 <div ref={sentinelRef} className="h-6" />
                 {isFetchingNextPage ? (
-                  <p className="py-3 text-center text-sm text-muted-foreground">加载中…</p>
+                  <p
+                    className={cn(
+                      'py-3 text-center text-sm',
+                      immersive ? 'text-white/50' : 'text-muted-foreground'
+                    )}
+                  >
+                    加载中…
+                  </p>
                 ) : null}
               </>
             )}
           </div>
         </section>
-
-        {isDesktop && !immersive ? (
-          <button
-            type="button"
-            aria-label={collapsed ? '展开目录' : '收起目录'}
-            aria-expanded={!collapsed}
-            title="点击收起 / 展开"
-            onClick={toggleRail}
-            style={{
-              left: 'min(calc(100% - var(--rail-w) - 10px), calc(100% - 12px))',
-              transition: 'left 200ms ease-out'
-            }}
-            className="absolute top-1/2 z-10 grid h-[54px] w-[22px] -translate-x-1/2 -translate-y-1/2 cursor-pointer place-items-center rounded-full border border-border bg-background text-foreground shadow-sm"
-          >
-            <ChevronRightIcon
-              className={cn('size-[13px] transition-transform', collapsed && 'rotate-180')}
-            />
-          </button>
-        ) : null}
       </div>
     </main>
   )

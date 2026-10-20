@@ -240,16 +240,22 @@ static IMMERSIVE_ASPECT: Mutex<Option<f64>> = Mutex::new(None);
 
 /// Removes the title bar and locks the window to the video aspect ratio.
 /// The normal window is never maximizable; `restore_normal_window` restores the
-/// exact decorations/resizable/size/position captured here.
+/// exact decorations/resizable/size/position captured here. `size` selects the
+/// initial 16:9 window policy (height / width / near); a missing policy keeps
+/// the current width when refitting for a new source.
 #[tauri::command]
-pub fn enter_player_immersive(app: AppHandle, aspect: Option<f64>) -> Result<(), String> {
+pub fn enter_player_immersive(
+    app: AppHandle,
+    aspect: Option<f64>,
+    size: Option<String>,
+) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "主窗口未打开".to_string())?;
-    let scale = window.scale_factor().map_err(|err| err.to_string())?;
-    let base_width = {
+    let (first, snapshot_size) = {
         let mut snapshot = IMMERSIVE_SNAPSHOT.lock().expect("snapshot lock");
-        if snapshot.is_none() {
+        let first = snapshot.is_none();
+        if first {
             *snapshot = Some(WindowSnapshot {
                 inner_size: window.inner_size().map_err(|err| err.to_string())?,
                 outer_position: window.outer_position().map_err(|err| err.to_string())?,
@@ -257,9 +263,26 @@ pub fn enter_player_immersive(app: AppHandle, aspect: Option<f64>) -> Result<(),
                 resizable: window.is_resizable().map_err(|err| err.to_string())?,
             });
         }
-        snapshot.as_ref().map(|snapshot| {
-            (f64::from(snapshot.inner_size.width) - window::CATALOG_WIDTH * scale).max(1.0)
+        (
+            first,
+            snapshot
+                .as_ref()
+                .map(|snapshot| (snapshot.inner_size.width, snapshot.inner_size.height)),
+        )
+    };
+    let base_width = if first {
+        snapshot_size.and_then(|(width, height)| {
+            let width = f64::from(width);
+            let height = f64::from(height);
+            match size.as_deref() {
+                Some("height") => aspect.map(|aspect| height * aspect),
+                Some("width") => Some(width),
+                Some("near") => Some(width * 1.1),
+                _ => None,
+            }
         })
+    } else {
+        None
     };
     window
         .set_decorations(false)
@@ -269,9 +292,14 @@ pub fn enter_player_immersive(app: AppHandle, aspect: Option<f64>) -> Result<(),
         .map_err(|err| err.to_string())?;
     if let Some(aspect) = aspect {
         *IMMERSIVE_ASPECT.lock().expect("aspect lock") = Some(aspect);
+        // The normal player page is 100% zoom; the immersive frame only needs
+        // the aspect fit in physical pixels.
         fit_to_aspect(&window, aspect, base_width)?;
     }
-    crate::log::info("player window -> immersive");
+    crate::log::info(format!(
+        "player window -> immersive ({})",
+        size.as_deref().unwrap_or("current")
+    ));
     Ok(())
 }
 
@@ -355,13 +383,22 @@ pub fn restore_normal_window(app: AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "主窗口未打开".to_string())?;
-    let _ = window.set_fullscreen(false);
-    *IMMERSIVE_ASPECT.lock().expect("aspect lock") = None;
-    // Keep the snapshot until every restore succeeds, so a failure can retry.
+    let fullscreen = window.is_fullscreen().map_err(|err| err.to_string())?;
     let snapshot = IMMERSIVE_SNAPSHOT
         .lock()
         .expect("snapshot lock")
         .clone();
+    // The page calls this on every fullscreenchange and on mount/unmount; with
+    // no snapshot and no fullscreen there is nothing to restore.
+    if snapshot.is_none() && !fullscreen {
+        *IMMERSIVE_ASPECT.lock().expect("aspect lock") = None;
+        return Ok(());
+    }
+    if fullscreen {
+        let _ = window.set_fullscreen(false);
+    }
+    *IMMERSIVE_ASPECT.lock().expect("aspect lock") = None;
+    // Keep the snapshot until every restore succeeds, so a failure can retry.
     if let Some(snapshot) = snapshot {
         window
             .set_resizable(snapshot.resizable)

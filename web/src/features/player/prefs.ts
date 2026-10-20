@@ -14,5 +14,5 @@ export function readPlayerPrefs(): PlayerPrefs {
 }
 
 export function savePlayerPrefs(prefs: PlayerPrefs): void {
-  updateUiState({ player: prefs })
+  updateUiState(current => ({ player: { ...current.player, ...prefs } }))
 }

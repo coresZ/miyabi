@@ -1,3 +1,5 @@
+import type { ImmersiveSize } from '@/stores/ui-state'
+
 type TauriInvoke = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>
 
 function invoke(): TauriInvoke | null {
@@ -14,10 +16,13 @@ export function isDesktopWindow(): boolean {
 }
 
 /** Desktop: frameless immersive window, fitted to the source aspect by the shell. */
-export async function enterPlayerImmersive(aspect?: number | null): Promise<void> {
+export async function enterPlayerImmersive(
+  aspect?: number | null,
+  size?: ImmersiveSize
+): Promise<void> {
   const call = invoke()
   if (!call) return
-  await call('enter_player_immersive', { aspect: aspect ?? null })
+  await call('enter_player_immersive', { aspect: aspect ?? null, size: size ?? null })
 }
 
 /** Restore the exact window state captured before entering immersive mode. */

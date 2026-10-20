@@ -1,5 +1,5 @@
-import type { PropsWithChildren } from 'react'
 import { BellIcon, CompassIcon, FilmIcon, PlayIcon, SearchIcon, SettingsIcon } from 'lucide-react'
+import type { PropsWithChildren } from 'react'
 
 import { FloatingNav, type FloatingNavItem } from '@/components/floating-nav'
 import { Toaster } from '@/components/ui/sonner'

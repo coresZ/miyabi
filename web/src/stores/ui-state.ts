@@ -5,17 +5,19 @@ import { useSyncExternalStore } from 'react'
  * to `desktop.json`; a browser falls back to localStorage. Server settings
  * (Emby, network, sources, accounts) stay in the Go backend database.
  */
+export type ImmersiveSize = 'height' | 'width' | 'near'
+
 export type UiState = {
   nsfwMode: boolean
   theme: 'system' | 'light' | 'dark'
-  player: { volume: number; muted: boolean; rate: number }
+  player: { volume: number; muted: boolean; rate: number; immersiveSize: ImmersiveSize }
   gif: { fps: number; scale: number; loop: 'infinite' | 'once' }
 }
 
 export const DEFAULT_UI_STATE: UiState = {
   nsfwMode: true,
   theme: 'system',
-  player: { volume: 1, muted: false, rate: 1 },
+  player: { volume: 1, muted: false, rate: 1, immersiveSize: 'height' },
   gif: { fps: 10, scale: 75, loop: 'infinite' }
 }
 
@@ -51,7 +53,11 @@ function normalize(raw: unknown): UiState {
     player: {
       volume: clamp(player.volume, 0, 1, DEFAULT_UI_STATE.player.volume),
       muted: Boolean(player.muted),
-      rate: clamp(player.rate, 0.25, 4, DEFAULT_UI_STATE.player.rate)
+      rate: clamp(player.rate, 0.25, 4, DEFAULT_UI_STATE.player.rate),
+      immersiveSize:
+        player.immersiveSize === 'width' || player.immersiveSize === 'near'
+          ? player.immersiveSize
+          : DEFAULT_UI_STATE.player.immersiveSize
     },
     gif: {
       fps: clamp(gif.fps, 1, 30, DEFAULT_UI_STATE.gif.fps),
@@ -151,12 +157,17 @@ export function getUiState(): UiState {
 }
 
 export function updateUiState(patch: Partial<UiState> | ((current: UiState) => Partial<UiState>)) {
-  const next = typeof patch === 'function' ? patch(state) : patch
-  state = normalize({ ...state, ...next })
+  const previous = state
+  const next = typeof patch === 'function' ? patch(previous) : patch
+  state = normalize({ ...previous, ...next })
   emit()
   // Discrete settings must survive an immediate close; slider-like values can
   // wait for the debounce.
-  if ('nsfwMode' in next || 'theme' in next) {
+  if (
+    'nsfwMode' in next ||
+    'theme' in next ||
+    state.player.immersiveSize !== previous.player.immersiveSize
+  ) {
     window.clearTimeout(saveTimer)
     flush()
   } else {

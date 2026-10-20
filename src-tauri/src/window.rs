@@ -1,8 +1,8 @@
 //! Splash and setup are local pages. The main window loads the Go server over
 //! loopback.
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri::utils::config::Color;
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const SPLASH_R: u8 = 9;
 const SPLASH_G: u8 = 9;
@@ -67,8 +67,8 @@ pub fn open_main(app: &AppHandle, url: String) -> tauri::Result<()> {
     WebviewWindowBuilder::new(app, "main", WebviewUrl::External(parsed))
         .title("miyabi")
         .inner_size(width, height)
-        // The normal window is fixed: only the immersive player may change size,
-        // and only through the shell's aspect-fitted command.
+        // Fixed 1280x800 at 100%; immersive mode temporarily owns the window
+        // and restores this exact size afterwards.
         .resizable(false)
         .maximizable(false)
         .center()
@@ -88,47 +88,40 @@ pub fn open_main(app: &AppHandle, url: String) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Fixed catalog width, shared by the normal play window sizing and the
-/// immersive player fit (the normal player area excludes this column).
-pub const CATALOG_WIDTH: f64 = 320.0;
+const APP_WIDTH: f64 = 1280.0;
+const APP_HEIGHT: f64 = 800.0;
 
-/// Sizes the normal window so the play page fills it exactly: the player is
-/// 16:9 at 80% of the monitor's logical work height, plus the fixed catalog.
-fn initial_window_size(app: &AppHandle) -> (f64, f64) {
-    let (work_width, work_height) = app
-        .primary_monitor()
+/// Size of the normal app pages: 1280x800 at 100%, clamped to the work area.
+fn app_window_size(work_width: f64, work_height: f64) -> (f64, f64) {
+    let max_width = (work_width * 0.9).max(1.0);
+    let max_height = (work_height * 0.9).max(1.0);
+    (
+        APP_WIDTH.min(max_width).round(),
+        APP_HEIGHT.min(max_height).round(),
+    )
+}
+
+fn work_size_of(monitor: &tauri::Monitor) -> (f64, f64) {
+    let scale = monitor.scale_factor();
+    (
+        f64::from(monitor.work_area().size.width) / scale,
+        f64::from(monitor.work_area().size.height) / scale,
+    )
+}
+
+fn primary_work_size(app: &AppHandle) -> (f64, f64) {
+    app.primary_monitor()
         .ok()
         .flatten()
-        .map(|monitor| {
-            let scale = monitor.scale_factor();
-            (
-                f64::from(monitor.work_area().size.width) / scale,
-                f64::from(monitor.work_area().size.height) / scale,
-            )
-        })
-        .unwrap_or((1600.0, 1000.0));
-    let max_width = work_width * 0.95;
-    let max_height = work_height * 0.95;
+        .as_ref()
+        .map(work_size_of)
+        .unwrap_or((1600.0, 1000.0))
+}
 
-    let mut height = work_height * 0.8;
-    let mut player_width = height * 16.0 / 9.0;
-    let mut width = player_width + CATALOG_WIDTH;
-    if width > max_width {
-        width = max_width;
-        player_width = (width - CATALOG_WIDTH).max(1.0);
-        height = player_width * 9.0 / 16.0;
-    }
-    if height > max_height {
-        height = max_height;
-        player_width = height * 16.0 / 9.0;
-        width = player_width + CATALOG_WIDTH;
-        if width > max_width {
-            width = max_width;
-            player_width = (width - CATALOG_WIDTH).max(1.0);
-            height = player_width * 9.0 / 16.0;
-        }
-    }
-    (width.round(), height.round())
+/// The app uses one fixed window for every route.
+fn initial_window_size(app: &AppHandle) -> (f64, f64) {
+    let (work_width, work_height) = primary_work_size(app);
+    app_window_size(work_width, work_height)
 }
 
 pub fn focus_existing(app: &AppHandle) {
