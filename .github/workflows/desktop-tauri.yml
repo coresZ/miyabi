@@ -1,0 +1,199 @@
+name: Build desktop (Tauri)
+
+# 只构建 Tauri 桌面端，产出 NSIS 安装包 + 便携 zip（miyabi.exe + runtime/）。
+# Release 由 release.yml 创建；传入 tag 时，本工作流只上传自己的两个产物。
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Release version used in artifact names
+        required: false
+        type: string
+        default: dev
+      tag:
+        description: Existing release tag to upload to; empty means build-only
+        required: false
+        type: string
+        default: ''
+      upload_release:
+        description: Upload the built packages to the existing release
+        required: false
+        type: boolean
+        default: false
+      ref:
+        description: Git ref to build; release passes the tag
+        required: false
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 用于产物命名的版本号，留空使用 dev
+        required: false
+        default: dev
+  push:
+    branches:
+      - 'feat/desktop-*'
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Resolve and validate version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+
+            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Invalid version format: '$version' (expected e.g. 1.2.3)" >&2
+              exit 1
+            fi
+
+            echo "tag=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
+          else
+            version="${{ inputs.version || 'dev' }}"
+            echo "tag=" >> "${GITHUB_OUTPUT}"
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+  build:
+    name: Build windows-x64
+    needs: version
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # web/dist 必须存在：embed.go 内嵌它，缺少时 go build 会直接失败。
+      - name: Build frontend
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Build Go server
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/runtime | Out-Null
+          # Bundled as a resource, so the installer nests it under runtime/
+          # instead of dropping a second exe next to miyabi.exe.
+          go build -trimpath -ldflags "-s -w -H=windowsgui" -o "src-tauri/runtime/miyabi-server.exe" ./cmd
+
+      - name: Build desktop app (installer)
+        run: pnpm dlx @tauri-apps/cli@^2 build
+
+      # The portable build gets its own identifier so it can run next to an
+      # installed copy: single-instance and the webview profile stop colliding.
+      - name: Build desktop app (portable shell)
+        run: pnpm dlx @tauri-apps/cli@^2 build --no-bundle --config src-tauri/tauri.portable.conf.json
+
+      - name: Assemble installers and portable zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = "miyabi-$env:VERSION-windows-x86_64-tauri"
+          $stage = "dist/$package"
+          if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+
+          # `mainBinaryName = miyabi`: tauri-cli renames the shell binary, so the
+          # installer and this portable zip both ship miyabi.exe.
+          $shell = "src-tauri/target/release/miyabi.exe"
+          if (-not (Test-Path $shell)) { throw "desktop shell was not produced: $shell" }
+          $nsis = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
+          if (-not $nsis) { throw 'the NSIS installer was not produced' }
+
+          # Portable: the second build above, so the shell carries the portable
+          # identifier. Sidecar and marker are shared with the installer build.
+          Copy-Item $shell (Join-Path $stage 'miyabi.exe')
+          New-Item -ItemType Directory -Force -Path (Join-Path $stage 'runtime') | Out-Null
+          Copy-Item "src-tauri/runtime/miyabi-server.exe" (Join-Path $stage 'runtime/miyabi-server.exe')
+          # Marker only. The installer has no such file, so the same exe can tell the two apart.
+          New-Item -ItemType File -Force -Path (Join-Path $stage 'runtime/portable') | Out-Null
+          Copy-Item LICENSE $stage
+          Copy-Item docs/desktop-usage.md (Join-Path $stage '使用说明.md')
+          $portableZip = "dist/$package-portable.zip"
+          if (Test-Path $portableZip) { Remove-Item -Force $portableZip }
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $portableZip
+          Copy-Item $nsis.FullName "dist/$package-setup.exe"
+
+      # archive:false 直接上传原文件。默认会再套一层 zip，下载名还不带扩展名。
+      - name: Upload installer
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist/*-tauri-setup.exe
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload portable
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist/*-tauri-portable.zip
+          archive: false
+          if-no-files-found: error
+
+  release:
+    name: Upload packages to the release
+    needs: build
+    if: inputs.upload_release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the built packages
+        uses: actions/download-artifact@v8
+        with:
+          pattern: miyabi-*-windows-x86_64-tauri-*
+          merge-multiple: true
+          path: dist
+          skip-decompress: true
+
+      - name: Upload to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(dist/*)
+          if (( ${#assets[@]} == 0 )); then
+            echo "::error::no desktop packages were downloaded" >&2
+            exit 1
+          fi
+          gh release upload "$TAG" "${assets[@]}" --clobber
