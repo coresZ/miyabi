@@ -45,21 +45,22 @@ export function AccessGate({ children }: PropsWithChildren) {
           <CardDescription>请输入部署时配置的访问密码</CardDescription>
         </CardHeader>
         <CardContent>
-          {config.isPending ? (
+          {config.status === 'pending' ? (
             <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
               <LoaderCircleIcon className="size-4 animate-spin" />
               正在检查访问配置
             </div>
-          ) : config.isError ? (
-            <InlineError
-              className="flex-col text-center"
-              onRetry={() => void config.refetch()}
-              retrying={config.isFetching}
-            >
-              无法读取访问配置，请确认后端服务已启动。
-            </InlineError>
           ) : (
             <form className="space-y-4" onSubmit={handleSubmit}>
+              {config.isError ? (
+                <InlineError
+                  className="flex-col text-center"
+                  onRetry={() => void config.refetch()}
+                  retrying={config.isFetching}
+                >
+                  无法读取访问配置，请确认后端服务已启动。仍可输入密码尝试进入。
+                </InlineError>
+              ) : null}
               <Input
                 type="password"
                 value={password}

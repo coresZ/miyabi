@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
@@ -10,12 +11,17 @@ import (
 	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
+	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/library/scrape"
 	"github.com/ppxb/miyabi/internal/nfo"
 	"github.com/ppxb/miyabi/internal/tasks"
 )
+
+// sourceLock runs fn while the source that owns a movie cannot change. A local
+// root needs no such guard, so it runs fn directly.
+type sourceLock func(context.Context, func() error) error
 
 // RescrapeMovie queues a fresh metadata workflow for the indexed files of one movie.
 // A supplied code persists the user's correction before the recoverable job starts.
@@ -24,22 +30,22 @@ func (s *Scanner) RescrapeMovie(ctx context.Context, id int, code string) (*ent.
 		return nil, domain.E(domain.KindInvalid, "请输入有效的影片番号", nil)
 	}
 	code = codeid.Normalize(code)
-	sess, err := s.driveSvc.Open(ctx)
+	source, withSource, err := s.rescrapeTarget(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	var parent *ent.Task
 	// Mount callbacks enqueue with the source lock held. Keep the same order,
 	// and acquire the queue before opening a database write transaction.
-	err = sess.WithSource(ctx, func() error {
+	err = withSource(ctx, func() error {
 		if err := s.tasksSvc.Queue().Lock(ctx); err != nil {
 			return err
 		}
 		defer s.tasksSvc.Queue().Unlock()
 		return ent.WithTx(ctx, s.db, func(tx *ent.Tx) error {
-			record, err := tx.Movie.Query().Where(movie.IDEQ(id), movie.HasFilesWith(database.LibraryFiles(sess.Source()))).Only(ctx)
+			record, err := tx.Movie.Query().Where(movie.IDEQ(id), movie.HasFilesWith(scrape.FileScope(source))).Only(ctx)
 			if ent.IsNotFound(err) {
-				return domain.E(domain.KindNotFound, "当前挂载目录中未找到该影片的媒体文件", nil)
+				return domain.E(domain.KindNotFound, "媒体库中未找到该影片的媒体文件", nil)
 			}
 			if err != nil {
 				return err
@@ -55,7 +61,7 @@ func (s *Scanner) RescrapeMovie(ctx context.Context, id int, code string) (*ent.
 				if err != nil {
 					return err
 				}
-				if !correcting && input.Rebuild && input.Source == sess.Source() {
+				if !correcting && input.Rebuild && input.Source == source {
 					parent, err = tx.Task.Get(ctx, input.ScanTaskID)
 					return err
 				}
@@ -63,8 +69,8 @@ func (s *Scanner) RescrapeMovie(ctx context.Context, id int, code string) (*ent.
 			}
 			busy, err := tx.Task.Query().Where(task.TypeEQ(tasks.KindScan.String()),
 				task.StatusIn(task.StatusQueued, task.StatusRunning), func(q *sql.Selector) {
-					q.Where(sqljson.ValueEQ(task.FieldPayload, sess.Source().AccountID, sqljson.Path("source", "account_id")))
-					q.Where(sqljson.ValueEQ(task.FieldPayload, sess.Source().Directory.ID, sqljson.Path("source", "directory", "id")))
+					q.Where(sqljson.ValueEQ(task.FieldPayload, source.AccountID, sqljson.Path("source", "account_id")))
+					q.Where(sqljson.ValueEQ(task.FieldPayload, source.Directory.ID, sqljson.Path("source", "directory", "id")))
 				}).Exist(ctx)
 			if err != nil {
 				return err
@@ -99,8 +105,8 @@ func (s *Scanner) RescrapeMovie(ctx context.Context, id int, code string) (*ent.
 				return err
 			}
 			body, err := tasks.EncodePayload(domain.ScanPayload{
-				MovieID: id, Code: record.Code, Rebuild: true, Source: sess.Source(),
-				Scan: domain.ScanProgress{Stage: "done", Movies: 1, CurrentPath: sess.Source().Directory.Path},
+				MovieID: id, Code: record.Code, Rebuild: true, Source: source,
+				Scan: domain.ScanProgress{Stage: "done", Movies: 1, CurrentPath: source.Directory.Path},
 			})
 			if err != nil {
 				return err
@@ -110,7 +116,7 @@ func (s *Scanner) RescrapeMovie(ctx context.Context, id int, code string) (*ent.
 				return err
 			}
 			body, err = tasks.EncodePayload(scrape.MetadataPayload{
-				Rebuild: true, Source: sess.Source(), ScanTaskID: parent.ID, MovieID: id,
+				Rebuild: true, Source: source, ScanTaskID: parent.ID, MovieID: id,
 				Code: record.Code, JavDBID: domain.ValueOrZero(record.JavdbID), ManualCode: record.ManualCode,
 			})
 			if err != nil {
@@ -125,4 +131,51 @@ func (s *Scanner) RescrapeMovie(ctx context.Context, id int, code string) (*ent.
 	s.tasksSvc.NotifyLibraryChanged()
 	s.tasksSvc.WakePool()
 	return parent, nil
+}
+
+// rescrapeTarget resolves the media source that owns a movie and the lock that
+// keeps it from changing. A mounted 115 source wins when it indexes the movie;
+// otherwise the local media root recorded on its files is used.
+func (s *Scanner) rescrapeTarget(ctx context.Context, id int) (domain.LibrarySource, sourceLock, error) {
+	if s.driveSvc != nil {
+		if sess, err := s.driveSvc.Open(ctx); err == nil {
+			exists, queryErr := s.db.Movie.Query().Where(movie.IDEQ(id),
+				movie.HasFilesWith(database.LibraryFiles(sess.Source()))).Exist(ctx)
+			if queryErr != nil {
+				return domain.LibrarySource{}, nil, queryErr
+			}
+			if exists {
+				return sess.Source(), sess.WithSource, nil
+			}
+		}
+	}
+	source, found, err := s.localMovieSource(ctx, id)
+	if err != nil {
+		return domain.LibrarySource{}, nil, err
+	}
+	if found {
+		return source, func(_ context.Context, fn func() error) error { return fn() }, nil
+	}
+	return domain.LibrarySource{}, nil, domain.E(domain.KindNotFound, "媒体库中未找到该影片的媒体文件", nil)
+}
+
+// localMovieSource builds the local source from the root recorded on a movie's
+// local files.
+func (s *Scanner) localMovieSource(ctx context.Context, id int) (domain.LibrarySource, bool, error) {
+	record, err := s.db.File.Query().Where(file.MovieIDEQ(id), file.AccountIDEQ(domain.LocalAccountID)).
+		Select(file.FieldRootID).Order(ent.Asc(file.FieldID)).First(ctx)
+	if ent.IsNotFound(err) {
+		return domain.LibrarySource{}, false, nil
+	}
+	if err != nil {
+		return domain.LibrarySource{}, false, err
+	}
+	root := record.RootID
+	if root == "" {
+		return domain.LibrarySource{}, false, domain.E(domain.KindInvalid, "本地视频缺少有效的目录信息", nil)
+	}
+	return domain.LibrarySource{
+		AccountID: domain.LocalAccountID,
+		Directory: domain.LibraryDirectory{ID: root, Name: filepath.Base(root), Path: root},
+	}, true, nil
 }

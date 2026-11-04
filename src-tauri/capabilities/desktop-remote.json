@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop-remote",
+  "description": "The loopback UI served by the Go server may read and apply desktop settings.",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*/*", "http://localhost:*/*"]
+  },
+  "permissions": [
+    "core:default",
+    "allow-desktop-config",
+    "allow-apply-desktop",
+    "allow-enter-player-immersive",
+    "allow-restore-normal-window",
+    "allow-resize-player-immersive",
+    "allow-load-ui-state",
+    "allow-save-ui-state",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop-setup",
+  "description": "The local first-run window may read defaults, pick a data folder, and finish setup.",
+  "windows": ["setup"],
+  "permissions": [
+    "allow-desktop-defaults",
+    "allow-pick-data-dir",
+    "allow-complete-setup"
+  ]
+}

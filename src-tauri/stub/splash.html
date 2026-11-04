@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>miyabi</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: grid;
+        place-items: center;
+        background: #09090b;
+        color: #fafafa;
+        font: 13px/1.5 "Segoe UI", system-ui, sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+        cursor: default;
+        overflow: hidden;
+      }
+      .wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+      }
+      .mark {
+        width: 96px;
+        height: 96px;
+        animation: breathe 2.4s ease-in-out infinite;
+      }
+      .name {
+        font-size: 12px;
+        letter-spacing: 0.22em;
+        color: #a1a1aa;
+      }
+      .bar {
+        width: 136px;
+        height: 2px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+        overflow: hidden;
+      }
+      .bar i {
+        display: block;
+        width: 40%;
+        height: 100%;
+        border-radius: inherit;
+        background: #fafafa;
+        animation: slide 1.2s ease-in-out infinite;
+      }
+      @keyframes breathe {
+        0%, 100% { transform: scale(1); opacity: 0.92; }
+        50% { transform: scale(1.03); opacity: 1; }
+      }
+      @keyframes slide {
+        0% { transform: translateX(-110%); }
+        100% { transform: translateX(360%); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .mark, .bar i { animation: none; }
+        .bar i { width: 100%; opacity: 0.5; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <img class="mark" src="splash-icon.png" alt="" />
+      <div class="name">miyabi</div>
+      <div class="bar"><i></i></div>
+    </div>
+  </body>
+</html>

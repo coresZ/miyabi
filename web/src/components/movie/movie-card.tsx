@@ -29,10 +29,10 @@ export function MovieCard({
   return (
     <Card
       size="sm"
-      className="h-full gap-0 overflow-hidden border-border/80 py-0 shadow-sm ring-1 ring-black/3 transition-shadow hover:shadow-md dark:ring-white/5"
+      className="group h-full gap-0 overflow-hidden border-border/80 py-0 shadow-sm ring-1 ring-black/3 transition-shadow hover:shadow-md dark:ring-white/5"
     >
       <div className="relative flex aspect-3/2 items-center justify-center overflow-hidden bg-muted">
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 transition-[filter] duration-150 group-focus-within:brightness-[0.82] group-hover:brightness-[0.82]">
           <MovieCover
             source={movie.cover ?? ''}
             label={movie.code}

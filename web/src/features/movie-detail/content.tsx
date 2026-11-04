@@ -37,7 +37,11 @@ function LibraryMovieDetail({ movieId }: { movieId: number }) {
           刷新失败，请重试。
         </InlineError>
       ) : null}
-      <MovieHero movie={detail.data} libraryStatus={detail.data.scrape_status} />
+      <MovieHero
+        movie={detail.data}
+        libraryStatus={detail.data.scrape_status}
+        playMovieId={detail.data.videos?.length ? movieId : undefined}
+      />
       <MoviePreviews images={detail.data.preview_images} />
       {detail.data.id ? <LibraryCatalogueExtras movieId={detail.data.id} /> : null}
     </div>

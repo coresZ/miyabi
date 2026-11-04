@@ -44,9 +44,16 @@ export const libraryKeys = {
   movies: (page: number) => ['library', 'movies', page] as const
 }
 
+export type LocalVideo = {
+  file_id: string
+  name: string
+  size: number
+}
+
 export type LibraryMovieDetail = Omit<DiscoverMovieDetail, 'release_status'> & {
   library_id: number
   scrape_status: LibraryMovie['scrape_status']
+  videos?: LocalVideo[]
 }
 
 export function useLibraryMovie(id: number) {

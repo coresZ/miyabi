@@ -187,8 +187,10 @@ func (s *LocalScanner) ingestBatch(ctx context.Context, rootDir string, batch []
 				}
 			}
 			if existing == nil {
+				// The absolute scan root is the file's playback boundary: the
+				// built-in player resolves and confines local paths with it.
 				created, err := tx.File.Create().SetFileID(media.fileID).SetName(media.name).SetSize(media.size).
-					SetAccountID(domain.LocalAccountID).SetRootID(domain.LocalAccountID).
+					SetAccountID(domain.LocalAccountID).SetRootID(rootDir).
 					SetPath(media.rel).SetMovieID(record.ID).Save(ctx)
 				if err != nil {
 					return err

@@ -5,7 +5,7 @@ import { MovieCard, MovieCardSkeleton, MovieGridLayout } from '@/components/movi
 import { MovieResourceBadges, MovieStateBadge } from '@/components/movie/movie-badges'
 import { Button } from '@/components/ui/button'
 import { cn } from 'cn'
-import { useSettingsStore } from '@/stores/settings'
+import { useUiState } from '@/stores/ui-state'
 import { MovieDetailTrigger } from './detail-trigger'
 import { observeRecommendation } from './recommendation-visibility'
 
@@ -37,7 +37,7 @@ export function MovieRecommendations({
 function RecommendationCard({ movie }: { movie: MovieReference }) {
   const cardRef = useRef<HTMLDivElement>(null)
   const [readyCover, setReadyCover] = useState<string>()
-  const nsfwMode = useSettingsStore(state => state.nsfwMode)
+  const nsfwMode = useUiState(state => state.nsfwMode)
   const detail = useRecommendationMovie(movie.id)
   const { request, prioritize } = detail
   const data = detail.movie

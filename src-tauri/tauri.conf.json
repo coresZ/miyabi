@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "miyabi",
+  "mainBinaryName": "miyabi",
+  "version": "0.4.19",
+  "identifier": "com.ppxb.miyabi.desktop",
+  "build": {
+    "frontendDist": "stub"
+  },
+  "app": {
+    "windows": [],
+    "withGlobalTauri": true,
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["../icon/miyabi.ico"],
+    "resources": {
+      "runtime/": "runtime/"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    }
+  }
+}

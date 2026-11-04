@@ -4,20 +4,24 @@ import type { DiscoverMovie, DiscoverMovieDetail } from '@/api/discover'
 import type { LibraryMovieDetail } from '@/api/library'
 import { MovieResourceBadges, MovieStateBadge } from '@/components/movie/movie-badges'
 import { MovieCover } from '@/components/movie/movie-cover'
+import { PlayOverlay } from '@/components/movie/play-overlay'
 import { Badge } from '@/components/ui/badge'
 import { MovieMetadata } from './metadata'
 
 export function MovieHero({
   movie,
-  libraryStatus
+  libraryStatus,
+  playMovieId
 }: {
   movie: DiscoverMovieDetail | LibraryMovieDetail
   libraryStatus?: LibraryMovieDetail['scrape_status']
+  playMovieId?: number
 }) {
   return (
     <section className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-8">
-      <div className="aspect-3/2 overflow-hidden rounded-2xl bg-muted ring-1 ring-foreground/10">
+      <div className="group relative aspect-3/2 overflow-hidden rounded-2xl bg-muted ring-1 ring-foreground/10">
         <MovieCover source={movie.cover} loading="eager" />
+        {playMovieId ? <PlayOverlay movieId={playMovieId} label={movie.code} /> : null}
       </div>
 
       <div className="min-w-0 space-y-5 py-1">

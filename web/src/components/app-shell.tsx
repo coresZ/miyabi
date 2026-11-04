@@ -1,13 +1,15 @@
+import { BellIcon, CompassIcon, FilmIcon, PlayIcon, SearchIcon, SettingsIcon } from 'lucide-react'
 import type { PropsWithChildren } from 'react'
-import { BellIcon, CompassIcon, FilmIcon, SearchIcon, SettingsIcon } from 'lucide-react'
 
 import { FloatingNav, type FloatingNavItem } from '@/components/floating-nav'
 import { Toaster } from '@/components/ui/sonner'
 import { TaskEventsProvider } from '@/features/tasks/task-events'
 import { TaskNotifications } from '@/features/tasks/task-notifications'
+import { useShellChrome } from '@/stores/shell-chrome'
 
 const NAV_ITEMS: FloatingNavItem[] = [
   { id: 'library', label: '媒体库', icon: FilmIcon, to: '/' },
+  { id: 'play', label: '播放', icon: PlayIcon, to: '/play' },
   { id: 'subscriptions', label: '订阅', icon: BellIcon, to: '/subscriptions' },
   { id: 'discover', label: '发现', icon: CompassIcon, to: '/discover' },
   { id: 'search', label: '搜索', icon: SearchIcon, to: '/search' },
@@ -15,10 +17,11 @@ const NAV_ITEMS: FloatingNavItem[] = [
 ]
 
 export function AppShell({ children }: PropsWithChildren) {
+  const navHidden = useShellChrome(state => state.navHidden)
   return (
     <TaskEventsProvider>
       <div className="relative min-h-dvh">
-        <FloatingNav items={NAV_ITEMS} />
+        {navHidden ? null : <FloatingNav items={NAV_ITEMS} />}
         {children}
         <Toaster position="top-right" closeButton duration={6000} />
         <TaskNotifications />

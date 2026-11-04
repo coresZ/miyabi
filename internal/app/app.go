@@ -24,6 +24,7 @@ import (
 	"github.com/ppxb/miyabi/internal/javbus"
 	"github.com/ppxb/miyabi/internal/library"
 	"github.com/ppxb/miyabi/internal/library/scrape"
+	"github.com/ppxb/miyabi/internal/localsource"
 	"github.com/ppxb/miyabi/internal/maintenance"
 	"github.com/ppxb/miyabi/internal/metadata"
 	"github.com/ppxb/miyabi/internal/metadata/providers"
@@ -92,7 +93,8 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	exportMgr := export.NewManager(export.Config{
 		EmbyDir: cfg.EmbyDir, PublicURL: cfg.PublicURL, STRMToken: cfg.STRMToken,
 	})
-	libSvc := library.New(store.Client, driveSvc, taskSvc, images, library.Options{ExportManager: exportMgr})
+	localSources := localsource.NewManager(store.Client)
+	libSvc := library.New(store.Client, driveSvc, taskSvc, images, library.Options{ExportManager: exportMgr, LocalSources: localSources})
 	javbusClient, err := javbus.New(javbus.Options{Proxy: networkSvc.ProxyManager()})
 	if err != nil {
 		driveSvc.Close()
@@ -190,6 +192,9 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		Offline:        offlineSvc,
 		Monitor:        monitorSvc,
 		Library:        libSvc,
+		LocalPlay:      libSvc,
+		Playables:      libSvc,
+		LocalSources:   localSources,
 		STRM:           strm.New(store.Client, driveSvc),
 		Tasks:          &taskViews{Service: taskSvc, database: store.Client, library: libSvc, monitor: monitorSvc},
 		Artwork:        scrapeSvc,
@@ -295,6 +300,49 @@ func (a *App) Close() error {
 	}
 	if a.store != nil {
 		return a.store.Close()
+	}
+	return nil
+}
+
+// LocalURL returns the loopback URL that reaches a listening address, which is
+// how a double-clicked build opens its own UI.
+func LocalURL(listen string) (string, error) {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return "", fmt.Errorf("parse listen address: %w", err)
+	}
+	switch host {
+	case "", "0.0.0.0":
+		host = "127.0.0.1"
+	case "::":
+		host = "::1"
+	}
+	return "http://" + net.JoinHostPort(host, port), nil
+}
+
+// ProbeLocal reports whether this Miyabi already answers on its listen address.
+// It asks the public access-configuration endpoint: it needs no session, so the
+// probe works before the browser holds a login.
+func ProbeLocal(listen string) error {
+	local, err := LocalURL(listen)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{
+		Timeout: 4 * time.Second,
+		// A local probe must not use proxy environment variables.
+		Transport: &http.Transport{DisableKeepAlives: true},
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	response, err := client.Get(local + "/api/auth/config")
+	if err != nil {
+		return fmt.Errorf("probe the local server: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("local probe returned HTTP %d", response.StatusCode)
 	}
 	return nil
 }

@@ -156,4 +156,16 @@
     @apply font-sans;
     scrollbar-gutter: stable;
   }
+  /* The immersive player covers the whole window: a stable gutter would leave
+     an empty strip on the right, so it is dropped while that mode is active. */
+  html.player-immersive {
+    scrollbar-gutter: auto;
+    overflow: hidden;
+  }
+
+  /* The gutter already reserves the scrollbar, so the dialog lock must not
+     add a second margin or the centered lists shift when the dialog closes. */
+  body[data-scroll-locked] {
+    margin-right: 0 !important;
+  }
 }

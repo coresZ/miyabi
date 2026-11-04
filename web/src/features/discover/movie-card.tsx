@@ -10,14 +10,20 @@ export function DiscoverMovieCard({ movie }: { movie: DiscoverMovie }) {
     <MovieDetailTrigger movie={{ id: movie.id }} className="block rounded-2xl outline-ring">
       <MovieCard
         movie={movie}
-        description={movie.release_date}
         state={<MovieStateBadge movie={movie} />}
         coverOverlay={
-          subscribable ? (
-            <div className="absolute top-2 right-2">
-              <MovieSubscribeButton movie={movie} />
-            </div>
-          ) : undefined
+          <>
+            {subscribable ? (
+              <div className="absolute top-2 right-2">
+                <MovieSubscribeButton movie={movie} />
+              </div>
+            ) : null}
+            {movie.release_date ? (
+              <span className="absolute right-2 bottom-2 text-[0.65rem] font-medium text-white tabular-nums drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]">
+                {movie.release_date}
+              </span>
+            ) : null}
+          </>
         }
       >
         <MovieResourceBadges movie={movie} />

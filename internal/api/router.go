@@ -23,6 +23,9 @@ type Dependencies struct {
 	Offline        OfflineManager
 	Monitor        SubscriptionManager
 	Library        LibraryManager
+	LocalPlay      LocalPlayer
+	Playables      PlayablesManager
+	LocalSources   LocalSourceManager
 	STRM           STRMRelay
 	Tasks          TaskManager
 	Artwork        ArtworkReader
@@ -86,14 +89,22 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	settingsAPI.POST("/emby/test", embyTestHandler(deps.Emby))
 	settingsAPI.GET("/subscription", subscriptionSettingsGetHandler(deps.Monitor))
 	settingsAPI.PUT("/subscription", subscriptionSettingsUpdateHandler(deps.Monitor))
+	settingsAPI.GET("/local-sources", localSourceListHandler(deps.LocalSources))
+	settingsAPI.POST("/local-sources", localSourceCreateHandler(deps.LocalSources))
+	settingsAPI.PATCH("/local-sources/:id", localSourceUpdateHandler(deps.LocalSources))
+	settingsAPI.DELETE("/local-sources/:id", localSourceRemoveHandler(deps.LocalSources))
 
 	protected.GET("/library/movies", libraryMoviesHandler(deps.Library))
 	protected.GET("/library/movies/:id", libraryMovieHandler(deps.Library))
 	protected.POST("/library/movies/:id/scrape", libraryMovieScrapeHandler(deps.Library))
 	protected.GET("/library/movies/:id/previews/:index", libraryPreviewHandler(deps.Library, deps.Metadata))
 	protected.POST("/library/scan", libraryScanHandler(deps.Library, deps.Emby))
+	protected.POST("/library/local-scan", libraryLocalScanHandler(deps.Library))
 	protected.POST("/library/rebuild", libraryRebuildHandler(deps.Library))
 	protected.GET("/library/artwork/:key", libraryArtworkHandler(deps.Artwork))
+	protected.GET("/local/play/:fileID", localPlayHandler(deps.LocalPlay))
+	protected.HEAD("/local/play/:fileID", localPlayHandler(deps.LocalPlay))
+	protected.GET("/playables", playablesHandler(deps.Playables))
 
 	protected.GET("/tasks", noStore(), tasksHandler(deps.Tasks))
 	protected.POST("/tasks/:id/retry", taskRetryHandler(deps.Tasks))
@@ -137,8 +148,25 @@ func NewRouter(deps Dependencies) *gin.Engine {
 
 	if deps.Frontend != nil {
 		installFrontend(router, deps.Frontend)
+	} else {
+		installMissingFrontendNotice(router)
 	}
 	return router
+}
+
+// installMissingFrontendNotice answers a build without embedded assets, which is
+// what `go build -tags dev` produces. Without it every UI path would return a
+// bare "404 page not found" that looks like a routing defect.
+func installMissingFrontendNotice(router *gin.Engine) {
+	router.NoRoute(func(c *gin.Context) {
+		if c.Request.URL.Path == "/api" || strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.Error(domain.E(domain.KindNotFound, "not found", nil))
+			return
+		}
+		c.String(http.StatusNotFound, "此二进制未内嵌前端（以 -tags dev 构建）。\n"+
+			"开发调试：在 web/ 目录运行 pnpm dev，然后访问 http://127.0.0.1:5173。\n"+
+			"完整构建：在 web/ 目录运行 pnpm build 生成 web/dist，再重新编译后端。\n")
+	})
 }
 
 // Vite's default output names contain an eight-character content hash.

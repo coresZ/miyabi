@@ -74,6 +74,34 @@ func TestMovieRescrapeIsFreshScopedAndDeduplicated(t *testing.T) {
 	}
 }
 
+func TestLocalMovieRescrapeQueuesLocalJob(t *testing.T) {
+	lib, _, sources, root := localSourceFixture(t)
+	ctx := t.Context()
+	if _, err := sources.Add(ctx, "下载目录", root); err != nil {
+		t.Fatal(err)
+	}
+	record := lib.database.Movie.Create().SetCode("IPX-123").SaveX(ctx)
+	lib.database.File.Create().SetFileID("local-1").SetName("IPX-123.mp4").SetSize(1).
+		SetAccountID(domain.LocalAccountID).SetRootID(root).SetPath("IPX-123.mp4").SetMovieID(record.ID).SaveX(ctx)
+
+	info, err := lib.RescrapeMovie(ctx, record.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.MovieID != record.ID || !info.Rebuild || info.Source.AccountID != domain.LocalAccountID {
+		t.Fatalf("wrong local workflow: %+v", info)
+	}
+	child := lib.database.Task.Query().Where(task.TypeEQ(string(tasks.KindScrape))).OnlyX(ctx)
+	input, err := tasks.DecodePayload[scrape.MetadataPayload](child.Payload)
+	if err != nil || input.MovieID != record.ID || !input.Rebuild ||
+		input.Source.AccountID != domain.LocalAccountID || input.Source.Directory.ID != root {
+		t.Fatalf("wrong local payload: %+v %v", input, err)
+	}
+	if lib.database.Movie.GetX(ctx, record.ID).ScrapeStatus != movie.ScrapeStatusPending {
+		t.Fatal("local rescrape did not reset the movie to pending")
+	}
+}
+
 func TestMovieRescrapeDoesNotBlockMountEnqueue(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		lib, record, _ := movieActionFixture(t)
