@@ -84,12 +84,44 @@ export function LibraryPage({
               className="min-h-0 flex-1 py-12"
               title={
                 !source
-                  ? '登录 115 并挂载媒体目录后，将自动同步入库'
+                  ? '尚未挂载媒体目录'
                   : scanning
                     ? connection.status === 'connected'
                       ? `${latest?.rebuild ? '正在重建' : '正在同步'}，识别到的影片会陆续显示`
                       : '连接中，等待更新媒体库进度'
                     : '未识别到影片'
+              }
+              description={
+                !source
+                  ? '完成下方步骤后即可同步 115 影片到媒体库'
+                  : scanning
+                    ? undefined
+                    : '可尝试重新扫描，或确认目录中包含可识别的影片文件'
+              }
+              actions={
+                !source ? (
+                  <div className="flex max-w-md flex-col items-center gap-4">
+                    <ol className="w-full space-y-2 rounded-2xl border bg-card/60 px-4 py-3 text-left text-sm text-muted-foreground">
+                      <li>
+                        <span className="font-medium text-foreground">1.</span> 在设置中登录 115
+                        网盘
+                      </li>
+                      <li>
+                        <span className="font-medium text-foreground">2.</span> 选择媒体库目录
+                      </li>
+                      <li>
+                        <span className="font-medium text-foreground">3.</span> 返回此处扫描入库
+                      </li>
+                    </ol>
+                    <Button asChild size="lg">
+                      <Link to="/settings">去设置挂载目录</Link>
+                    </Button>
+                  </div>
+                ) : !scanning ? (
+                  <Button asChild variant="outline">
+                    <Link to="/settings">检查媒体目录</Link>
+                  </Button>
+                ) : null
               }
             />
           )}

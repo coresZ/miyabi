@@ -27,10 +27,18 @@ export function MovieCard({
   const title = movie.title || movie.code
   const heading = <h3 className="truncate text-sm leading-5 font-semibold">{title}</h3>
   return (
-    <Card size="sm" className="h-full gap-0 overflow-hidden py-0">
+    <Card
+      size="sm"
+      className="h-full gap-0 overflow-hidden border-border/80 py-0 shadow-sm ring-1 ring-black/3 transition-shadow hover:shadow-md dark:ring-white/5"
+    >
       <div className="relative flex aspect-3/2 items-center justify-center overflow-hidden bg-muted">
         <div className="absolute inset-0">
-          <MovieCover source={movie.cover ?? ''} loading={coverLoading} onReady={onCoverReady} />
+          <MovieCover
+            source={movie.cover ?? ''}
+            label={movie.code}
+            loading={coverLoading}
+            onReady={onCoverReady}
+          />
         </div>
         <div className="absolute top-2 left-2 flex max-w-[calc(100%-3.5rem)] flex-wrap gap-1.5">
           <Badge variant="frosted" className="max-w-full truncate">
