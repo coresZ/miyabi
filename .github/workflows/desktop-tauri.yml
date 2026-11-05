@@ -32,6 +32,7 @@ on:
         description: 用于产物命名的版本号，留空使用 dev
         required: false
         default: dev
+  # 与 desktop-tauri-v2 相同：推送到 feat/desktop-*（含 feat/desktop-tauri-v3）自动编桌面。
   push:
     branches:
       - 'feat/desktop-*'
@@ -111,7 +112,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path "src-tauri/tauri.conf.json")) {
-            throw "src-tauri/tauri.conf.json is missing. Desktop builds need branch feat/ui-polish-p0 (or any branch that contains src-tauri), not master-only checkouts."
+            throw "src-tauri/tauri.conf.json is missing. Desktop builds need a branch that contains src-tauri (e.g. feat/desktop-tauri-v3), not master-only checkouts."
           }
           if (-not (Test-Path "src-tauri/Cargo.toml")) {
             throw "src-tauri/Cargo.toml is missing; this is not a complete Tauri project tree."
