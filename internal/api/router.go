@@ -35,6 +35,7 @@ type Dependencies struct {
 	Frontend       fs.FS
 	STRMToken      string
 	TrustedProxies []string
+	DataDir        string
 }
 
 // NewRouter requires an Access gate, including when password protection is disabled.
@@ -105,6 +106,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	protected.GET("/local/play/:fileID", localPlayHandler(deps.LocalPlay))
 	protected.HEAD("/local/play/:fileID", localPlayHandler(deps.LocalPlay))
 	protected.GET("/playables", playablesHandler(deps.Playables))
+	protected.POST("/player/gif", noStore(), saveGifHandler(deps.DataDir))
 
 	protected.GET("/tasks", noStore(), tasksHandler(deps.Tasks))
 	protected.POST("/tasks/:id/retry", taskRetryHandler(deps.Tasks))

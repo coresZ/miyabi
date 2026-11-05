@@ -204,6 +204,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		Frontend:       miyabi.Frontend(),
 		STRMToken:      cfg.STRMToken,
 		TrustedProxies: cfg.TrustedProxies,
+		DataDir:        cfg.DataDir,
 	})
 
 	server := &http.Server{

@@ -16,6 +16,8 @@
   var capturing = false, cancelled = false, rafId = 0;
   var restoreState = null;
   var lastDlUrl = null;   // 上一张下载用 blob URL(生成新图时回收,防泄漏)
+  var lastGifBlob = null;
+  var lastGifName = "clip.gif";
 
   /* ---------------- 工具 ---------------- */
 
@@ -191,11 +193,14 @@
       '<div id="gcMsg">设定时间段,或直接「取当前时间」</div>',
       '<div id="gcBarWrap"><div id="gcBar"></div></div>',
       '<div id="gcProgress">准备中…</div>',
-      '<div id="gcResult"><img id="gcPreview" alt="预览"><div class="gc-meta" id="gcMeta"></div><br><a id="gcDownload" download>下载 GIF</a></div>',
+      '<div id="gcResult"><img id="gcPreview" alt="预览"><div class="gc-meta" id="gcMeta"></div><br><button type="button" class="gc-btn primary" id="gcSave">保存到 data/gif</button> <a id="gcDownload" download style="margin-left:8px">浏览器下载</a></div>',
       '<div class="gc-hint">说明:采样区间上限 ' + MAX_SECONDS + ' 秒 / ' + MAX_FRAMES + ' 帧;跨域且无 CORS 的视频源无法截取画面;GIF 无声音。</div>',
       '<div id="gcActions"><button class="gc-btn" id="gcCancel" type="button">取消</button><button class="gc-btn primary" id="gcGenerate" type="button">开始生成</button></div>'
     ].join('');
     document.body.appendChild(panel);
+
+    var saveBtn = $('gcSave');
+    if (saveBtn) saveBtn.addEventListener('click', function () { saveGifToServer(); });
     bindKeyboardShield();   // 移动端虚拟键盘遮挡适配
     makePanelDraggable(panel); // PC:按住标题栏拖动面板(GIF 结果挡菜单时可挪开)
 
@@ -414,14 +419,17 @@
         img.onload = function () { URL.revokeObjectURL(url); };
         img.src = url;
         $('gcMeta').textContent = frameCount + ' 帧 · ' + (bytes.length / 1024).toFixed(1) + ' KB · ' + (w + 'x' + h);
+        var fileName = baseName(video.currentSrc || video.src) + '_' + fmt(start).replace(/[:.]/g, '-') + '-'
+          + fmt(end).replace(/[:.]/g, '-') + '.gif';
         var dl = $('gcDownload');
         dl.href = dlUrl;
-        dl.download = baseName(video.currentSrc || video.src) + '_' + fmt(start).replace(/[:.]/g, '-') + '-'
-          + fmt(end).replace(/[:.]/g, '-') + '.gif';
-        if (lastDlUrl) URL.revokeObjectURL(lastDlUrl);   // 回收上一张
+        dl.download = fileName;
+        if (lastDlUrl) URL.revokeObjectURL(lastDlUrl);
         lastDlUrl = dlUrl;
+        lastGifBlob = blob;
+        lastGifName = fileName;
         $('gcResult').style.display = 'block';
-        cleanup(function () { setMsg(ok ? '生成成功' : '没有采到帧', ok ? 'ok' : 'err'); restorePlayback(); });
+        cleanup(function () { setMsg(ok ? '生成成功，可保存到 data/gif' : '没有采到帧', ok ? 'ok' : 'err'); restorePlayback(); });
       } catch (e) {
         ok = false;
         cleanup(function () { setMsg('编码失败: ' + (e && e.message || e), 'err'); restorePlayback(); });
@@ -616,6 +624,45 @@
   }
 
   /* ---------------- 对外入口 ---------------- */
+
+  function saveGifToServer() {
+    if (!lastGifBlob) {
+      setMsg('请先生成 GIF', 'err');
+      return;
+    }
+    var btn = $('gcSave');
+    if (btn) btn.disabled = true;
+    setMsg('正在保存到 data/gif…', '');
+    var fd = new FormData();
+    fd.append('gif', lastGifBlob, lastGifName || 'clip.gif');
+    fd.append('name', lastGifName || 'clip.gif');
+    fetch('/api/player/gif', {
+      method: 'POST',
+      body: fd,
+      credentials: 'same-origin'
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) {
+          var msg = (data && (data.error || data.message)) || ('HTTP ' + res.status);
+          throw new Error(msg);
+        }
+        return data;
+      }, function () {
+        throw new Error('HTTP ' + res.status);
+      });
+    }).then(function (data) {
+      if (data.duplicate) {
+        setMsg('已存在相同内容，未重复保存：' + (data.relative_path || data.filename), 'ok');
+      } else {
+        setMsg('已保存：' + (data.relative_path || data.filename), 'ok');
+      }
+    }).catch(function (err) {
+      setMsg('保存失败: ' + (err && err.message || err) + '（仍可用「浏览器下载」）', 'err');
+    }).then(function () {
+      if (btn) btn.disabled = false;
+    });
+  }
+
 
   window.openGifCapture = function () {
     var video = activeVideo();
