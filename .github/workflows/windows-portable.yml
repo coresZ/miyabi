@@ -112,7 +112,7 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          package="miyabi-${VERSION}-windows-${GOARCH}"
+          package="miyabi-${VERSION}-windows-${GOARCH}-server"
           stage="dist/${package}"
           mkdir -p "${stage}"
 
@@ -139,12 +139,12 @@ jobs:
             exit 1
           fi
 
-      - name: Upload the package
+      - name: Upload the server portable package
         uses: actions/upload-artifact@v7
         with:
-          # archive:false 直接上传这个 zip 本身；默认的 true 会把它再压一层。
-          # 该模式下 artifact 名取自文件名，name 会被忽略。
-          path: dist/miyabi-${{ needs.version.outputs.version }}-windows-${{ matrix.arch }}-portable.zip
+          # archive:false 直接上传 zip；这是「浏览器/服务端便携包」，不是 Tauri 桌面。
+          name: miyabi-${{ needs.version.outputs.version }}-windows-${{ matrix.arch }}-server-portable.zip
+          path: dist/miyabi-${{ needs.version.outputs.version }}-windows-${{ matrix.arch }}-server-portable.zip
           archive: false
           if-no-files-found: error
 
@@ -159,7 +159,7 @@ jobs:
       - name: Download the amd64 package
         uses: actions/download-artifact@v8
         with:
-          name: miyabi-${{ needs.version.outputs.version }}-windows-amd64-portable.zip
+          name: miyabi-${{ needs.version.outputs.version }}-windows-amd64-server-portable.zip
           path: dist
           # 上传端用了 archive:false，这里必须跳过解压，否则 zip 会被当场拆开。
           skip-decompress: true
