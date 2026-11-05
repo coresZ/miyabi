@@ -26,7 +26,7 @@ $nsis = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Obje
 if (-not $nsis) { throw 'the NSIS installer was not produced' }
 
 $version = (Get-Content web/package.json -Raw | ConvertFrom-Json).version
-$package = "miyabi-$version-windows-x86_64-tauri"
+$package = "miyabi-$version-windows-x86_64-desktop"
 $stage = "dist/$package"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null

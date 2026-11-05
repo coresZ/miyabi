@@ -126,7 +126,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $package = "miyabi-$env:VERSION-windows-x86_64-tauri"
+          $package = "miyabi-$env:VERSION-windows-x86_64-desktop"
           $stage = "dist/$package"
           if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
@@ -152,18 +152,33 @@ jobs:
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $portableZip
           Copy-Item $nsis.FullName "dist/$package-setup.exe"
 
+          # Prove this is the Tauri shell package, not the browser server zip.
+          $shellSize = (Get-Item $shell).Length
+          $serverSize = (Get-Item "src-tauri/runtime/miyabi-server.exe").Length
+          Write-Host "desktop shell miyabi.exe = $shellSize bytes"
+          Write-Host "bundled server runtime/miyabi-server.exe = $serverSize bytes"
+          if ($shellSize -lt 100000) { throw "desktop shell looks too small; tauri build may have failed" }
+          $listing = & tar -tf $portableZip 2>$null
+          if (-not $listing) { $listing = (Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::OpenRead((Resolve-Path $portableZip)).Entries | ForEach-Object FullName) }
+          Write-Host "portable zip contains:`n$($listing -join "`n")"
+          if ($listing -notcontains 'miyabi.exe' -and ($listing -notmatch '(^|/)miyabi\.exe$')) {
+            throw "portable zip is missing miyabi.exe (Tauri shell)"
+          }
+
       # archive:false 直接上传原文件。默认会再套一层 zip，下载名还不带扩展名。
-      - name: Upload installer
+      - name: Upload desktop installer (NSIS)
         uses: actions/upload-artifact@v7
         with:
-          path: dist/*-tauri-setup.exe
+          name: miyabi-${{ needs.version.outputs.version }}-windows-x86_64-desktop-setup.exe
+          path: dist/*-desktop-setup.exe
           archive: false
           if-no-files-found: error
 
-      - name: Upload portable
+      - name: Upload desktop portable (Tauri shell + runtime)
         uses: actions/upload-artifact@v7
         with:
-          path: dist/*-tauri-portable.zip
+          name: miyabi-${{ needs.version.outputs.version }}-windows-x86_64-desktop-portable.zip
+          path: dist/*-desktop-portable.zip
           archive: false
           if-no-files-found: error
 
@@ -178,7 +193,7 @@ jobs:
       - name: Download the built packages
         uses: actions/download-artifact@v8
         with:
-          pattern: miyabi-*-windows-x86_64-tauri-*
+          pattern: miyabi-*-windows-x86_64-desktop-*
           merge-multiple: true
           path: dist
           skip-decompress: true
