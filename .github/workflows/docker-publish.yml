@@ -9,9 +9,14 @@ on:
         required: true
         type: string
       ref:
-        description: Git ref to build; release passes the tag
+        description: Git ref to build (branch, tag, or SHA)
         required: true
         type: string
+      push:
+        description: Push image to GHCR; false only warms build cache (manual build)
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -60,6 +65,7 @@ jobs:
   publish:
     name: Build and push multi-arch image
     needs: build
+    if: inputs.push
     runs-on: ubuntu-latest
     permissions:
       contents: read
