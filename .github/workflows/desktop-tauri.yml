@@ -168,11 +168,27 @@ jobs:
           $serverSize = (Get-Item "src-tauri/runtime/miyabi-server.exe").Length
           Write-Host "desktop shell miyabi.exe = $shellSize bytes"
           Write-Host "bundled server runtime/miyabi-server.exe = $serverSize bytes"
-          if ($shellSize -lt 100000) { throw "desktop shell looks too small; tauri build may have failed" }
-          $listing = & tar -tf $portableZip 2>$null
-          if (-not $listing) { $listing = (Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::OpenRead((Resolve-Path $portableZip)).Entries | ForEach-Object FullName) }
-          Write-Host "portable zip contains:`n$($listing -join "`n")"
-          if ($listing -notcontains 'miyabi.exe' -and ($listing -notmatch '(^|/)miyabi\.exe$')) {
+          if ($shellSize -lt 100000) {
+            throw "desktop shell looks too small; tauri build may have failed"
+          }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $portableZip).Path)
+          try {
+            $listing = @($zip.Entries | ForEach-Object { $_.FullName })
+          } finally {
+            $zip.Dispose()
+          }
+          Write-Host "portable zip contains:"
+          $listing | ForEach-Object { Write-Host "  $_" }
+          $hasShell = $false
+          foreach ($entry in $listing) {
+            if ($entry -eq 'miyabi.exe' -or $entry.EndsWith('/miyabi.exe') -or $entry.EndsWith('\miyabi.exe')) {
+              $hasShell = $true
+              break
+            }
+          }
+          if (-not $hasShell) {
             throw "portable zip is missing miyabi.exe (Tauri shell)"
           }
 
