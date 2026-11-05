@@ -1,7 +1,8 @@
 name: Build desktop (Tauri)
 
 # 只构建 Tauri 桌面端，产出 NSIS 安装包 + 便携 zip（miyabi.exe + runtime/）。
-# Release 由 release.yml 创建；传入 tag 时，本工作流只上传自己的两个产物。
+# 日常请用「Manual Build」或「Release」编排；本文件可单独手动跑单组件。
+# upload_release=true 时上传到已有 Release（由 Release 工作流传入 tag）。
 on:
   workflow_call:
     inputs:

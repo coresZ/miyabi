@@ -1,0 +1,92 @@
+name: Manual Build
+
+# 按需构建：在 Actions 里选分支 = 用该分支最新代码。
+# 勾选要构建的组件；只上传 workflow Artifact，不打 tag、不创建 GitHub Release。
+on:
+  workflow_dispatch:
+    inputs:
+      desktop:
+        description: 'Build Windows desktop (Tauri installer + portable zip)'
+        required: true
+        type: boolean
+        default: true
+      portable:
+        description: 'Build browser portable zips (server + web)'
+        required: true
+        type: boolean
+        default: true
+      docker:
+        description: 'Build Docker image (cache only, does not push)'
+        required: true
+        type: boolean
+        default: false
+      version:
+        description: 'Artifact version label (empty = branch name + short sha)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  resolve:
+    name: Resolve build ref
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      ref: ${{ steps.meta.outputs.ref }}
+      sha_short: ${{ steps.meta.outputs.sha_short }}
+    steps:
+      - name: Metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref="${{ github.ref }}"
+          sha="${{ github.sha }}"
+          short="${sha:0:7}"
+          branch="${{ github.ref_name }}"
+          label="${{ inputs.version }}"
+          if [[ -z "$label" ]]; then
+            # branch names may contain / — sanitize for artifact names
+            safe=$(echo "$branch" | tr '/:' '--')
+            label="${safe}-${short}"
+          fi
+          {
+            echo "version=${label}"
+            echo "ref=${ref}"
+            echo "sha_short=${short}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "Building branch=${branch} sha=${short} version=${label}"
+
+  desktop:
+    name: Desktop
+    needs: resolve
+    if: inputs.desktop
+    uses: ./.github/workflows/desktop-tauri.yml
+    with:
+      version: ${{ needs.resolve.outputs.version }}
+      ref: ${{ needs.resolve.outputs.ref }}
+      upload_release: false
+
+  portable:
+    name: Portable
+    needs: resolve
+    if: inputs.portable
+    uses: ./.github/workflows/windows-portable.yml
+    with:
+      version: ${{ needs.resolve.outputs.version }}
+      ref: ${{ needs.resolve.outputs.ref }}
+      upload_release: false
+
+  docker:
+    name: Docker
+    needs: resolve
+    if: inputs.docker
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      version: ${{ needs.resolve.outputs.version }}
+      ref: ${{ needs.resolve.outputs.ref }}
+      push: false
