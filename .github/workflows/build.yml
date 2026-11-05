@@ -26,9 +26,12 @@ on:
         type: string
         default: ''
 
+# Reusable desktop/portable workflows declare a release job with contents:write.
+# GitHub validates that at parse time even when upload_release is false, so the
+# caller must grant write. Manual Build still never creates tags/releases itself.
 permissions:
-  contents: read
-  packages: read
+  contents: write
+  packages: write
 
 jobs:
   resolve:
