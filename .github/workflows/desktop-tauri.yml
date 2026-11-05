@@ -107,6 +107,17 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
+      - name: Require Tauri project files
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "src-tauri/tauri.conf.json")) {
+            throw "src-tauri/tauri.conf.json is missing. Desktop builds need branch feat/ui-polish-p0 (or any branch that contains src-tauri), not master-only checkouts."
+          }
+          if (-not (Test-Path "src-tauri/Cargo.toml")) {
+            throw "src-tauri/Cargo.toml is missing; this is not a complete Tauri project tree."
+          }
+          Write-Host "Tauri project root: $(Resolve-Path src-tauri)"
+
       - name: Build Go server
         run: |
           New-Item -ItemType Directory -Force -Path src-tauri/runtime | Out-Null
@@ -115,12 +126,12 @@ jobs:
           go build -trimpath -ldflags "-s -w -H=windowsgui" -o "src-tauri/runtime/miyabi-server.exe" ./cmd
 
       - name: Build desktop app (installer)
-        run: pnpm dlx @tauri-apps/cli@^2 build
+        run: pnpm dlx @tauri-apps/cli@^2 build --config src-tauri/tauri.conf.json --ci
 
       # The portable build gets its own identifier so it can run next to an
       # installed copy: single-instance and the webview profile stop colliding.
       - name: Build desktop app (portable shell)
-        run: pnpm dlx @tauri-apps/cli@^2 build --no-bundle --config src-tauri/tauri.portable.conf.json
+        run: pnpm dlx @tauri-apps/cli@^2 build --no-bundle --config src-tauri/tauri.portable.conf.json --ci
 
       - name: Assemble installers and portable zip
         shell: pwsh

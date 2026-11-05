@@ -14,8 +14,9 @@ go build -ldflags "-s -w -H=windowsgui" -o "src-tauri/runtime/miyabi-server.exe"
 
 # 3. Package (NSIS installer), then a second shell build with the portable
 #    identity so an installed copy and a portable folder can run side by side.
-pnpm dlx @tauri-apps/cli@^2 build
-pnpm dlx @tauri-apps/cli@^2 build --no-bundle --config src-tauri/tauri.portable.conf.json
+if (-not (Test-Path "src-tauri/tauri.conf.json")) { throw "src-tauri/tauri.conf.json missing" }
+pnpm dlx @tauri-apps/cli@^2 build --config src-tauri/tauri.conf.json --ci
+pnpm dlx @tauri-apps/cli@^2 build --no-bundle --config src-tauri/tauri.portable.conf.json --ci
 
 # 4. Assemble installer + portable zip (same layout as CI).
 # `mainBinaryName = miyabi`: tauri-cli renames the shell binary, so both the
