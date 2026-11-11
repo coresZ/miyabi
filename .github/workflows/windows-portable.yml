@@ -1,13 +1,12 @@
 name: Build Windows portable
 
-# 只构建浏览器版便携包（Go 服务 + Web）。
-# 日常请用「Manual Build」或「Release」编排；本文件可单独手动跑单组件。
-# upload_release=true 时上传到已有 Release（由 Release 工作流传入 tag）。
+# 可复用组件：仅由「Manual Build」或「Release」调用。
+# 产出服务端/浏览器便携包（无 Tauri 窗口）。
 on:
   workflow_call:
     inputs:
       version:
-        description: Release version used in artifact names
+        description: Version label for artifact names
         required: false
         type: string
         default: dev
@@ -15,27 +14,20 @@ on:
         description: Existing release tag to upload to; empty means build-only
         required: false
         type: string
-        default: ''
+        default: ""
       upload_release:
-        description: Upload the built packages to the existing release
+        description: Upload packages to the existing GitHub Release
         required: false
         type: boolean
         default: false
       ref:
-        description: Git ref to build; release passes the tag
+        description: Git ref to checkout; empty uses the caller ref
         required: false
         type: string
-        default: ''
-  # 手动触发（不打 tag）用于验证构建：只产出 workflow artifact，不动 Release。
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 用于 zip 命名的版本号，留空使用 dev
-        required: false
-        default: dev
+        default: ""
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   version:

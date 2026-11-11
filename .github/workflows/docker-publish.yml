@@ -1,6 +1,7 @@
 name: Publish Miyabi image
 
-# 只由 release.yml 调用；构建并推送镜像，不创建 Release。
+# 可复用组件：仅由「Manual Build」或「Release」调用。
+# push=true 时推送到 GHCR；Manual Build 传 push=false 只暖缓存。
 on:
   workflow_call:
     inputs:
