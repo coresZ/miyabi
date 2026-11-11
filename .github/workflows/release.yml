@@ -1,39 +1,36 @@
 name: Release
 
-# 与 HGhub 类似的发布方式：
-# - Actions 里选分支 + 勾选要构建的组件（桌面 / 服务端便携包 / Docker）
-# - 版本号可留空：只出 Artifact，不打 tag、不发 Release（验证构建）
-# - 填写版本号（如 0.4.20）：在分支 HEAD 打 v0.4.20、建 Release 并上传
-# - 推送 tag v*：自动按该 tag 全量发版
+# 正式发版（与 Manual Build 分工明确）：
+# - Actions 选分支 → 填版本号 → 勾选组件 → 打 tag + GitHub Release + 上传产物
+# - 或：git push origin v0.4.20  → 按 tag 全量发版（桌面 + 便携包 + Docker）
 #
-# 「Manual Build」仍可单独用：同样勾选组件，永远不发 Release。
+# 只想验证构建、不要 tag/Release：请用「Manual Build」。
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: "版本号（如 0.4.20）。留空=只构建产物；填写=打 tag 并发布 Release"
-        required: false
+        description: "版本号（必填，如 0.4.20）。将创建 tag v0.4.20 并发布 Release"
+        required: true
         type: string
-        default: ""
       desktop:
         description: "Windows 桌面（Tauri 安装包 + 便携 zip）"
         required: true
         type: boolean
         default: true
       portable:
-        description: "浏览器/服务端便携包（无 Tauri 窗口）"
+        description: "服务端/浏览器便携包（无桌面窗口）"
         required: true
         type: boolean
         default: true
       docker:
-        description: "Docker 镜像（发版时 push；仅构建时不 push）"
+        description: "构建并推送 Docker 镜像"
         required: true
         type: boolean
         default: false
       prerelease:
-        description: "标记为 pre-release（仅发版时有效）"
+        description: "标记为 pre-release"
         required: true
         type: boolean
         default: false
@@ -50,7 +47,6 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
       sha: ${{ steps.meta.outputs.sha }}
-      do_release: ${{ steps.meta.outputs.do_release }}
       ref: ${{ steps.meta.outputs.ref }}
       want_desktop: ${{ steps.meta.outputs.want_desktop }}
       want_portable: ${{ steps.meta.outputs.want_portable }}
@@ -67,95 +63,72 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           sha="${{ github.sha }}"
           short="${sha:0:7}"
-          branch="${{ github.ref_name }}"
-          do_release=false
-          tag=""
-          version=""
-          ref="${{ github.ref }}"
 
-          # —— 组件选择：tag 推送默认全开；手动跑看勾选 ——
           if [[ "${{ github.event_name }}" == "push" ]]; then
             want_desktop=true
             want_portable=true
             want_docker=true
+            tag="${{ github.ref_name }}"
+            version="${tag#v}"
+            ref="$tag"
           else
             want_desktop="${{ inputs.desktop }}"
             want_portable="${{ inputs.portable }}"
             want_docker="${{ inputs.docker }}"
-          fi
-
-          if [[ "$want_desktop" != "true" && "$want_portable" != "true" && "$want_docker" != "true" ]]; then
-            echo "::error::请至少勾选一个组件（desktop / portable / docker）" >&2
-            exit 1
-          fi
-
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
-            # 推送 v* tag → 正式发版
-            tag="${{ github.ref_name }}"
-            version="${tag#v}"
-            do_release=true
-            ref="$tag"
-          else
             raw="${{ inputs.version }}"
             raw="${raw#v}"
             raw="$(echo "$raw" | xargs)"
-            if [[ -n "$raw" ]]; then
-              if [[ ! "$raw" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-                echo "::error::版本号无效 '$raw'（示例 0.4.20 或 0.4.20-beta.1）" >&2
+            if [[ -z "$raw" ]]; then
+              echo "::error::请填写版本号（例如 0.4.20）。仅构建请用 Manual Build。" >&2
+              exit 1
+            fi
+            if [[ ! "$raw" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::版本号无效 '$raw'" >&2
+              exit 1
+            fi
+            version="$raw"
+            tag="v${version}"
+            ref="$tag"
+
+            if git rev-parse "$tag" >/dev/null 2>&1; then
+              existing=$(git rev-parse "$tag^{commit}")
+              if [[ "$existing" != "$sha" ]]; then
+                echo "::error::Tag $tag 已存在且指向其他提交 ($existing)" >&2
                 exit 1
               fi
-              version="$raw"
-              tag="v${version}"
-              do_release=true
-
-              if git rev-parse "$tag" >/dev/null 2>&1; then
-                existing=$(git rev-parse "$tag^{commit}")
-                if [[ "$existing" != "$sha" ]]; then
-                  echo "::error::Tag $tag 已存在且指向其他提交 ($existing)" >&2
-                  exit 1
-                fi
-                echo "Tag $tag 已在当前提交上"
-              else
-                git config user.name "github-actions[bot]"
-                git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-                git tag -a "$tag" -m "Release $tag"
-                git push origin "refs/tags/$tag"
-                echo "Created tag $tag on $branch ($short)"
-              fi
-              ref="$tag"
+              echo "Tag $tag 已在当前提交"
             else
-              # 仅构建：版本号用分支-sha
-              safe=$(echo "$branch" | tr '/:' '--')
-              version="${safe}-${short}"
-              tag=""
-              do_release=false
-              ref="${{ github.ref }}"
-              echo "Build-only: version=$version (no tag / no GitHub Release)"
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git tag -a "$tag" -m "Release $tag"
+              git push origin "refs/tags/$tag"
+              echo "Created tag $tag ($short)"
             fi
+          fi
+
+          if [[ "$want_desktop" != "true" && "$want_portable" != "true" && "$want_docker" != "true" ]]; then
+            echo "::error::请至少勾选一个组件" >&2
+            exit 1
           fi
 
           {
             echo "version=$version"
             echo "tag=$tag"
             echo "sha=$sha"
-            echo "do_release=$do_release"
             echo "ref=$ref"
             echo "want_desktop=$want_desktop"
             echo "want_portable=$want_portable"
             echo "want_docker=$want_docker"
           } >> "$GITHUB_OUTPUT"
-
-          echo "version=$version tag=$tag do_release=$do_release desktop=$want_desktop portable=$want_portable docker=$want_docker"
+          echo "version=$version tag=$tag desktop=$want_desktop portable=$want_portable docker=$want_docker"
 
   create-draft:
     name: Create draft release
     needs: version
-    if: needs.version.outputs.do_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Draft release
@@ -164,18 +137,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.version.outputs.tag }}
-          PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
           VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
         run: |
           set -euo pipefail
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "release '$TAG' already exists; keeping its body"
+            echo "release '$TAG' already exists"
             exit 0
           fi
           {
             echo "Miyabi ${VERSION}"
             echo
-            echo "Components built by this Actions run."
+            echo "Built by GitHub Actions Release workflow."
           } > "$RUNNER_TEMP/release-notes.md"
           extra=()
           if [[ "$PRERELEASE" == "true" ]]; then
@@ -188,34 +161,26 @@ jobs:
             "${extra[@]}"
 
   desktop:
-    name: Build desktop packages
+    name: Desktop
     needs: [version, create-draft]
-    if: |
-      always() &&
-      needs.version.result == 'success' &&
-      needs.version.outputs.want_desktop == 'true' &&
-      (needs.version.outputs.do_release != 'true' || needs.create-draft.result == 'success')
+    if: needs.version.outputs.want_desktop == 'true'
     uses: ./.github/workflows/desktop-tauri.yml
     with:
       version: ${{ needs.version.outputs.version }}
       tag: ${{ needs.version.outputs.tag }}
       ref: ${{ needs.version.outputs.ref }}
-      upload_release: ${{ needs.version.outputs.do_release == 'true' }}
+      upload_release: true
 
   portable:
-    name: Build portable packages
+    name: Server portable
     needs: [version, create-draft]
-    if: |
-      always() &&
-      needs.version.result == 'success' &&
-      needs.version.outputs.want_portable == 'true' &&
-      (needs.version.outputs.do_release != 'true' || needs.create-draft.result == 'success')
+    if: needs.version.outputs.want_portable == 'true'
     uses: ./.github/workflows/windows-portable.yml
     with:
       version: ${{ needs.version.outputs.version }}
       tag: ${{ needs.version.outputs.tag }}
       ref: ${{ needs.version.outputs.ref }}
-      upload_release: ${{ needs.version.outputs.do_release == 'true' }}
+      upload_release: true
 
   docker:
     name: Docker
@@ -225,7 +190,7 @@ jobs:
     with:
       version: ${{ needs.version.outputs.version }}
       ref: ${{ needs.version.outputs.ref }}
-      push: ${{ needs.version.outputs.do_release == 'true' }}
+      push: true
 
   publish:
     name: Publish release
@@ -233,14 +198,13 @@ jobs:
     needs: [version, create-draft, desktop, portable, docker]
     if: |
       always() &&
-      needs.version.outputs.do_release == 'true' &&
       needs.version.result == 'success' &&
       needs.create-draft.result == 'success' &&
       (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') &&
       (needs.portable.result == 'success' || needs.portable.result == 'skipped') &&
       (needs.docker.result == 'success' || needs.docker.result == 'skipped')
     steps:
-      - name: Publish release
+      - name: Undraft
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -252,5 +216,5 @@ jobs:
           if [[ "$state" == "true" ]]; then
             gh release edit "$TAG" --draft=false --repo "$GH_REPO"
           else
-            echo "release '$TAG' is already published"
+            echo "release '$TAG' already published"
           fi

@@ -1,34 +1,35 @@
 name: Manual Build
 
-# 按需构建：在 Actions 里选分支 = 用该分支最新代码。
-# 勾选要构建的组件；只上传 workflow Artifact，不打 tag、不创建 GitHub Release。
+# 验证/按需构建（不发版）：
+# - Actions 选分支 = 用该分支最新代码
+# - 勾选组件；只上传 workflow Artifact
+# - 不打 tag、不创建 GitHub Release
+#
+# 正式发版请用「Release」。
 on:
   workflow_dispatch:
     inputs:
       desktop:
-        description: 'Desktop: Tauri shell (miyabi.exe) + bundled server under runtime/'
+        description: "Windows 桌面（Tauri：安装包 + 便携 zip）"
         required: true
         type: boolean
         default: true
       portable:
-        description: 'Server only: browser portable zip (no Tauri window; run the .exe HTTP server)'
+        description: "服务端/浏览器便携包（无桌面窗口）"
         required: true
         type: boolean
         default: true
       docker:
-        description: 'Build Docker image (cache only, does not push)'
+        description: "Docker 镜像（只构建不推送）"
         required: true
         type: boolean
         default: false
       version:
-        description: 'Artifact version label (empty = branch name + short sha)'
+        description: "产物版本标签（留空 = 分支名-短sha）"
         required: false
         type: string
-        default: ''
+        default: ""
 
-# Reusable desktop/portable workflows declare a release job with contents:write.
-# GitHub validates that at parse time even when upload_release is false, so the
-# caller must grant write. Manual Build still never creates tags/releases itself.
 permissions:
   contents: write
   packages: write
@@ -40,7 +41,6 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       ref: ${{ steps.meta.outputs.ref }}
-      sha_short: ${{ steps.meta.outputs.sha_short }}
     steps:
       - name: Metadata
         id: meta
@@ -53,19 +53,17 @@ jobs:
           branch="${{ github.ref_name }}"
           label="${{ inputs.version }}"
           if [[ -z "$label" ]]; then
-            # branch names may contain / — sanitize for artifact names
             safe=$(echo "$branch" | tr '/:' '--')
             label="${safe}-${short}"
           fi
           {
             echo "version=${label}"
             echo "ref=${ref}"
-            echo "sha_short=${short}"
           } >> "${GITHUB_OUTPUT}"
-          echo "Building branch=${branch} sha=${short} version=${label}"
+          echo "branch=${branch} sha=${short} version=${label}"
 
   desktop:
-    name: Desktop (Tauri)
+    name: Desktop
     needs: resolve
     if: inputs.desktop
     uses: ./.github/workflows/desktop-tauri.yml
