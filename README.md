@@ -11,6 +11,20 @@ Miyabi 支持直接对接 115 进行刮削、订阅，也可由 Miyabi 作为底
 ![搜索](./screenshots/ScreenShot_2026-09-19_132227_063.png)
 ![设置](./screenshots/ScreenShot_2026-09-19_132249_331.png)
 
+
+## 构建与发布（GitHub Actions）
+
+仓库提供两套入口工作流：
+
+| 工作流 | 用途 |
+|--------|------|
+| **Manual Build** | 选分支、勾选组件，只出构建产物（Artifact），不发版 |
+| **Release** | 填写版本号并勾选组件，或推送 `v*` tag，正式打 tag 并发布 GitHub Release |
+
+桌面端构建需使用包含 `src-tauri/` 的分支（例如桌面开发分支）。
+
+详细参数、流程与推荐用法见 **[docs/ci-workflows.md](./docs/ci-workflows.md)**。
+
 ## Docker 部署
 
 > \[!TIP]
