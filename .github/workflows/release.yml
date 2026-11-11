@@ -172,10 +172,11 @@ jobs:
             echo "release '$TAG' already exists; keeping its body"
             exit 0
           fi
-          body="Miyabi ${VERSION}
-
-组件由本次 Actions 勾选构建并上传。"
-          printf '%s\n' "$body" > "$RUNNER_TEMP/release-notes.md"
+          {
+            echo "Miyabi ${VERSION}"
+            echo
+            echo "Components built by this Actions run."
+          } > "$RUNNER_TEMP/release-notes.md"
           extra=()
           if [[ "$PRERELEASE" == "true" ]]; then
             extra+=(--prerelease)
