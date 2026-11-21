@@ -106,7 +106,7 @@ func TestRecoverySwitchesSeriallyAndPreservesTaskIdentity(t *testing.T) {
 	if !slices.Equal(r.events, []string{"add:" + offlineHashA, "remove:" + offlineHashA, "add:" + offlineHashB}) {
 		t.Fatal(r.events)
 	}
-	sess, err := r.s.drive.Open(t.Context())
+	sess, err := r.s.drive.OpenSource(t.Context(), *r.s.drive.Source())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,7 +362,7 @@ func TestSwitchKeepsHistoryVisibleAndDeduplicatesCurrentCandidate(t *testing.T) 
 	record := r.add(offlineHashA)
 	// A newer historical row must not shadow the older task after it switches.
 	r.s.database.OfflineDownload.Create().SetHash(offlineHashB).SetInfoHash(offlineHashB).
-		SetCode(record.Code).SetJavdbID(record.JavdbID).SetAccountID(record.AccountID).SetDirectoryID(record.DirectoryID).
+		SetCode(record.Code).SetAccountID(record.AccountID).SetDirectoryID(record.DirectoryID).
 		SetStatus(offlinedownload.StatusDone).SaveX(t.Context())
 	if _, err := r.s.TryNext(t.Context(), record.ID); err != nil {
 		t.Fatal(err)
@@ -378,7 +378,7 @@ func TestSwitchKeepsHistoryVisibleAndDeduplicatesCurrentCandidate(t *testing.T) 
 		t.Fatal("switched task vanished", activity)
 	}
 	for _, hash := range []string{offlineHashA, offlineHashB} {
-		result, err := r.s.Add(t.Context(), record.JavdbID, hash)
+		result, err := r.s.Add(t.Context(), record.Code, hash)
 		if err != nil || result.TaskID != record.ID {
 			t.Fatalf("candidate created duplicate: %+v, %v", result, err)
 		}
@@ -411,7 +411,7 @@ func TestRecoveryUsesRemoteHashToExcludeDuplicateCandidates(t *testing.T) {
 func TestRecoveryStopsSwitchingWhenMovieWasIndexed(t *testing.T) {
 	r := newRecoveryRig(t)
 	record := r.add(offlineHashA)
-	film := r.s.database.Movie.Create().SetCode(record.Code).SetJavdbID(record.JavdbID).SaveX(t.Context())
+	film := r.s.database.Movie.Create().SetCode(record.Code).SaveX(t.Context())
 	r.s.database.File.Create().SetFileID("existing-video").SetName("existing.mp4").SetSize(1).
 		SetAccountID(record.AccountID).SetRootID(record.DirectoryID).SetMovie(film).SaveX(t.Context())
 	r.poll(30 * time.Second)

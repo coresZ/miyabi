@@ -1,4 +1,14 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link, Outlet, useLocation } from '@tanstack/react-router'
+import {
+  BellIcon,
+  DatabaseIcon,
+  HardDriveIcon,
+  NetworkIcon,
+  Share2Icon,
+  SlidersHorizontalIcon,
+  TagsIcon
+} from 'lucide-react'
+import { cn } from 'cn'
 
 import { AppPage } from '@/components/app-page'
 import { PageHeader } from '@/components/page-header'
@@ -18,13 +28,25 @@ import { ScrapingSection } from '@/features/settings/scraping-section'
 import { TasksSection } from '@/features/settings/tasks-section'
 
 export const Route = createFileRoute('/settings')({
-  component: SettingsPage
+  component: SettingsLayout
 })
 
-function SettingsPage() {
+function SettingsLayout() {
+  const pathname = useLocation({ select: location => location.pathname })
+
   return (
     <AppPage showBackTop={false}>
-      <PageHeader title="设置" description="管理应用选项和其他配置" />
+      <PageHeader title="设置" description="管理应用选项、存储源与元数据" />
+      <div className="flex flex-col gap-6 md:flex-row md:gap-8">
+        <nav
+          aria-label="设置导航"
+          className="no-scrollbar flex gap-1 overflow-x-auto md:w-44 md:shrink-0 md:flex-col"
+        >
+          {SETTINGS_NAV.map(item => {
+            const active =
+              item.to === '/settings'
+                ? pathname === '/settings'
+                : pathname === item.to || pathname.startsWith(`${item.to}/`)
 
       <Card>
         <CardContent className="space-y-8">

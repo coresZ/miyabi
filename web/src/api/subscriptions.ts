@@ -52,6 +52,16 @@ const listOptions = {
   refetchOnMount: 'always'
 } as const
 
+// Stable module-level select so the index map is only rebuilt when the data
+// changes, not on every render.
+function indexTargets(targets: SubscriptionTarget[]) {
+  const map = new Map<string, SubscriptionTarget>()
+  for (const item of targets) {
+    map.set(item.target_id, item)
+  }
+  return { list: targets, map }
+}
+
 export function useSubscriptionTargets(kind?: SubscriptionKind) {
   return useQuery({
     queryKey: subscriptionKeys.targets(kind),
@@ -62,13 +72,7 @@ export function useSubscriptionTargets(kind?: SubscriptionKind) {
         signal
       ),
     staleTime: Infinity,
-    select: targets => {
-      const map = new Map<string, SubscriptionTarget>()
-      for (const item of targets) {
-        map.set(item.target_id, item)
-      }
-      return { list: targets, map }
-    }
+    select: indexTargets
   })
 }
 
@@ -153,7 +157,7 @@ export function useUpdateSubscription() {
 export function useRemoveSubscription() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (item: { id: number; kind?: SubscriptionKind }) =>
+    mutationFn: (item: { id: number }) =>
       apiDelete<null>(`/api/subscriptions/${item.id}`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })

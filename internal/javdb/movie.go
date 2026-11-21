@@ -20,12 +20,19 @@ func (c *Client) MovieDetail(ctx context.Context, movieID string) (domain.MovieD
 	}
 
 	var data wireMovieData
+	if c.webFallback.Load() {
+		return c.movieDetailFromWeb(ctx, movieID)
+	}
 	if err := c.getJSON(
 		ctx,
 		"/api/v4/movies/"+url.PathEscape(movieID),
 		nil,
 		&data,
 	); err != nil {
+		if requiresWebFallback(err) {
+			c.webFallback.Store(true)
+			return c.movieDetailFromWeb(ctx, movieID)
+		}
 		return domain.MovieDetail{}, err
 	}
 	movie, err := movieFromWire(ctx, data.Movie.wireMovie)
@@ -74,102 +81,9 @@ func movieReferencesFromWire(ctx context.Context, movieID, field string, source 
 				"reference_id", id, "reason", reason)
 			continue
 		}
-		result = append(result, domain.MovieReference{ID: id, Code: code, Thumbnail: item.ThumbURL})
+		result = append(result, domain.MovieReference{ID: codeid.Normalize(code), Code: code, Thumbnail: item.ThumbURL})
 	}
 	return result
-}
-
-// ResolveMovieID finds the single distinct movie ID matching the catalogue number.
-// Candidates from codeid.Layers are matched in priority order:
-// Level 0: 完整原貌 (Complete normalized catalogue candidate)
-// Level 1: 前缀回退 (Prefix stripped: distributor label digits or studio prefix removed)
-// Level 2: 后缀回退 (Suffix stripped: video part or subtitle marker removed)
-// Level 3: 双端回退 (Both prefix and suffix stripped)
-//
-// Higher-level candidates strictly win over lower-level ones.
-// In each layer, exact normalized matches strictly win over format-equivalent ones.
-// Duplicate rows for the same ID are allowed; multiple distinct matching movies
-// for the same level are strictly rejected to prevent ambiguity.
-func (c *Client) ResolveMovieID(ctx context.Context, number string) (string, error) {
-	layers := codeid.Layers(number)
-	if len(layers) == 0 {
-		return "", errors.New("catalogue number is required")
-	}
-
-	var movies []domain.Movie
-	queried := make(map[string]bool)
-
-	for level, candidates := range layers {
-		for _, candidate := range candidates {
-			for _, query := range codeid.Queries(candidate) {
-				// If candidate is already satisfied by existing search results,
-				// do not issue redundant network requests.
-				id, err := matchCandidates(movies, []string{candidate}, false)
-				if err != nil {
-					return "", err
-				}
-				if id != "" {
-					break
-				}
-				if queried[query] {
-					continue
-				}
-				queried[query] = true
-
-				results, err := c.Search(ctx, query, domain.SearchOptions{
-					Zone:  domain.ZoneAll,
-					Page:  1,
-					Limit: 100,
-				})
-				if err != nil {
-					return "", err
-				}
-				movies = append(movies, results...)
-			}
-		}
-
-		// Recheck completed levels in priority order.
-		// A later query may uncover a stronger candidate from an earlier layer.
-		for _, completed := range layers[:level+1] {
-			for _, equivalent := range []bool{false, true} {
-				id, err := matchCandidates(movies, completed, equivalent)
-				if err != nil || id != "" {
-					return id, err
-				}
-			}
-		}
-	}
-
-	return "", fmt.Errorf("catalogue number %s was not found on JavDB", layers[0][0])
-}
-
-func matchCandidates(movies []domain.Movie, candidates []string, equivalent bool) (string, error) {
-	var matchedID string
-	ids := make(map[string]struct{})
-	for _, movie := range movies {
-		for _, candidate := range candidates {
-			var matches bool
-			if !equivalent {
-				matches = codeid.Normalize(movie.Code) == candidate
-			} else {
-				matches = codeid.IsFormatEquivalent(movie.Code, candidate)
-			}
-			if matches {
-				if _, ok := ids[movie.ID]; !ok {
-					ids[movie.ID] = struct{}{}
-					matchedID = movie.ID
-				}
-			}
-		}
-	}
-	if len(ids) > 1 {
-		kind := "exact"
-		if equivalent {
-			kind = "format-equivalent"
-		}
-		return "", fmt.Errorf("catalogue number %s has multiple %s JavDB matches", candidates[0], kind)
-	}
-	return matchedID, nil
 }
 
 func moviesFromWire(ctx context.Context, source []wireMovie) ([]domain.Movie, error) {
@@ -200,6 +114,7 @@ func movieFromWire(ctx context.Context, source wireMovie) (domain.Movie, error) 
 		Code:          code,
 		Title:         source.Title,
 		OriginTitle:   source.OriginTitle,
+		Plot:          strings.TrimSpace(source.Summary),
 		ReleaseDate:   source.ReleaseDate,
 		Duration:      source.Duration,
 		Rating:        float64(source.Score),

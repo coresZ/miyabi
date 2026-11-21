@@ -13,6 +13,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/ppxb/miyabi/internal/ent/actor"
+	"github.com/ppxb/miyabi/internal/ent/actoralias"
+	"github.com/ppxb/miyabi/internal/ent/actorimage"
+	"github.com/ppxb/miyabi/internal/ent/actorprofile"
 	"github.com/ppxb/miyabi/internal/ent/embynotification"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/metadatacache"
@@ -24,6 +27,7 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/tag"
 	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/ent/viewedmovie"
+	"github.com/ppxb/miyabi/internal/ent/watchhistory"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -85,6 +89,9 @@ func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			actor.Table:            actor.ValidColumn,
+			actoralias.Table:       actoralias.ValidColumn,
+			actorimage.Table:       actorimage.ValidColumn,
+			actorprofile.Table:     actorprofile.ValidColumn,
 			embynotification.Table: embynotification.ValidColumn,
 			file.Table:             file.ValidColumn,
 			metadatacache.Table:    metadatacache.ValidColumn,
@@ -96,6 +103,7 @@ func checkColumn(t, c string) error {
 			tag.Table:              tag.ValidColumn,
 			task.Table:             task.ValidColumn,
 			viewedmovie.Table:      viewedmovie.ValidColumn,
+			watchhistory.Table:     watchhistory.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

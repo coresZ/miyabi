@@ -31,8 +31,12 @@ const (
 	FieldGender = "gender"
 	// FieldAvatar holds the string denoting the avatar field in the database.
 	FieldAvatar = "avatar"
+	// FieldNameKey holds the string denoting the name_key field in the database.
+	FieldNameKey = "name_key"
 	// EdgeMovies holds the string denoting the movies edge name in mutations.
 	EdgeMovies = "movies"
+	// EdgeProfile holds the string denoting the profile edge name in mutations.
+	EdgeProfile = "profile"
 	// Table holds the table name of the actor in the database.
 	Table = "actors"
 	// MoviesTable is the table that holds the movies relation/edge. The primary key declared below.
@@ -40,6 +44,13 @@ const (
 	// MoviesInverseTable is the table name for the Movie entity.
 	// It exists in this package in order to avoid circular dependency with the "movie" package.
 	MoviesInverseTable = "movies"
+	// ProfileTable is the table that holds the profile relation/edge.
+	ProfileTable = "actors"
+	// ProfileInverseTable is the table name for the ActorProfile entity.
+	// It exists in this package in order to avoid circular dependency with the "actorprofile" package.
+	ProfileInverseTable = "actor_profiles"
+	// ProfileColumn is the table column denoting the profile relation/edge.
+	ProfileColumn = "actor_profile"
 )
 
 // Columns holds all SQL columns for actor fields.
@@ -53,6 +64,13 @@ var Columns = []string{
 	FieldNameZht,
 	FieldGender,
 	FieldAvatar,
+	FieldNameKey,
+}
+
+// ForeignKeys holds the SQL foreign-keys that are owned by the "actors"
+// table and are not defined as standalone fields in the schema.
+var ForeignKeys = []string{
+	"actor_profile",
 }
 
 var (
@@ -65,6 +83,11 @@ var (
 func ValidColumn(column string) bool {
 	for i := range Columns {
 		if column == Columns[i] {
+			return true
+		}
+	}
+	for i := range ForeignKeys {
+		if column == ForeignKeys[i] {
 			return true
 		}
 	}
@@ -84,6 +107,8 @@ var (
 	SourceIDValidator func(string) error
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
+	// DefaultNameKey holds the default value on creation for the "name_key" field.
+	DefaultNameKey string
 )
 
 // Gender defines the type for the "gender" enum field.
@@ -161,6 +186,11 @@ func ByAvatar(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAvatar, opts...).ToFunc()
 }
 
+// ByNameKey orders the results by the name_key field.
+func ByNameKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldNameKey, opts...).ToFunc()
+}
+
 // ByMoviesCount orders the results by movies count.
 func ByMoviesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -174,10 +204,24 @@ func ByMovies(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newMoviesStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByProfileField orders the results by profile field.
+func ByProfileField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newProfileStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newMoviesStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(MoviesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, true, MoviesTable, MoviesPrimaryKey...),
+	)
+}
+func newProfileStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ProfileInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, ProfileTable, ProfileColumn),
 	)
 }

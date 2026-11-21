@@ -2,6 +2,7 @@ package offline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -75,16 +76,10 @@ func (s *Service) lockTask(ctx context.Context, id int) (func(), error) {
 	return s.operations.Lock(ctx, "task", fmt.Sprint(id))
 }
 
-// Recover advances at most one remote action per poll; all tasks are observed
-// before a slow submission can occupy the serial poller.
-func (s *Service) Recover(ctx context.Context) error {
+func (s *Service) recoverSource(ctx context.Context, source domain.LibrarySource) error {
 	cfg, prefs, err := s.config(ctx)
 	if err != nil {
 		return err
-	}
-	source := s.drive.Source()
-	if source == nil {
-		return nil
 	}
 	records, err := s.database.OfflineDownload.Query().Where(
 		offlinedownload.AccountIDEQ(source.AccountID), offlinedownload.DirectoryIDEQ(source.Directory.ID),
@@ -161,7 +156,7 @@ func (s *Service) nextCandidate(ctx context.Context, record *ent.OfflineDownload
 		state.Reason = "已达磁力尝试上限"
 		return "", nil
 	}
-	magnets, err := s.catalogue.CatalogueMagnets(ctx, record.JavdbID)
+	magnets, err := s.catalogue.CatalogueMagnetsByCode(ctx, record.Code)
 	if err != nil {
 		return "", err
 	}
@@ -200,7 +195,7 @@ func (s *Service) deferAction(ctx context.Context, record *ent.OfflineDownload, 
 	defer cancel()
 	current, err := s.database.OfflineDownload.Get(ctx, record.ID)
 	if err != nil {
-		return err
+		return errors.Join(cause, err)
 	}
 	if current.Recovery != nil {
 		state = recovery(current, state.Preferences)

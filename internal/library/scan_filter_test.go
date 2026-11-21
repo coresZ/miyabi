@@ -6,7 +6,6 @@ import (
 	"path"
 	"testing"
 
-	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
@@ -93,7 +92,7 @@ func TestRescanRepairsAuxiliaryVideosAndSSNISubtitleAlias(t *testing.T) {
 				if entry.code == "UUE-29" || entry.code == "UUP-87" || entry.code == "SSNI-748C" {
 					builder.SetScrapeStatus(movie.ScrapeStatusFailed)
 				} else {
-					builder.SetJavdbID("catalogue-" + entry.code).SetScrapeStatus(movie.ScrapeStatusDone)
+					builder.SetScrapeStatus(movie.ScrapeStatusDone)
 				}
 				movies[entry.code] = builder.SaveX(ctx)
 			}
@@ -127,7 +126,7 @@ func TestRescanRepairsAuxiliaryVideosAndSSNISubtitleAlias(t *testing.T) {
 		}
 	}
 	canonical := lib.database.Movie.Query().Where(movie.CodeEQ("SSNI-748")).OnlyX(ctx)
-	if canonical.ID != movies["SSNI-748"].ID || domain.ValueOrZero(canonical.JavdbID) != "catalogue-SSNI-748" {
+	if canonical.ID != movies["SSNI-748"].ID {
 		t.Fatal("subtitle alias repair replaced valid catalogue metadata")
 	}
 	files := lib.database.File.Query().Where(file.MovieIDEQ(canonical.ID)).AllX(ctx)
@@ -198,7 +197,7 @@ func TestFixedVideoSizeThresholdAppliesToFilenameAndOfflineIdentity(t *testing.T
 	}
 	for _, offline := range []bool{false, true} {
 		if offline {
-			payload.OfflineTaskID, payload.TargetID, payload.Code, payload.JavDBID = 1, "folder", "ABP-001", "catalogue"
+			payload.OfflineTaskID, payload.TargetID, payload.Code = 1, "folder", "ABP-001"
 		}
 		videos, err := identifyScanVideosForTest(t.Context(), lib, payload, entries)
 		if err != nil || videos["negative"].Code != "" || videos["unknown-size"].Code != "" ||

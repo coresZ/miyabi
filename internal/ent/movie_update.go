@@ -83,26 +83,6 @@ func (_u *MovieUpdate) SetNillableCanonicalCode(v *string) *MovieUpdate {
 	return _u
 }
 
-// SetJavdbID sets the "javdb_id" field.
-func (_u *MovieUpdate) SetJavdbID(v string) *MovieUpdate {
-	_u.mutation.SetJavdbID(v)
-	return _u
-}
-
-// SetNillableJavdbID sets the "javdb_id" field if the given value is not nil.
-func (_u *MovieUpdate) SetNillableJavdbID(v *string) *MovieUpdate {
-	if v != nil {
-		_u.SetJavdbID(*v)
-	}
-	return _u
-}
-
-// ClearJavdbID clears the value of the "javdb_id" field.
-func (_u *MovieUpdate) ClearJavdbID() *MovieUpdate {
-	_u.mutation.ClearJavdbID()
-	return _u
-}
-
 // SetTitle sets the "title" field.
 func (_u *MovieUpdate) SetTitle(v string) *MovieUpdate {
 	_u.mutation.SetTitle(v)
@@ -308,6 +288,27 @@ func (_u *MovieUpdate) AddRating(v float64) *MovieUpdate {
 // ClearRating clears the value of the "rating" field.
 func (_u *MovieUpdate) ClearRating() *MovieUpdate {
 	_u.mutation.ClearRating()
+	return _u
+}
+
+// SetRating10 sets the "rating10" field.
+func (_u *MovieUpdate) SetRating10(v float64) *MovieUpdate {
+	_u.mutation.ResetRating10()
+	_u.mutation.SetRating10(v)
+	return _u
+}
+
+// SetNillableRating10 sets the "rating10" field if the given value is not nil.
+func (_u *MovieUpdate) SetNillableRating10(v *float64) *MovieUpdate {
+	if v != nil {
+		_u.SetRating10(*v)
+	}
+	return _u
+}
+
+// AddRating10 adds value to the "rating10" field.
+func (_u *MovieUpdate) AddRating10(v float64) *MovieUpdate {
+	_u.mutation.AddRating10(v)
 	return _u
 }
 
@@ -631,12 +632,6 @@ func (_u *MovieUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.CanonicalCode(); ok {
 		_spec.SetField(movie.FieldCanonicalCode, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.JavdbID(); ok {
-		_spec.SetField(movie.FieldJavdbID, field.TypeString, value)
-	}
-	if _u.mutation.JavdbIDCleared() {
-		_spec.ClearField(movie.FieldJavdbID, field.TypeString)
-	}
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(movie.FieldTitle, field.TypeString, value)
 	}
@@ -699,6 +694,12 @@ func (_u *MovieUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.RatingCleared() {
 		_spec.ClearField(movie.FieldRating, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.Rating10(); ok {
+		_spec.SetField(movie.FieldRating10, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedRating10(); ok {
+		_spec.AddField(movie.FieldRating10, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.Cover(); ok {
 		_spec.SetField(movie.FieldCover, field.TypeString, value)
@@ -983,26 +984,6 @@ func (_u *MovieUpdateOne) SetNillableCanonicalCode(v *string) *MovieUpdateOne {
 	return _u
 }
 
-// SetJavdbID sets the "javdb_id" field.
-func (_u *MovieUpdateOne) SetJavdbID(v string) *MovieUpdateOne {
-	_u.mutation.SetJavdbID(v)
-	return _u
-}
-
-// SetNillableJavdbID sets the "javdb_id" field if the given value is not nil.
-func (_u *MovieUpdateOne) SetNillableJavdbID(v *string) *MovieUpdateOne {
-	if v != nil {
-		_u.SetJavdbID(*v)
-	}
-	return _u
-}
-
-// ClearJavdbID clears the value of the "javdb_id" field.
-func (_u *MovieUpdateOne) ClearJavdbID() *MovieUpdateOne {
-	_u.mutation.ClearJavdbID()
-	return _u
-}
-
 // SetTitle sets the "title" field.
 func (_u *MovieUpdateOne) SetTitle(v string) *MovieUpdateOne {
 	_u.mutation.SetTitle(v)
@@ -1208,6 +1189,27 @@ func (_u *MovieUpdateOne) AddRating(v float64) *MovieUpdateOne {
 // ClearRating clears the value of the "rating" field.
 func (_u *MovieUpdateOne) ClearRating() *MovieUpdateOne {
 	_u.mutation.ClearRating()
+	return _u
+}
+
+// SetRating10 sets the "rating10" field.
+func (_u *MovieUpdateOne) SetRating10(v float64) *MovieUpdateOne {
+	_u.mutation.ResetRating10()
+	_u.mutation.SetRating10(v)
+	return _u
+}
+
+// SetNillableRating10 sets the "rating10" field if the given value is not nil.
+func (_u *MovieUpdateOne) SetNillableRating10(v *float64) *MovieUpdateOne {
+	if v != nil {
+		_u.SetRating10(*v)
+	}
+	return _u
+}
+
+// AddRating10 adds value to the "rating10" field.
+func (_u *MovieUpdateOne) AddRating10(v float64) *MovieUpdateOne {
+	_u.mutation.AddRating10(v)
 	return _u
 }
 
@@ -1561,12 +1563,6 @@ func (_u *MovieUpdateOne) sqlSave(ctx context.Context) (_node *Movie, err error)
 	if value, ok := _u.mutation.CanonicalCode(); ok {
 		_spec.SetField(movie.FieldCanonicalCode, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.JavdbID(); ok {
-		_spec.SetField(movie.FieldJavdbID, field.TypeString, value)
-	}
-	if _u.mutation.JavdbIDCleared() {
-		_spec.ClearField(movie.FieldJavdbID, field.TypeString)
-	}
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(movie.FieldTitle, field.TypeString, value)
 	}
@@ -1629,6 +1625,12 @@ func (_u *MovieUpdateOne) sqlSave(ctx context.Context) (_node *Movie, err error)
 	}
 	if _u.mutation.RatingCleared() {
 		_spec.ClearField(movie.FieldRating, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.Rating10(); ok {
+		_spec.SetField(movie.FieldRating10, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedRating10(); ok {
+		_spec.AddField(movie.FieldRating10, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.Cover(); ok {
 		_spec.SetField(movie.FieldCover, field.TypeString, value)

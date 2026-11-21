@@ -26,8 +26,6 @@ const (
 	FieldManualCode = "manual_code"
 	// FieldCanonicalCode holds the string denoting the canonical_code field in the database.
 	FieldCanonicalCode = "canonical_code"
-	// FieldJavdbID holds the string denoting the javdb_id field in the database.
-	FieldJavdbID = "javdb_id"
 	// FieldTitle holds the string denoting the title field in the database.
 	FieldTitle = "title"
 	// FieldReleaseDate holds the string denoting the release_date field in the database.
@@ -48,6 +46,8 @@ const (
 	FieldSeriesName = "series_name"
 	// FieldRating holds the string denoting the rating field in the database.
 	FieldRating = "rating"
+	// FieldRating10 holds the string denoting the rating10 field in the database.
+	FieldRating10 = "rating10"
 	// FieldCover holds the string denoting the cover field in the database.
 	FieldCover = "cover"
 	// FieldPoster holds the string denoting the poster field in the database.
@@ -104,7 +104,6 @@ var Columns = []string{
 	FieldCode,
 	FieldManualCode,
 	FieldCanonicalCode,
-	FieldJavdbID,
 	FieldTitle,
 	FieldReleaseDate,
 	FieldDuration,
@@ -115,6 +114,7 @@ var Columns = []string{
 	FieldSeriesID,
 	FieldSeriesName,
 	FieldRating,
+	FieldRating10,
 	FieldCover,
 	FieldPoster,
 	FieldFanarts,
@@ -163,6 +163,8 @@ var (
 	DefaultCanonicalCode string
 	// DefaultTitle holds the default value on creation for the "title" field.
 	DefaultTitle string
+	// DefaultRating10 holds the default value on creation for the "rating10" field.
+	DefaultRating10 float64
 	// DefaultFanarts holds the default value on creation for the "fanarts" field.
 	DefaultFanarts func() []string
 )
@@ -227,11 +229,6 @@ func ByCanonicalCode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCanonicalCode, opts...).ToFunc()
 }
 
-// ByJavdbID orders the results by the javdb_id field.
-func ByJavdbID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldJavdbID, opts...).ToFunc()
-}
-
 // ByTitle orders the results by the title field.
 func ByTitle(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTitle, opts...).ToFunc()
@@ -280,6 +277,11 @@ func BySeriesName(opts ...sql.OrderTermOption) OrderOption {
 // ByRating orders the results by the rating field.
 func ByRating(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRating, opts...).ToFunc()
+}
+
+// ByRating10 orders the results by the rating10 field.
+func ByRating10(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRating10, opts...).ToFunc()
 }
 
 // ByCover orders the results by the cover field.

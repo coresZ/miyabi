@@ -11,25 +11,19 @@ import (
 )
 
 type CatalogueManager interface {
-	Search(context.Context, string, domain.SearchOptions) ([]catalogue.Movie, error)
 	Browse(context.Context, domain.BrowseOptions) ([]catalogue.Movie, error)
 	MovieDetail(context.Context, string) (catalogue.MovieDetail, error)
-	ResolveMovieID(context.Context, string) (string, error)
 	MovieStates(context.Context, []catalogue.MovieIdentity) ([]catalogue.MovieStateItem, error)
 	Magnets(context.Context, string) ([]catalogue.Magnet, error)
+	MagnetsByCode(context.Context, string) ([]catalogue.Magnet, error)
 	Tags(context.Context, domain.Zone) ([]domain.TagCategory, error)
 	Media(context.Context, string) (domain.Media, error)
+	LocalRecommendations(context.Context, domain.MovieMetadata) ([]domain.MovieReference, []domain.MovieReference, error)
 }
 
 type ViewedManager interface {
 	ViewedMovieIDs(context.Context) ([]string, error)
 	AddViewedMovieIDs(context.Context, []string) error
-}
-
-type discoverSearchQuery struct {
-	Query string `form:"q" binding:"required"`
-	Page  int    `form:"page,default=1" binding:"min=1"`
-	Limit int    `form:"limit,default=20" binding:"min=1,max=100"`
 }
 
 type discoverBrowseQuery struct {
@@ -73,20 +67,6 @@ type imageQuery struct {
 	URL string `form:"url" binding:"required,url"`
 }
 
-func discoverSearchHandler(discover CatalogueManager) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		query, ok := bindQuery[discoverSearchQuery](c)
-		if !ok {
-			return
-		}
-		movies, err := discover.Search(c.Request.Context(), query.Query, domain.SearchOptions{
-			Page:  query.Page,
-			Limit: query.Limit,
-		})
-		respond(c, movies, err)
-	}
-}
-
 func discoverBrowseHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		query, ok := bindQuery[discoverBrowseQuery](c)
@@ -110,34 +90,47 @@ func discoverBrowseHandler(discover CatalogueManager) gin.HandlerFunc {
 	}
 }
 
-func discoverMovieHandler(discover CatalogueManager) gin.HandlerFunc {
+type discoverMovieQuery struct {
+	Code string `form:"code" binding:"omitempty,max=200"`
+}
+
+func discoverMovieHandler(discover CatalogueManager, metadata MetadataManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uri, ok := bindURI[movieURI](c)
 		if !ok {
 			return
 		}
-		movie, err := discover.MovieDetail(c.Request.Context(), uri.ID)
-		respond(c, movie, err)
-	}
-}
-
-func discoverResolveMovieHandler(discover CatalogueManager) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		query, ok := bindQuery[struct {
-			Code string `form:"code" binding:"required,max=200"`
-		}](c)
+		query, ok := bindQuery[discoverMovieQuery](c)
 		if !ok {
 			return
 		}
+		// The discover identity is the normalized code. Detail resolves from the
+		// multi-source metadata layer with JavDB excluded, using the explicit
+		// code when supplied and falling back to the path id otherwise.
 		code := codeid.Normalize(query.Code)
 		if code == "" {
-			respond(c, nil, domain.E(domain.KindInvalid, "影片番号不能为空", nil))
+			code = codeid.Normalize(uri.ID)
+		}
+		if code != "" && codeid.Valid(code) {
+			meta, err := metadata.ResolveExcept(c.Request.Context(), domain.MovieRef{Code: code}, "javdb")
+			if err != nil {
+				respond(c, nil, err)
+				return
+			}
+			detail := catalogue.ProjectMetadataDetail(meta)
+			// Recommendations come solely from already-indexed data, matched by
+			// this movie's metadata; never from the source's suggestion lists.
+			if actors, related, recErr := discover.LocalRecommendations(c.Request.Context(), meta); recErr != nil {
+				c.Error(recErr)
+			} else {
+				detail.ActorMovies = actors
+				detail.RelatedMovies = related
+			}
+			respond(c, detail, nil)
 			return
 		}
-		id, err := discover.ResolveMovieID(c.Request.Context(), code)
-		respond(c, struct {
-			ID string `json:"id"`
-		}{ID: id}, err)
+		movie, err := discover.MovieDetail(c.Request.Context(), uri.ID)
+		respond(c, movie, err)
 	}
 }
 
@@ -152,13 +145,29 @@ func discoverTagsHandler(discover CatalogueManager) gin.HandlerFunc {
 	}
 }
 
+type discoverMagnetsQuery struct {
+	Code string `form:"code" binding:"omitempty,max=200"`
+}
+
 func discoverMagnetsHandler(discover CatalogueManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uri, ok := bindURI[movieURI](c)
 		if !ok {
 			return
 		}
-		magnets, err := discover.Magnets(c.Request.Context(), uri.ID)
+		query, ok := bindQuery[discoverMagnetsQuery](c)
+		if !ok {
+			return
+		}
+		// A known code lets magnets bypass the JavDB detail lookup; without it we
+		// still fall back to the movie-ID path for older clients.
+		var magnets []catalogue.Magnet
+		var err error
+		if code := codeid.Normalize(query.Code); code != "" && codeid.Valid(code) {
+			magnets, err = discover.MagnetsByCode(c.Request.Context(), code)
+		} else {
+			magnets, err = discover.Magnets(c.Request.Context(), uri.ID)
+		}
 		respond(c, magnets, err)
 	}
 }

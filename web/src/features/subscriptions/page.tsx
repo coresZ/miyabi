@@ -1,4 +1,5 @@
-import { CloudDownloadIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
+import { CloudDownloadIcon, XIcon } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { describeApiError } from '@/api/client'
@@ -42,7 +43,9 @@ export function SubscriptionsPage({
   const page = search.page ?? 1
   const actorPage = search.actorPage ?? 1
 
-  const targets = useSubscriptionTargets()
+  // This page only reads movie targets, so share the 'movie' cache with the
+  // discover page instead of fetching a separate 'all' list.
+  const targets = useSubscriptionTargets('movie')
   const movies = useSubscriptions('movie', page, SUBSCRIPTION_PAGE_SIZE, view === 'movies')
   const actors = useSubscriptions('actor', actorPage, SUBSCRIPTION_PAGE_SIZE, view === 'actors')
   const feed = useActorFeed(selectedActorID, page, SUBSCRIPTION_PAGE_SIZE, view === 'actors')
@@ -121,7 +124,7 @@ export function SubscriptionsPage({
 
   return (
     <AppPage>
-      <PageHeader title="订阅" description="追踪影片磁力与演员新作，出现资源后加入 115">
+      <PageHeader title="关注" description="追踪影片磁力与演员新作，出现资源后加入 115">
         {selecting ? (
           <>
             <Button
@@ -272,11 +275,7 @@ export function SubscriptionsPage({
               }
               onClick={handleEnqueue}
             >
-              {batch.isPending ? (
-                <LoaderCircleIcon className="animate-spin" />
-              ) : (
-                <CloudDownloadIcon />
-              )}
+              {batch.isPending ? <Spinner /> : <CloudDownloadIcon />}
               确认入库
             </Button>
           </DialogFooter>

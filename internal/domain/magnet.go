@@ -27,6 +27,7 @@ const (
 
 // Magnet source names as they appear in Magnet.Sources.
 const (
-	MagnetSourceJavDB  = "javdb"
-	MagnetSourceJavBus = "javbus"
+	MagnetSourceJavBus    = "javbus"
+	MagnetSourceSukebei   = "sukebei"
+	MagnetSourceFreeJavBT = "freejavbt"
 )

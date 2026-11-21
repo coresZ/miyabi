@@ -17,15 +17,20 @@ export function CommonFilterSelect({
   value: string
   onValueChange: (value: string) => void
 }) {
+  const items = [
+    { value: 'all', label: '全部条件' },
+    ...options.map(option => ({ value: option.id, label: option.name }))
+  ]
   return (
     <Select
       value={value || 'all'}
-      onValueChange={next => onValueChange(next === 'all' ? '' : next)}
+      items={items}
+      onValueChange={next => onValueChange(next === 'all' ? '' : (next ?? ''))}
     >
       <SelectTrigger className="w-full sm:w-48">
         <SelectValue placeholder="全部条件" />
       </SelectTrigger>
-      <SelectContent position="popper" align="start">
+      <SelectContent align="start">
         <SelectGroup>
           <SelectItem value="all">全部条件</SelectItem>
           {options.map(option => (

@@ -107,16 +107,7 @@ func (t *transport) newRequest(
 	params url.Values,
 	timestamp int64,
 ) (*http.Request, error) {
-	query := url.Values{
-		"app_channel":        {"official"},
-		"app_version":        {appVersion},
-		"app_version_number": {appVersionNumber},
-		"platform":           {"android"},
-		"system_version":     {"13"},
-		"device_model":       {"Pixel 6"},
-		"device_name":        {"Pixel"},
-		"device_uuid":        {t.deviceUUID},
-	}
+	query := publicParams(t.deviceUUID)
 	for key, values := range params {
 		for _, value := range values {
 			query.Add(key, value)
@@ -137,4 +128,18 @@ func (t *transport) newRequest(
 	request.Header.Set("jdsignature", signature(timestamp))
 	request.Header.Set("user-agent", userAgent)
 	return request, nil
+}
+
+// publicParams are the device and app identifiers every App API request carries.
+func publicParams(deviceUUID string) url.Values {
+	return url.Values{
+		"app_channel":        {"official"},
+		"app_version":        {appVersion},
+		"app_version_number": {appVersionNumber},
+		"platform":           {"android"},
+		"system_version":     {"13"},
+		"device_model":       {"Pixel 6"},
+		"device_name":        {"Pixel"},
+		"device_uuid":        {deviceUUID},
+	}
 }

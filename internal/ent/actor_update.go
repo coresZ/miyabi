@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ppxb/miyabi/internal/ent/actor"
+	"github.com/ppxb/miyabi/internal/ent/actorprofile"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/predicate"
 )
@@ -131,6 +132,20 @@ func (_u *ActorUpdate) ClearAvatar() *ActorUpdate {
 	return _u
 }
 
+// SetNameKey sets the "name_key" field.
+func (_u *ActorUpdate) SetNameKey(v string) *ActorUpdate {
+	_u.mutation.SetNameKey(v)
+	return _u
+}
+
+// SetNillableNameKey sets the "name_key" field if the given value is not nil.
+func (_u *ActorUpdate) SetNillableNameKey(v *string) *ActorUpdate {
+	if v != nil {
+		_u.SetNameKey(*v)
+	}
+	return _u
+}
+
 // AddMovieIDs adds the "movies" edge to the Movie entity by IDs.
 func (_u *ActorUpdate) AddMovieIDs(ids ...int) *ActorUpdate {
 	_u.mutation.AddMovieIDs(ids...)
@@ -144,6 +159,25 @@ func (_u *ActorUpdate) AddMovies(v ...*Movie) *ActorUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.AddMovieIDs(ids...)
+}
+
+// SetProfileID sets the "profile" edge to the ActorProfile entity by ID.
+func (_u *ActorUpdate) SetProfileID(id int) *ActorUpdate {
+	_u.mutation.SetProfileID(id)
+	return _u
+}
+
+// SetNillableProfileID sets the "profile" edge to the ActorProfile entity by ID if the given value is not nil.
+func (_u *ActorUpdate) SetNillableProfileID(id *int) *ActorUpdate {
+	if id != nil {
+		_u = _u.SetProfileID(*id)
+	}
+	return _u
+}
+
+// SetProfile sets the "profile" edge to the ActorProfile entity.
+func (_u *ActorUpdate) SetProfile(v *ActorProfile) *ActorUpdate {
+	return _u.SetProfileID(v.ID)
 }
 
 // Mutation returns the ActorMutation object of the builder.
@@ -170,6 +204,12 @@ func (_u *ActorUpdate) RemoveMovies(v ...*Movie) *ActorUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveMovieIDs(ids...)
+}
+
+// ClearProfile clears the "profile" edge to the ActorProfile entity.
+func (_u *ActorUpdate) ClearProfile() *ActorUpdate {
+	_u.mutation.ClearProfile()
+	return _u
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -272,6 +312,9 @@ func (_u *ActorUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.AvatarCleared() {
 		_spec.ClearField(actor.FieldAvatar, field.TypeString)
 	}
+	if value, ok := _u.mutation.NameKey(); ok {
+		_spec.SetField(actor.FieldNameKey, field.TypeString, value)
+	}
 	if _u.mutation.MoviesCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2M,
@@ -310,6 +353,35 @@ func (_u *ActorUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(movie.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ProfileCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   actor.ProfileTable,
+			Columns: []string{actor.ProfileColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(actorprofile.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ProfileIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   actor.ProfileTable,
+			Columns: []string{actor.ProfileColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(actorprofile.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
@@ -439,6 +511,20 @@ func (_u *ActorUpdateOne) ClearAvatar() *ActorUpdateOne {
 	return _u
 }
 
+// SetNameKey sets the "name_key" field.
+func (_u *ActorUpdateOne) SetNameKey(v string) *ActorUpdateOne {
+	_u.mutation.SetNameKey(v)
+	return _u
+}
+
+// SetNillableNameKey sets the "name_key" field if the given value is not nil.
+func (_u *ActorUpdateOne) SetNillableNameKey(v *string) *ActorUpdateOne {
+	if v != nil {
+		_u.SetNameKey(*v)
+	}
+	return _u
+}
+
 // AddMovieIDs adds the "movies" edge to the Movie entity by IDs.
 func (_u *ActorUpdateOne) AddMovieIDs(ids ...int) *ActorUpdateOne {
 	_u.mutation.AddMovieIDs(ids...)
@@ -452,6 +538,25 @@ func (_u *ActorUpdateOne) AddMovies(v ...*Movie) *ActorUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.AddMovieIDs(ids...)
+}
+
+// SetProfileID sets the "profile" edge to the ActorProfile entity by ID.
+func (_u *ActorUpdateOne) SetProfileID(id int) *ActorUpdateOne {
+	_u.mutation.SetProfileID(id)
+	return _u
+}
+
+// SetNillableProfileID sets the "profile" edge to the ActorProfile entity by ID if the given value is not nil.
+func (_u *ActorUpdateOne) SetNillableProfileID(id *int) *ActorUpdateOne {
+	if id != nil {
+		_u = _u.SetProfileID(*id)
+	}
+	return _u
+}
+
+// SetProfile sets the "profile" edge to the ActorProfile entity.
+func (_u *ActorUpdateOne) SetProfile(v *ActorProfile) *ActorUpdateOne {
+	return _u.SetProfileID(v.ID)
 }
 
 // Mutation returns the ActorMutation object of the builder.
@@ -478,6 +583,12 @@ func (_u *ActorUpdateOne) RemoveMovies(v ...*Movie) *ActorUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveMovieIDs(ids...)
+}
+
+// ClearProfile clears the "profile" edge to the ActorProfile entity.
+func (_u *ActorUpdateOne) ClearProfile() *ActorUpdateOne {
+	_u.mutation.ClearProfile()
+	return _u
 }
 
 // Where appends a list predicates to the ActorUpdate builder.
@@ -610,6 +721,9 @@ func (_u *ActorUpdateOne) sqlSave(ctx context.Context) (_node *Actor, err error)
 	if _u.mutation.AvatarCleared() {
 		_spec.ClearField(actor.FieldAvatar, field.TypeString)
 	}
+	if value, ok := _u.mutation.NameKey(); ok {
+		_spec.SetField(actor.FieldNameKey, field.TypeString, value)
+	}
 	if _u.mutation.MoviesCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2M,
@@ -648,6 +762,35 @@ func (_u *ActorUpdateOne) sqlSave(ctx context.Context) (_node *Actor, err error)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(movie.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ProfileCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   actor.ProfileTable,
+			Columns: []string{actor.ProfileColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(actorprofile.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ProfileIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   actor.ProfileTable,
+			Columns: []string{actor.ProfileColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(actorprofile.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

@@ -35,7 +35,8 @@ func TestMergeKeepsJavDBEntitiesAndAllSourceArtwork(t *testing.T) {
 		got.Detail.Rating != 4.2 || got.Detail.RatingSource != "javdb" {
 		t.Fatalf("incorrect field priority: %+v", got.Detail)
 	}
-	if !reflect.DeepEqual(got.Detail.Actors, catalogue.Detail.Actors) || !reflect.DeepEqual(got.Detail.Tags, catalogue.Detail.Tags) ||
+	wantTags := append(append([]domain.Tag{}, catalogue.Detail.Tags...), domain.Tag{Provider: "fanza", ID: "official-only", Name: "Official genre"})
+	if !reflect.DeepEqual(got.Detail.Actors, catalogue.Detail.Actors) || !reflect.DeepEqual(got.Detail.Tags, wantTags) ||
 		!reflect.DeepEqual(got.Detail.Maker, catalogue.Detail.Maker) || !reflect.DeepEqual(got.Detail.Series, catalogue.Detail.Series) || !reflect.DeepEqual(got.Detail.Director, catalogue.Detail.Director) {
 		t.Fatalf("catalogue entity identities were replaced: %+v", got.Detail)
 	}
@@ -47,6 +48,26 @@ func TestMergeKeepsJavDBEntitiesAndAllSourceArtwork(t *testing.T) {
 	}
 }
 
+func TestMergePrefersOfficialPlotOverJavDB(t *testing.T) {
+	official := domain.MovieMetadata{Detail: domain.MovieDetail{Movie: domain.Movie{
+		Sources: []domain.SourceID{{Provider: "heyzo", ID: "1234"}},
+		Code:    "HEYZO-1234", Title: "T", Plot: "official plot",
+	}}}
+	catalogue := domain.MovieMetadata{Detail: domain.MovieDetail{Movie: domain.Movie{
+		Sources: []domain.SourceID{{Provider: "javdb", ID: "x"}},
+		Code:    "HEYZO-1234", Title: "T", Plot: "javdb plot",
+	}}}
+	got := merge([]domain.MovieMetadata{official, catalogue})
+	if got.Detail.Plot != "official plot" || got.Detail.FieldSources["plot"] != "heyzo" {
+		t.Fatalf("plot priority = %q/%q", got.Detail.Plot, got.Detail.FieldSources["plot"])
+	}
+	official.Detail.Plot = ""
+	got = merge([]domain.MovieMetadata{official, catalogue})
+	if got.Detail.Plot != "javdb plot" || got.Detail.FieldSources["plot"] != "javdb" {
+		t.Fatalf("javdb plot fallback = %q/%q", got.Detail.Plot, got.Detail.FieldSources["plot"])
+	}
+}
+
 func TestMergeSupplementsMissingJavDBFieldsAndPreviews(t *testing.T) {
 	catalogue := fixture("javdb", "ABP-123", "Catalogue title")
 	official := completeFixture("fanza", "ABP-123")
@@ -54,8 +75,5 @@ func TestMergeSupplementsMissingJavDBFieldsAndPreviews(t *testing.T) {
 	if got.Detail.Title != "Catalogue title" || got.Detail.Maker.Provider != "fanza" || got.Detail.Actors[0].Provider != "fanza" ||
 		len(got.Detail.PreviewImages) != 1 || got.Detail.FieldSources["title"] != "javdb" || got.Detail.FieldSources["tags"] != "fanza" {
 		t.Fatalf("missing metadata not supplemented: %+v", got)
-	}
-	if needsSupplement(got) {
-		t.Fatal("complete metadata triggered another query")
 	}
 }

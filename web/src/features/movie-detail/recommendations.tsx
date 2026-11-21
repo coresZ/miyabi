@@ -16,20 +16,17 @@ export function MovieRecommendations({
   title: string
   movies: MovieReference[]
 }) {
-  const visible = movies.slice(0, 8)
+  const visible = (movies ?? []).slice(0, 8)
+  if (visible.length === 0) return null
 
   return (
     <section className="space-y-4">
-      <h2 className="text-xl font-semibold tracking-normal">{title}</h2>
-      {visible.length === 0 ? (
-        <p className="text-sm text-muted-foreground">暂无相关影片</p>
-      ) : (
-        <MovieGridLayout>
-          {visible.map(movie => (
-            <RecommendationCard key={movie.id} movie={movie} />
-          ))}
-        </MovieGridLayout>
-      )}
+      <h2 className="text-xl font-semibold">{title}</h2>
+      <MovieGridLayout>
+        {visible.map(movie => (
+          <DiscoverMovieCard key={movie.id} movie={referenceMovie(movie)} allowSubscribe={false} />
+        ))}
+      </MovieGridLayout>
     </section>
   )
 }

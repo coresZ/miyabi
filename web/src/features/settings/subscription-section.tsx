@@ -92,8 +92,11 @@ export function SubscriptionSection() {
       <SettingRow title="字幕" description="订阅与换源共用；「必须」时只选择符合字幕条件的磁力">
         <Select
           value={config?.preferences.subtitle ?? 'preferred'}
+          items={levelOptions}
           disabled={disabled}
-          onValueChange={value => save({}, { subtitle: value as MagnetPreferences['subtitle'] })}
+          onValueChange={value =>
+            save({}, { subtitle: (value ?? '') as MagnetPreferences['subtitle'] })
+          }
         >
           <SelectTrigger className="w-32">
             <SelectValue />
@@ -111,8 +114,9 @@ export function SubscriptionSection() {
       <SettingRow title="高清" description="「必须」时只接受站方标注高清或名称含 4K 的磁力">
         <Select
           value={config?.preferences.hd ?? 'preferred'}
+          items={levelOptions}
           disabled={disabled}
-          onValueChange={value => save({}, { hd: value as MagnetPreferences['hd'] })}
+          onValueChange={value => save({}, { hd: (value ?? '') as MagnetPreferences['hd'] })}
         >
           <SelectTrigger className="w-32">
             <SelectValue />
@@ -130,9 +134,10 @@ export function SubscriptionSection() {
       <SettingRow title="无码 / 破解" description="「排除」时过滤掉无码、破解、流出资源">
         <Select
           value={config?.preferences.uncensored ?? 'any'}
+          items={uncensoredOptions}
           disabled={disabled}
           onValueChange={value =>
-            save({}, { uncensored: value as MagnetPreferences['uncensored'] })
+            save({}, { uncensored: (value ?? '') as MagnetPreferences['uncensored'] })
           }
         >
           <SelectTrigger className="w-32">

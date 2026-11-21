@@ -55,9 +55,7 @@ func New(ctx context.Context, db *ent.Client, sources ...Source) (*Service, erro
 			return nil, fmt.Errorf("duplicate metadata source %s", source.ID())
 		}
 		s.sources[source.ID()] = source
-		if source.ID() != "javdb" {
-			s.settings = append(s.settings, SourceSetting{ID: source.ID(), Enabled: true})
-		}
+		s.settings = append(s.settings, SourceSetting{ID: source.ID(), Enabled: true})
 	}
 	settings, found, err := database.LoadSetting[[]SourceSetting](ctx, db, "metadata.sources")
 	if err != nil {
@@ -69,7 +67,7 @@ func New(ctx context.Context, db *ent.Client, sources ...Source) (*Service, erro
 		registered := make(map[string]bool, len(s.sources))
 		var current []SourceSetting
 		for _, setting := range settings {
-			if setting.ID != "javdb" && s.sources[setting.ID] != nil {
+			if s.sources[setting.ID] != nil {
 				current = append(current, setting)
 				registered[setting.ID] = true
 			}
@@ -94,6 +92,10 @@ func sourceOrder(id string) int {
 	switch id {
 	case "fanza":
 		return -1
+	case "javdb":
+		return 1
+	case "freejavbt":
+		return 2
 	default:
 		return 0
 	}
@@ -107,15 +109,12 @@ func (s *Service) Settings() []SourceSetting {
 
 func (s *Service) validate(settings []SourceSetting) error {
 	count := len(s.sources)
-	if s.sources["javdb"] != nil {
-		count--
-	}
 	if len(settings) != count {
 		return domain.E(domain.KindInvalid, "请提供完整的刮削来源列表", nil)
 	}
 	seen := make(map[string]bool)
 	for i, item := range settings {
-		if item.ID == "javdb" || s.sources[item.ID] == nil || seen[item.ID] {
+		if s.sources[item.ID] == nil || seen[item.ID] {
 			return domain.E(domain.KindInvalid, "未知或重复的刮削来源", nil)
 		}
 		seen[item.ID] = true
@@ -143,22 +142,39 @@ func (s *Service) UpdateSettings(ctx context.Context, settings []SourceSetting) 
 // for catalogue identities; official sources supply artwork and missing fields.
 // A network failure never permits a weaker identity.
 func (s *Service) Resolve(ctx context.Context, ref domain.MovieRef) (domain.MovieMetadata, error) {
-	settings := s.Settings()
-	if s.sources["javdb"] != nil {
-		settings = append(settings, SourceSetting{ID: "javdb", Enabled: true})
+	return s.resolve(ctx, ref, nil)
+}
+
+// ResolveExcept behaves like Resolve but skips the given source IDs, letting a
+// caller resolve detail without a particular provider (for example JavDB).
+func (s *Service) ResolveExcept(ctx context.Context, ref domain.MovieRef, excluded ...string) (domain.MovieMetadata, error) {
+	var skip map[string]bool
+	if len(excluded) > 0 {
+		skip = make(map[string]bool, len(excluded))
+		for _, id := range excluded {
+			skip[id] = true
+		}
 	}
+	return s.resolve(ctx, ref, skip)
+}
+
+func (s *Service) resolve(ctx context.Context, ref domain.MovieRef, skip map[string]bool) (domain.MovieMetadata, error) {
+	settings := s.Settings()
 	var failures []error
 	var failedSources []string
+	answered := false
 	for _, layer := range codeid.Layers(ref.Code) {
 		var results []domain.MovieMetadata
-		var merged domain.MovieMetadata
+		var confirmedCode string
 		for _, setting := range settings {
-			if !setting.Enabled || (setting.ID != "javdb" && merged.Detail.Code != "" && !needsSupplement(merged)) {
+			if !setting.Enabled || skip[setting.ID] {
 				continue
 			}
 			result, err := s.resolveLayer(ctx, s.sources[setting.ID], ref, layer)
 			if err != nil {
-				if !errors.Is(err, ErrNotFound) {
+				if errors.Is(err, ErrNotFound) {
+					answered = true
+				} else {
 					failures = append(failures, fmt.Errorf("%s: %w", setting.ID, err))
 					if !slices.Contains(failedSources, setting.ID) {
 						failedSources = append(failedSources, setting.ID)
@@ -166,32 +182,43 @@ func (s *Service) Resolve(ctx context.Context, ref domain.MovieRef) (domain.Movi
 				}
 				continue
 			}
-			if merged.Detail.Code != "" && !codeid.IsFormatEquivalent(merged.Detail.Code, result.Detail.Code) {
-				return domain.MovieMetadata{}, domain.E(domain.KindConflict, "来源匹配到了不同影片，无法自动合并", nil)
+			if code := result.Detail.Code; code != "" {
+				if confirmedCode == "" {
+					confirmedCode = code
+				} else if !codeid.IsFormatEquivalent(confirmedCode, code) {
+					return domain.MovieMetadata{}, domain.E(domain.KindConflict, "来源匹配到了不同影片，无法自动合并", nil)
+				}
 			}
 			results = append(results, result)
+		}
+		var merged domain.MovieMetadata
+		if len(results) > 0 {
 			merged = merge(results)
 		}
 		if err := ctx.Err(); err != nil {
 			return domain.MovieMetadata{}, err
 		}
-		// A rebuild must not replace saved catalogue data with a partial result
-		// merely because a source is temporarily unavailable.
-		if ref.Refresh && len(failures) > 0 {
-			break
-		}
 		if merged.Detail.Code != "" {
-			return attachJavDBIdentity(merged, ref.JavDBID)
+			return attachSourceIdentity(merged, "")
 		}
 		if len(failures) > 0 {
 			break
 		}
 	}
 	if len(failures) > 0 {
+		// A javdb outage must not fail movies that the other enabled sources
+		// simply do not carry; they are "not found", not a network outage.
+		if answered && onlyJavDB(failedSources) {
+			return domain.MovieMetadata{}, domain.E(domain.KindNotFound, "已启用的来源未找到可确认的影片资料", ErrNotFound)
+		}
 		message := "刮削来源查询失败: " + strings.Join(failedSources, "、") + "，请检查网络和代理设置"
 		return domain.MovieMetadata{}, domain.E(domain.KindUpstream, message, errors.Join(failures...))
 	}
 	return domain.MovieMetadata{}, domain.E(domain.KindNotFound, "已启用的来源未找到可确认的影片资料", ErrNotFound)
+}
+
+func onlyJavDB(sources []string) bool {
+	return len(sources) == 1 && sources[0] == "javdb"
 }
 
 func (s *Service) resolveLayer(ctx context.Context, source Source, ref domain.MovieRef, codes []string) (domain.MovieMetadata, error) {
@@ -219,39 +246,23 @@ func (s *Service) resolveLayer(ctx context.Context, source Source, ref domain.Mo
 	return matched, nil
 }
 
-// Optional series, director and rating may legitimately be absent.
-// They do not force another supplementary source request.
-func needsSupplement(result domain.MovieMetadata) bool {
-	m := result.Detail
-	cover, preview := false, false
-	for _, candidate := range result.Images {
-		cover = cover || candidate.Role == "cover" || candidate.Role == "poster"
-		preview = preview || candidate.Role == "preview"
-	}
-	return m.Title == "" || m.ReleaseDate == "" || m.Duration == 0 ||
-		len(m.Actors) == 0 || m.Maker == nil || len(m.Tags) == 0 || !cover || !preview
-}
-
-func attachJavDBIdentity(result domain.MovieMetadata, knownID string) (domain.MovieMetadata, error) {
+func attachSourceIdentity(result domain.MovieMetadata, knownID string) (domain.MovieMetadata, error) {
 	for _, source := range result.Detail.Sources {
 		if source.Provider == "javdb" {
-			if knownID != "" && knownID != source.ID {
-				return domain.MovieMetadata{}, domain.E(domain.KindConflict, "JavDB 身份与已有记录不一致", nil)
-			}
 			result.Detail.ID = source.ID
 			return result, nil
 		}
 	}
 	result.Detail.ID = knownID
-	if knownID != "" {
-		result.Detail.Sources = append(result.Detail.Sources, domain.SourceID{Provider: "javdb", ID: knownID})
-	}
 	return result, nil
 }
 
 // Fallback is used after independent artwork downloads fail. It checks only
 // the confirmed code, never downgrading to another film to obtain an image.
 func (s *Service) Fallback(ctx context.Context, ref domain.MovieRef) (domain.MovieMetadata, error) {
+	if !s.enabled("javdb") {
+		return domain.MovieMetadata{}, ErrNotFound
+	}
 	source := s.sources["javdb"]
 	if source == nil {
 		return domain.MovieMetadata{}, ErrNotFound
@@ -261,17 +272,13 @@ func (s *Service) Fallback(ctx context.Context, ref domain.MovieRef) (domain.Mov
 	if err != nil {
 		return domain.MovieMetadata{}, err
 	}
-	return attachJavDBIdentity(result, ref.JavDBID)
+	return attachSourceIdentity(result, "")
 }
 
 func (s *Service) fetch(ctx context.Context, source Source, ref domain.MovieRef) (domain.MovieMetadata, error) {
 	code := codeid.Normalize(ref.Code)
 	ref.Code = code
 	key := source.ID() + ":" + code
-	knownJavDB := source.ID() == "javdb" && ref.JavDBID != ""
-	if knownJavDB {
-		key += ":" + ref.JavDBID
-	}
 	if ref.Refresh {
 		key += ":refresh"
 	}
@@ -292,11 +299,6 @@ func (s *Service) fetch(ctx context.Context, source Source, ref domain.MovieRef)
 			return nil, err
 		}
 		cacheMatches := !ref.Refresh && entry != nil && time.Now().Before(entry.ExpiresAt)
-		// A known ID can retrieve a film absent from search. A cached miss or a
-		// different catalogue ID must not suppress that more precise lookup.
-		if cacheMatches && knownJavDB {
-			cacheMatches = entry.Result != nil && entry.Result.Detail.ID == ref.JavDBID
-		}
 		if cacheMatches {
 			if entry.Result == nil {
 				return nil, ErrNotFound
@@ -345,9 +347,6 @@ func (s *Service) fetch(ctx context.Context, source Source, ref domain.MovieRef)
 }
 
 func (s *Service) enabled(id string) bool {
-	if id == "javdb" {
-		return s.sources[id] != nil
-	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, setting := range s.settings {

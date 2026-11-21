@@ -87,14 +87,14 @@ func TestRoundTripPreservesSourceIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(body), "<plot>") {
-		t.Fatal("NFO retained an unused plot")
+	if !strings.Contains(string(body), "<plot>Source synopsis</plot>") {
+		t.Fatal("NFO dropped plot")
 	}
 	got, err := Decode(body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Code != "ABP-001" || got.JavDBID() != "fixture-movie" || got.Title != "Fixture & title" ||
+	if got.Code != "ABP-001" || got.Title != "Fixture & title" ||
 		got.Director.ID != "director-1" || got.Studio.ID != "maker-1" || got.Set.ID != "series-1" ||
 		got.Runtime != 120 || got.Premiered != "2024-01-02" || got.Rating != 4.5 {
 		t.Fatalf("movie metadata changed: %#v", got)

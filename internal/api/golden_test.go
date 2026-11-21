@@ -98,6 +98,10 @@ func (goldenDiscover) Magnets(context.Context, string) ([]catalogue.Magnet, erro
 	}, nil
 }
 
+func (stub goldenDiscover) MagnetsByCode(ctx context.Context, _ string) ([]catalogue.Magnet, error) {
+	return stub.Magnets(ctx, "movie-exact")
+}
+
 func (goldenDiscover) Tags(context.Context, domain.Zone) ([]domain.TagCategory, error) {
 	return []domain.TagCategory{{ID: "category-1", Name: "主題", Tags: []domain.TagOption{{ID: "tag-1", Name: "Tag"}, {ID: "tag-2", Name: "Other"}}}}, nil
 }
@@ -114,9 +118,9 @@ func goldenTime() time.Time { return time.Date(2026, 9, 19, 12, 0, 0, 0, time.UT
 
 func (goldenLibrary) Movies(context.Context, int, int) (library.Page, error) {
 	source := goldenSource()
-	cover, poster, javdbID := "/api/library/artwork/aa.jpg", "/api/library/artwork/bb.jpg", "movie-exact"
+	cover, poster := "/api/library/artwork/aa.jpg", "/api/library/artwork/bb.jpg"
 	return library.Page{Source: &source, Total: 2, Page: 1, HasMore: false, Movies: []library.Movie{
-		{ID: 7, Code: "ABP-123", Title: "Localized title", JavDBID: &javdbID, Cover: &cover, Poster: &poster, Fanart: "/api/library/artwork/cc.jpg",
+		{ID: 7, Code: "ABP-123", Title: "Localized title", Cover: &cover, Poster: &poster, Fanart: "/api/library/artwork/cc.jpg",
 			ReleaseDate: "2026-08-01", Duration: 120, Rating: 4.5,
 			Director: &library.Entity{ID: "director-1", Name: "Director"}, Maker: &library.Entity{ID: "maker-1", Name: "Maker"},
 			Series: &library.Entity{ID: "series-1", Name: "Series"},
@@ -124,6 +128,10 @@ func (goldenLibrary) Movies(context.Context, int, int) (library.Page, error) {
 			ScrapeStatus: movie.ScrapeStatusDone},
 		{ID: 8, Code: "ZZZ-999", Actors: []library.Entity{}, Tags: []library.Tag{}, ScrapeStatus: movie.ScrapeStatusFailed},
 	}}, nil
+}
+
+func (goldenLibrary) TopRated(context.Context, int) ([]library.Movie, error) {
+	return []library.Movie{}, nil
 }
 
 func (goldenLibrary) ViewedMovieIDs(context.Context) ([]string, error) {
@@ -153,19 +161,21 @@ func (goldenTasks) Revisions() tasks.TaskRevisions {
 	return tasks.TaskRevisions{Library: 4, Offline: 2, Monitor: 3}
 }
 
+func (goldenTasks) Instance() string { return "golden" }
+
 type goldenOffline struct {
 	OfflineManager
 }
 
-func (goldenOffline) Activity(context.Context) (offline.Activity, error) {
+func (goldenOffline) ActivityForAccount(context.Context, string) (offline.Activity, error) {
 	source := goldenSource()
 	failure := "115 离线任务失败"
 	return offline.Activity{Source: &source, Tasks: []domain.OfflineSubmission{
-		{TaskID: 9, Code: "ABP-123", JavDBID: "movie-exact", LibraryID: 7, AccountID: "100", DirectoryID: "10", ScanTaskID: 2,
+		{TaskID: 9, Code: "ABP-123", LibraryID: 7, AccountID: "100", DirectoryID: "10", ScanTaskID: 2,
 			Hash: "0000000000000000000000000000000000000003", Status: string(task.StatusDone), Phase: "in_library", Progress: 100},
-		{TaskID: 10, Code: "SONE-001", JavDBID: "related-movie-1", AccountID: "100", DirectoryID: "10",
+		{TaskID: 10, Code: "SONE-001", AccountID: "100", DirectoryID: "10",
 			Hash: "0000000000000000000000000000000000000002", Status: string(task.StatusRunning), Phase: "downloading", Processing: true, Progress: 42},
-		{TaskID: 11, Code: "ZZZ-999", JavDBID: "movie-missing", AccountID: "100", DirectoryID: "10",
+		{TaskID: 11, Code: "ZZZ-999", AccountID: "100", DirectoryID: "10",
 			Hash: "0000000000000000000000000000000000000001", Status: string(task.StatusFailed), Phase: "available", Error: &failure},
 	}}, nil
 }
@@ -228,7 +238,7 @@ func TestResponseContractsMatchGoldenFiles(t *testing.T) {
 		body               string
 	}{
 		{name: "discover_browse", method: http.MethodGet, path: "/api/discover/movies?zone=censored&page=1"},
-		{name: "discover_search", method: http.MethodGet, path: "/api/discover/search?q=ABP-123"},
+		{name: "discover_browse", method: http.MethodGet, path: "/api/discover/movies?zone=censored"},
 		{name: "discover_movie", method: http.MethodGet, path: "/api/discover/movies/movie-exact"},
 		{name: "discover_magnets", method: http.MethodGet, path: "/api/discover/movies/movie-exact/magnets"},
 		{name: "discover_movie_states", method: http.MethodPost, path: "/api/discover/movie-states",
@@ -238,7 +248,6 @@ func TestResponseContractsMatchGoldenFiles(t *testing.T) {
 		{name: "tasks", method: http.MethodGet, path: "/api/tasks"},
 		{name: "offline_tasks", method: http.MethodGet, path: "/api/offline/tasks"},
 		{name: "subscriptions", method: http.MethodGet, path: "/api/subscriptions"},
-		{name: "pan_account", method: http.MethodGet, path: "/api/pan/account"},
 		{name: "settings_system", method: http.MethodGet, path: "/api/settings/system"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {

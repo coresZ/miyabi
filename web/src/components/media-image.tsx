@@ -12,7 +12,6 @@ type MediaImageProps = {
   fallbackLabel?: string
   loading?: 'eager' | 'lazy'
   blurredBackground?: boolean
-  onReady?: () => void
   onImageLoad?: (image: HTMLImageElement) => void
   className?: string
 }
@@ -34,7 +33,6 @@ function MediaImageContent({
   fallbackLabel,
   loading = 'lazy',
   blurredBackground = false,
-  onReady,
   onImageLoad,
   concealed,
   className
@@ -45,10 +43,6 @@ function MediaImageContent({
   const ready = !showImage || status === 'ready'
   const showError = !concealed && hasSource && status === 'error'
   const showEmpty = !concealed && !hasSource
-
-  useEffect(() => {
-    if (ready) onReady?.()
-  }, [ready, onReady])
 
   const imageProps = {
     src: imageURL(source),
@@ -81,11 +75,12 @@ function MediaImageContent({
               const image = event.currentTarget
               onImageLoad?.(image)
               try {
-                if (typeof image.decode === 'function') await image.decode()
-                setStatus('ready')
+                await image.decode()
               } catch {
-                setStatus('error')
+                // onLoad already confirmed the image is displayable; a decode
+                // failure must not be treated as a load error.
               }
+              setStatus('ready')
             }}
             onError={() => setStatus('error')}
           />

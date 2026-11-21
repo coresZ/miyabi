@@ -1,3 +1,5 @@
+import { PlayIcon, StarIcon } from 'lucide-react'
+
 import type { LibraryMovie } from '@/api/library'
 import { MovieCard } from '@/components/movie'
 import { PlayOverlay } from '@/components/movie/play-overlay'
@@ -5,7 +7,21 @@ import { MovieDetailTrigger } from '@/features/movie-detail/detail-trigger'
 import { LibraryMovieStatus } from './movie-status'
 import { LibraryMovieActions } from './movie-actions'
 
-export function LibraryMovieCard({ movie, busy = false }: { movie: LibraryMovie; busy?: boolean }) {
+export function LibraryMovieCard({
+  movie,
+  onPlay,
+  progress
+}: {
+  movie: LibraryMovie
+  onPlay?: () => void
+  progress?: number
+}) {
+  const title = movie.title || movie.code
+  const actors = movie.actors
+    .map(actor => actor.name)
+    .filter(Boolean)
+    .join(' / ')
+
   return (
     <div className="group relative h-full min-w-0">
       <MovieDetailTrigger

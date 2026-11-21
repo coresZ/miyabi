@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { LoaderCircleIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { OfflineSubmission } from '@/api/offline'
+import { Spinner } from '@/components/ui/spinner'
 import {
   isScanTask,
   isTaskActive,
@@ -32,10 +32,8 @@ function taskToastOptions(
 ) {
   return {
     id,
-    duration: active || retryTaskID !== undefined ? Infinity : 8000,
-    dismissible: true,
+    duration: active ? Infinity : 8000,
     closeButton: false,
-    icon: undefined,
     onDismiss: options.onDismiss,
     action: <TaskToastActions id={id} retryTaskID={retryTaskID} cancelTaskID={cancelTaskID} />
   }
@@ -58,6 +56,11 @@ export function useNotifyScanTask() {
 
 export function notifyScanTask(task: ScanTask, options: TaskToastOptions = {}) {
   const active = isTaskActive(task)
+  // In-progress scans use the library ring indicator instead of a toast;
+  // only terminal results (completed/failed) surface a notification.
+  if (active) {
+    return
+  }
   const action = task.rebuild ? '重建' : '同步'
   const title = task.movie_id ? `${task.code} 重新刮削` : `媒体库${action}`
   const props = taskToastOptions(
@@ -66,30 +69,7 @@ export function notifyScanTask(task: ScanTask, options: TaskToastOptions = {}) {
     options,
     task.can_retry ? task.id : undefined
   )
-  if (active) {
-    // Sonner's loading type hides the close button; long tasks remain dismissible.
-    toast.info(
-      options.waiting
-        ? '正在连接任务服务'
-        : task.movie_id
-          ? `正在重新刮削 ${task.code}`
-          : `正在${action}媒体库`,
-      {
-        ...props,
-        icon:
-          options.waiting || task.paused ? undefined : (
-            <LoaderCircleIcon className="size-4 animate-spin" />
-          ),
-        description: (
-          <TaskProgress
-            current={scanStage(task)}
-            label={scanStatus(task)}
-            progress={task.scan.metadata_total > 0 ? task.progress : undefined}
-          />
-        )
-      }
-    )
-  } else if (task.status === 'failed') {
+  if (task.status === 'failed') {
     toast.error(task.scan.metadata_failed && !task.movie_id ? `${title}结束` : `${title}失败`, {
       ...props,
       description:
@@ -123,9 +103,7 @@ export function notifyOfflineTask(
     toast.info(task.code, {
       ...props,
       icon:
-        options.waiting || (task.phase !== 'downloading' && scan?.paused) ? undefined : (
-          <LoaderCircleIcon className="size-4 animate-spin" />
-        ),
+        options.waiting || (task.phase !== 'downloading' && scan?.paused) ? undefined : <Spinner />,
       description: options.waiting ? (
         '等待进度同步'
       ) : (
@@ -192,7 +170,7 @@ export function notifyBatchTask(task: BatchTask, options: TaskToastOptions = {})
   if (active) {
     toast.info('正在批量入库', {
       ...props,
-      icon: options.waiting ? undefined : <LoaderCircleIcon className="size-4 animate-spin" />,
+      icon: options.waiting ? undefined : <Spinner />,
       description: options.waiting ? '等待进度同步' : `${processed} / ${total} 部，${summary}`
     })
   } else if (task.status === 'failed') {

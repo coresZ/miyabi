@@ -32,6 +32,8 @@ type Dependencies struct {
 	Maintenance    MaintenanceManager
 	Network        NetworkManager
 	Emby           EmbyManager
+	Sources        SourceManager
+	Actors         ActorManager
 	Frontend       fs.FS
 	STRMToken      string
 	TrustedProxies []string
@@ -46,9 +48,9 @@ func NewRouter(deps Dependencies) *gin.Engine {
 		deps.Logger = slog.Default()
 	}
 
-	if len(deps.TrustedProxies) > 0 {
-		_ = router.SetTrustedProxies(deps.TrustedProxies)
-	} else {
+	if err := router.SetTrustedProxies(deps.TrustedProxies); err != nil {
+		// Config validation should prevent this; fall back to trusting no proxy.
+		deps.Logger.Error("apply trusted proxies", "error", err)
 		_ = router.SetTrustedProxies(nil)
 	}
 
@@ -80,11 +82,12 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	settingsAPI := protected.Group("/settings", noStore())
 	settingsAPI.GET("/scraping", metadataSettingsHandler(deps.Metadata))
 	settingsAPI.PUT("/scraping", metadataUpdateHandler(deps.Metadata))
+	settingsAPI.GET("/actor-sources", actorSourceSettingsHandler(deps.Actors))
+	settingsAPI.PUT("/actor-sources", actorSourceUpdateHandler(deps.Actors))
 	settingsAPI.GET("/system", dataInfoHandler(deps.Maintenance))
 	settingsAPI.DELETE("/cache", dataClearCacheHandler(deps.Maintenance))
 	settingsAPI.GET("/network", networkHandler(deps.Network))
 	settingsAPI.PUT("/network", networkUpdateHandler(deps.Network))
-	settingsAPI.POST("/network/test", networkTestHandler(deps.Network))
 	settingsAPI.GET("/emby", embyConfigHandler(deps.Emby))
 	settingsAPI.PUT("/emby", embyUpdateHandler(deps.Emby))
 	settingsAPI.POST("/emby/test", embyTestHandler(deps.Emby))
@@ -96,6 +99,9 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	settingsAPI.DELETE("/local-sources/:id", localSourceRemoveHandler(deps.LocalSources))
 
 	protected.GET("/library/movies", libraryMoviesHandler(deps.Library))
+	protected.GET("/library/browse", libraryBrowseHandler(deps.Library))
+	protected.GET("/library/filter-options", libraryFilterOptionsHandler(deps.Library))
+	protected.GET("/library/top-rated", libraryTopRatedHandler(deps.Library))
 	protected.GET("/library/movies/:id", libraryMovieHandler(deps.Library))
 	protected.POST("/library/movies/:id/scrape", libraryMovieScrapeHandler(deps.Library))
 	protected.GET("/library/movies/:id/previews/:index", libraryPreviewHandler(deps.Library, deps.Metadata))
@@ -107,6 +113,27 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	protected.HEAD("/local/play/:fileID", localPlayHandler(deps.LocalPlay))
 	protected.GET("/playables", playablesHandler(deps.Playables))
 	protected.POST("/player/gif", noStore(), saveGifHandler(deps.DataDir))
+
+	actorsAPI := protected.Group("/actors", noStore())
+	{
+		actorsAPI.GET("", actorListHandler(deps.Actors))
+		actorsAPI.GET("/:key", actorDetailHandler(deps.Actors, deps.Library))
+		actorsAPI.GET("/:key/image/:index", actorImageHandler(deps.Actors))
+	}
+
+	playAPI := protected.Group("/play", noStore())
+	playAPI.GET("/files", playFilesHandler(deps.Play))
+	playAPI.GET("/start", playStartMovieHandler(deps.Play))
+	playAPI.GET("/qualities", playQualitiesHandler(deps.Play))
+	playAPI.GET("/:id", playStartHandler(deps.Play))
+	playAPI.DELETE("/:id", playReleaseHandler(deps.Play))
+	playAPI.GET("/:id/stream/:resource", playStreamHandler(deps.Play))
+	playAPI.HEAD("/:id/stream/:resource", playStreamHandler(deps.Play))
+	playAPI.POST("/progress", playProgressHandler(deps.Play))
+
+	protected.GET("/history", noStore(), historyHandler(deps.Play))
+	protected.POST("/history/remove", historyRemoveHandler(deps.Play))
+	protected.DELETE("/history", historyClearHandler(deps.Play))
 
 	protected.GET("/tasks", noStore(), tasksHandler(deps.Tasks))
 	protected.POST("/tasks/:id/retry", taskRetryHandler(deps.Tasks))
@@ -131,22 +158,21 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	protected.POST("/discover/movie-states", noStore(), discoverMovieStatesHandler(deps.Catalogue))
 	protected.GET("/discover/viewed", noStore(), discoverViewedHandler(deps.Library))
 	protected.POST("/discover/viewed", discoverAddViewedHandler(deps.Library))
-	protected.GET("/discover/search", discoverSearchHandler(deps.Catalogue))
 	protected.GET("/discover/tags", discoverTagsHandler(deps.Catalogue))
-	protected.GET("/discover/movies/:id", discoverMovieHandler(deps.Catalogue))
-	protected.GET("/discover/movies/resolve", discoverResolveMovieHandler(deps.Catalogue))
+	protected.GET("/discover/movies/:id", discoverMovieHandler(deps.Catalogue, deps.Metadata))
 	protected.GET("/discover/movies/:id/magnets", discoverMagnetsHandler(deps.Catalogue))
 	protected.POST("/discover/movies/:id/offline", offlineAddHandler(deps.Offline))
 	protected.GET("/image", imageHandler(deps.Catalogue))
 
 	panAPI := protected.Group("/pan", noStore())
-	panAPI.GET("/account", panAccountHandler(deps.Drive))
-	panAPI.DELETE("/account", panDisconnectHandler(deps.Drive))
+	panAPI.GET("/accounts", panAccountsHandler(deps.Drive))
+	panAPI.GET("/accounts/:accountID", panAccountStatusHandler(deps.Drive))
+	panAPI.GET("/accounts/:accountID/files", panAccountFilesHandler(deps.Drive))
+	panAPI.PUT("/accounts/:accountID/directory", panAccountSelectDirectoryHandler(deps.Drive))
+	panAPI.DELETE("/accounts/:accountID/directory", panAccountClearDirectoryHandler(deps.Drive))
+	panAPI.DELETE("/accounts/:accountID", panAccountDisconnectHandler(deps.Drive))
 	panAPI.POST("/login", panBeginLoginHandler(deps.Drive))
 	panAPI.GET("/login/:id", panLoginStatusHandler(deps.Drive))
-	panAPI.GET("/files", panFilesHandler(deps.Drive))
-	panAPI.PUT("/directory", panSelectDirectoryHandler(deps.Drive))
-	panAPI.DELETE("/directory", panClearDirectoryHandler(deps.Drive))
 
 	if deps.Frontend != nil {
 		installFrontend(router, deps.Frontend)

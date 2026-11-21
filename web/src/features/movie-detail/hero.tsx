@@ -2,7 +2,7 @@ import { CalendarIcon, ClockIcon, StarIcon, type LucideIcon } from 'lucide-react
 
 import type { DiscoverMovie, DiscoverMovieDetail } from '@/api/discover'
 import type { LibraryMovieDetail } from '@/api/library'
-import { MovieResourceBadges, MovieStateBadge } from '@/components/movie/movie-badges'
+import { MovieStateBadge } from '@/components/movie/movie-badges'
 import { MovieCover } from '@/components/movie/movie-cover'
 import { PlayOverlay } from '@/components/movie/play-overlay'
 import { Badge } from '@/components/ui/badge'
@@ -30,6 +30,9 @@ export function MovieHero({
             <Badge variant="outline" className="tabular-nums">
               {movie.code}
             </Badge>
+            {libraryStatus && movie.has_subtitle ? (
+              <Badge variant="outline">中文</Badge>
+            ) : null}
             {libraryStatus ? (
               <Badge variant={libraryStatus === 'done' ? 'library' : 'secondary'}>
                 {{ done: '已入库', pending: '待刮削', failed: '刮削失败' }[libraryStatus]}
@@ -41,18 +44,9 @@ export function MovieHero({
           <h1 className="text-xl leading-snug font-bold tracking-normal sm:text-2xl">
             {movie.title || movie.code}
           </h1>
-          {movie.origin_title && movie.origin_title !== movie.title ? (
-            <p className="text-sm leading-6 text-muted-foreground">{movie.origin_title}</p>
-          ) : null}
         </div>
 
         <MovieStats movie={movie} />
-
-        {!libraryStatus && 'release_status' in movie ? (
-          <div className="flex flex-wrap gap-2">
-            <MovieResourceBadges movie={movie} />
-          </div>
-        ) : null}
 
         <MovieMetadata movie={movie} />
       </div>
@@ -63,10 +57,7 @@ export function MovieHero({
 function MovieStats({
   movie
 }: {
-  movie: Pick<
-    DiscoverMovie,
-    'release_date' | 'duration' | 'rating' | 'rating_source' | 'rating_max'
-  >
+  movie: Pick<DiscoverMovie, 'release_date' | 'duration' | 'rating' | 'rating_max'>
 }) {
   const stats: Array<{ label: string; value: string; icon: LucideIcon }> = []
   if (movie.release_date) {
@@ -76,9 +67,8 @@ function MovieStats({
     stats.push({ label: '片长', value: `${movie.duration} 分钟`, icon: ClockIcon })
   }
   if (movie.rating > 0) {
-    const source = movie.rating_source === 'javdb' ? 'JavDB' : movie.rating_source?.toUpperCase()
     stats.push({
-      label: source ? `${source} 评分` : '评分',
+      label: '评分',
       value: movie.rating_max
         ? `${movie.rating.toFixed(1)} / ${movie.rating_max}`
         : movie.rating.toFixed(1),

@@ -45,6 +45,10 @@ type Client struct {
 	stopRoutes    context.CancelFunc
 	selector      func(context.Context, routeSelection) (*routeState, error)
 	fingerprint   *netx.ProxiedFingerprintClient
+	// webFallback serves movie detail from the public web pages once the App API
+	// refuses anonymous access. The gate is stable for the process, so this
+	// avoids re-probing the closed endpoint on every request.
+	webFallback atomic.Bool
 }
 
 func New(options Options) (*Client, error) {

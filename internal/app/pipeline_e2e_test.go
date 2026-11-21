@@ -255,9 +255,9 @@ func (catalogue *fakeCatalogue) MovieDetail(_ context.Context, id string) (domai
 	return detail, nil
 }
 
-func (catalogue *fakeCatalogue) Name() string { return domain.MagnetSourceJavDB }
+func (catalogue *fakeCatalogue) Name() string { return "javdb" }
 func (catalogue *fakeCatalogue) Find(ctx context.Context, ref domain.MovieRef) ([]domain.Magnet, error) {
-	return catalogue.Magnets(ctx, ref.JavDBID)
+	return catalogue.Magnets(ctx, ref.Code)
 }
 
 func (catalogue *fakeCatalogue) Magnets(context.Context, string) ([]domain.Magnet, error) {
@@ -341,12 +341,14 @@ func newPipelineFixture(t *testing.T) *pipelineFixture {
 	}
 	catalogueClient := &fakeCatalogue{ids: make(map[string]string), details: make(map[string]domain.MovieDetail), cover: fixtureJPEG(t, 600, 400)}
 	library := library.New(store.Client, d, taskSvc, images, library.Options{Pacing: func(context.Context) error { return nil }})
-	discover, err := catalogue.NewWithClients(ctx, store.Client, catalogueClient, nil, library)
+	discover, err := catalogue.NewWithClients(ctx, store.Client, catalogueClient, nil, library, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	embyDir := t.TempDir()
-	scrape := scrapePkg.New(store.Client, d, fixtureMetadata{discover}, images, taskSvc, scrapePkg.Dependencies{
+	scrape := scrapePkg.New(store.Client, d, fixtureMetadata{discover, func(code string) string {
+		return catalogueClient.ids[code]
+	}}, images, taskSvc, scrapePkg.Dependencies{
 		ExportManager: export.NewManager(export.Config{EmbyDir: embyDir, PublicURL: "http://127.0.0.1:8080"}),
 	})
 	taskSvc.Registry().Register(tasks.NewHandler(tasks.KindScan, library.Scan, library.Finished))
@@ -444,8 +446,8 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 		}
 	}
 
-	// The catalogue was consulted exactly once per resource; the rest is cached or local.
-	if fixture.catalogue.calls["resolve"] != 1 || fixture.catalogue.calls["detail"] != 1 || fixture.catalogue.calls["media"] != 1 {
+	// The catalogue detail and artwork are each consulted once; the rest is cached or local.
+	if fixture.catalogue.calls["detail"] != 1 || fixture.catalogue.calls["media"] != 1 {
 		t.Fatalf("catalogue calls = %v", fixture.catalogue.calls)
 	}
 
@@ -453,7 +455,7 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if domain.ValueOrZero(record.JavdbID) != "movie-exact" || record.Title != "Localized title" || record.ScrapeStatus != movie.ScrapeStatusDone {
+	if record.Code != "ABP-123" || record.Title != "Localized title" || record.ScrapeStatus != movie.ScrapeStatusDone {
 		t.Fatalf("movie = %+v", record)
 	}
 	if domain.ValueOrZero(record.Duration) != 120 || domain.ValueOrZero(record.Rating) != 4.5 || record.ReleaseDate == nil || record.ReleaseDate.Format("2006-01-02") != "2026-08-01" {
@@ -488,7 +490,7 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if doc.Code != "ABP-123" || doc.JavDBID() != "movie-exact" || doc.Title != "Localized title" || doc.Premiered != "2026-08-01" || doc.Zone != domain.ZoneCensored {
+	if doc.Code != "ABP-123" || doc.Title != "Localized title" || doc.Premiered != "2026-08-01" || doc.Zone != domain.ZoneCensored {
 		t.Fatalf("nfo = %+v", doc)
 	}
 	if doc.Poster() != "poster.jpg" || doc.Fanart != "fanart.jpg" || len(doc.Actors) != 2 || len(doc.Tags) != 1 || doc.Studio.Name != "Maker" {
@@ -519,7 +521,7 @@ func TestPipelineScansScrapesAndWritesSidecarsEndToEnd(t *testing.T) {
 	}
 	beforeDetail := maps.Clone(fixture.catalogue.calls)
 	detail, err := fixture.library.Movie(ctx, record.ID)
-	if err != nil || detail.Title != doc.Title || detail.ID != doc.JavDBID() || detail.Zone != doc.Zone ||
+	if err != nil || detail.Title != doc.Title || detail.ID != doc.Code || detail.Zone != doc.Zone ||
 		detail.Cover != artwork.Fanart || detail.ScrapeStatus != movie.ScrapeStatusDone || len(detail.Actors) != len(doc.Actors) {
 		t.Fatalf("saved library detail = %+v, %v", detail, err)
 	}
@@ -587,7 +589,7 @@ func TestPipelineUsesNFOCodeButScrapesCatalogueMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if record.Title != fixtureDetail().Title || domain.ValueOrZero(record.JavdbID) != fixtureDetail().ID || len(record.Edges.Actors) != len(fixtureDetail().Actors) || record.ScrapeStatus != movie.ScrapeStatusDone {
+	if record.Title != fixtureDetail().Title || record.Code != fixtureDetail().Code || len(record.Edges.Actors) != len(fixtureDetail().Actors) || record.ScrapeStatus != movie.ScrapeStatusDone {
 		t.Fatalf("movie from NFO = %+v actors %d", record, len(record.Edges.Actors))
 	}
 
@@ -710,16 +712,18 @@ func TestPipelineRemovesMovieWhenDeletedFrom115(t *testing.T) {
 }
 
 // fixtureMetadata isolates workflow recovery tests from source matching tests.
-type fixtureMetadata struct{ catalogue *catalogue.Service }
+type fixtureMetadata struct {
+	catalogue *catalogue.Service
+	resolve   func(string) string
+}
 
 func (f fixtureMetadata) Resolve(ctx context.Context, ref domain.MovieRef) (domain.MovieMetadata, error) {
-	id := ref.JavDBID
-	var err error
+	id := ""
+	if id == "" && f.resolve != nil {
+		id = f.resolve(ref.Code)
+	}
 	if id == "" {
-		id, err = f.catalogue.ResolveMovieID(ctx, ref.Code)
-		if err != nil {
-			return domain.MovieMetadata{}, err
-		}
+		return domain.MovieMetadata{}, fmt.Errorf("catalogue number %s was not found on JavDB", ref.Code)
 	}
 	detail, err := f.catalogue.CatalogueDetail(ctx, id)
 	if err != nil {

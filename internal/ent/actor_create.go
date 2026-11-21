@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ppxb/miyabi/internal/ent/actor"
+	"github.com/ppxb/miyabi/internal/ent/actorprofile"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 )
 
@@ -111,6 +112,20 @@ func (_c *ActorCreate) SetNillableAvatar(v *string) *ActorCreate {
 	return _c
 }
 
+// SetNameKey sets the "name_key" field.
+func (_c *ActorCreate) SetNameKey(v string) *ActorCreate {
+	_c.mutation.SetNameKey(v)
+	return _c
+}
+
+// SetNillableNameKey sets the "name_key" field if the given value is not nil.
+func (_c *ActorCreate) SetNillableNameKey(v *string) *ActorCreate {
+	if v != nil {
+		_c.SetNameKey(*v)
+	}
+	return _c
+}
+
 // AddMovieIDs adds the "movies" edge to the Movie entity by IDs.
 func (_c *ActorCreate) AddMovieIDs(ids ...int) *ActorCreate {
 	_c.mutation.AddMovieIDs(ids...)
@@ -124,6 +139,25 @@ func (_c *ActorCreate) AddMovies(v ...*Movie) *ActorCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddMovieIDs(ids...)
+}
+
+// SetProfileID sets the "profile" edge to the ActorProfile entity by ID.
+func (_c *ActorCreate) SetProfileID(id int) *ActorCreate {
+	_c.mutation.SetProfileID(id)
+	return _c
+}
+
+// SetNillableProfileID sets the "profile" edge to the ActorProfile entity by ID if the given value is not nil.
+func (_c *ActorCreate) SetNillableProfileID(id *int) *ActorCreate {
+	if id != nil {
+		_c = _c.SetProfileID(*id)
+	}
+	return _c
+}
+
+// SetProfile sets the "profile" edge to the ActorProfile entity.
+func (_c *ActorCreate) SetProfile(v *ActorProfile) *ActorCreate {
+	return _c.SetProfileID(v.ID)
 }
 
 // Mutation returns the ActorMutation object of the builder.
@@ -173,6 +207,10 @@ func (_c *ActorCreate) defaults() {
 		v := actor.DefaultGender
 		_c.mutation.SetGender(v)
 	}
+	if _, ok := _c.mutation.NameKey(); !ok {
+		v := actor.DefaultNameKey
+		_c.mutation.SetNameKey(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -214,6 +252,9 @@ func (_c *ActorCreate) check() error {
 		if err := actor.GenderValidator(v); err != nil {
 			return &ValidationError{Name: "gender", err: fmt.Errorf(`ent: validator failed for field "Actor.gender": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.NameKey(); !ok {
+		return &ValidationError{Name: "name_key", err: errors.New(`ent: missing required field "Actor.name_key"`)}
 	}
 	return nil
 }
@@ -274,6 +315,10 @@ func (_c *ActorCreate) createSpec() (*Actor, *sqlgraph.CreateSpec) {
 		_spec.SetField(actor.FieldAvatar, field.TypeString, value)
 		_node.Avatar = &value
 	}
+	if value, ok := _c.mutation.NameKey(); ok {
+		_spec.SetField(actor.FieldNameKey, field.TypeString, value)
+		_node.NameKey = value
+	}
 	if nodes := _c.mutation.MoviesIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2M,
@@ -288,6 +333,23 @@ func (_c *ActorCreate) createSpec() (*Actor, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ProfileIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   actor.ProfileTable,
+			Columns: []string{actor.ProfileColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(actorprofile.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.actor_profile = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -435,6 +497,18 @@ func (u *ActorUpsert) UpdateAvatar() *ActorUpsert {
 // ClearAvatar clears the value of the "avatar" field.
 func (u *ActorUpsert) ClearAvatar() *ActorUpsert {
 	u.SetNull(actor.FieldAvatar)
+	return u
+}
+
+// SetNameKey sets the "name_key" field.
+func (u *ActorUpsert) SetNameKey(v string) *ActorUpsert {
+	u.Set(actor.FieldNameKey, v)
+	return u
+}
+
+// UpdateNameKey sets the "name_key" field to the value that was provided on create.
+func (u *ActorUpsert) UpdateNameKey() *ActorUpsert {
+	u.SetExcluded(actor.FieldNameKey)
 	return u
 }
 
@@ -592,6 +666,20 @@ func (u *ActorUpsertOne) UpdateAvatar() *ActorUpsertOne {
 func (u *ActorUpsertOne) ClearAvatar() *ActorUpsertOne {
 	return u.Update(func(s *ActorUpsert) {
 		s.ClearAvatar()
+	})
+}
+
+// SetNameKey sets the "name_key" field.
+func (u *ActorUpsertOne) SetNameKey(v string) *ActorUpsertOne {
+	return u.Update(func(s *ActorUpsert) {
+		s.SetNameKey(v)
+	})
+}
+
+// UpdateNameKey sets the "name_key" field to the value that was provided on create.
+func (u *ActorUpsertOne) UpdateNameKey() *ActorUpsertOne {
+	return u.Update(func(s *ActorUpsert) {
+		s.UpdateNameKey()
 	})
 }
 
@@ -915,6 +1003,20 @@ func (u *ActorUpsertBulk) UpdateAvatar() *ActorUpsertBulk {
 func (u *ActorUpsertBulk) ClearAvatar() *ActorUpsertBulk {
 	return u.Update(func(s *ActorUpsert) {
 		s.ClearAvatar()
+	})
+}
+
+// SetNameKey sets the "name_key" field.
+func (u *ActorUpsertBulk) SetNameKey(v string) *ActorUpsertBulk {
+	return u.Update(func(s *ActorUpsert) {
+		s.SetNameKey(v)
+	})
+}
+
+// UpdateNameKey sets the "name_key" field to the value that was provided on create.
+func (u *ActorUpsertBulk) UpdateNameKey() *ActorUpsertBulk {
+	return u.Update(func(s *ActorUpsert) {
+		s.UpdateNameKey()
 	})
 }
 

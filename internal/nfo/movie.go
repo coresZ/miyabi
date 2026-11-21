@@ -21,6 +21,7 @@ type Movie struct {
 	XMLName       xml.Name                `xml:"movie" json:"-"`
 	Title         string                  `xml:"title" json:"title"`
 	Code          string                  `xml:"num" json:"code"`
+	Plot          string                  `xml:"plot,omitempty" json:"plot,omitempty"`
 	IDs           []UniqueID              `xml:"uniqueid" json:"ids"`
 	Premiered     string                  `xml:"premiered,omitempty" json:"premiered"`
 	Runtime       int                     `xml:"runtime,omitempty" json:"runtime"`
@@ -103,15 +104,6 @@ func FileStem(code string) string {
 		return "%2E%2E"
 	}
 	return url.QueryEscape(code)
-}
-
-func (movie Movie) JavDBID() string {
-	for _, id := range movie.IDs {
-		if id.Type == "javdb" {
-			return id.Value
-		}
-	}
-	return ""
 }
 
 func (movie Movie) Poster() string {

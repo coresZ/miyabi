@@ -23,24 +23,18 @@ type stubLocalState struct {
 	movies []domain.LocalMovie
 }
 
-func (s *stubLocalState) Source() *domain.LibrarySource {
+func (s *stubLocalState) Source(context.Context) *domain.LibrarySource {
 	return s.source
 }
 
-func (s *stubLocalState) MatchingMovies(_ context.Context, ids, codes []string) ([]domain.LocalMovie, error) {
+func (s *stubLocalState) MatchingMovies(_ context.Context, codes []string) ([]domain.LocalMovie, error) {
 	var matches []domain.LocalMovie
-	idSet := make(map[string]bool)
-	for _, id := range ids {
-		idSet[id] = true
-	}
 	codeSet := make(map[string]bool)
 	for _, code := range codes {
 		codeSet[code] = true
 	}
 	for _, m := range s.movies {
-		if m.JavDBID != nil && idSet[*m.JavDBID] {
-			matches = append(matches, m)
-		} else if m.JavDBID == nil && codeSet[codeid.Normalize(m.Code)] {
+		if codeSet[codeid.Normalize(m.Code)] {
 			matches = append(matches, m)
 		}
 	}
@@ -63,7 +57,7 @@ func TestNewPersistsDeviceWithoutSelectingRoute(t *testing.T) {
 	}
 	defer store.Close()
 
-	first, err := New(t.Context(), store.Client, nil, nil, nil)
+	first, err := New(t.Context(), store.Client, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +78,7 @@ func TestNewPersistsDeviceWithoutSelectingRoute(t *testing.T) {
 		t.Fatalf("device UUID = %q: %v", firstDevice, err)
 	}
 
-	second, err := New(t.Context(), store.Client, nil, nil, nil)
+	second, err := New(t.Context(), store.Client, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +106,7 @@ func TestNewRestoresPersistedRoute(t *testing.T) {
 	if err := database.SaveSetting(t.Context(), store.Client, javdbRouteSetting, saved); err != nil {
 		t.Fatal(err)
 	}
-	service, err := New(t.Context(), store.Client, nil, nil, nil)
+	service, err := New(t.Context(), store.Client, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +159,7 @@ func TestProjectMoviesOmitsInvalidDatesWithoutMutatingCatalogue(t *testing.T) {
 	for index, test := range cases {
 		movie := result[index]
 		if movie.ReleaseDate != test.date || movie.ReleaseStatus != test.status ||
-			movie.ID != source[index].ID || movie.Code != source[index].Code || movie.Title != source[index].Title {
+			movie.Code != source[index].Code || movie.Title != source[index].Title {
 			t.Errorf("date %q damaged movie projection: %#v", test.input, movie)
 		}
 		if source[index].ReleaseDate != test.input {
@@ -192,26 +186,24 @@ func TestMovieStatesUsesSourceIDBeforeCatalogueSpelling(t *testing.T) {
 	source := domain.LibrarySource{
 		AccountID: "100", Directory: domain.LibraryDirectory{ID: "10", Name: "Movies", Path: "/Movies"},
 	}
-	knownID := "known-id"
-	differentID := "different-id"
 	localState := &stubLocalState{
 		source: &source,
 		movies: []domain.LocalMovie{
-			{ID: 10, Code: "OLD-001", JavDBID: &knownID},
-			{ID: 11, Code: "KNB-M014", JavDBID: nil},
-			{ID: 12, Code: "GLOD-0436", JavDBID: &differentID},
+			{ID: 10, Code: "OLD-001"},
+			{ID: 11, Code: "KNB-M014"},
+			{ID: 12, Code: "GLOD-0436"},
 		},
 	}
 
-	store.Client.OfflineDownload.Create().SetHash("fixture-hash").SetJavdbID("queued-id").SetCode("PREVIOUS-002").
+	store.Client.OfflineDownload.Create().SetHash("fixture-hash").SetCode("PREVIOUS-002").
 		SetAccountID(source.AccountID).SetDirectoryID(source.Directory.ID).SaveX(ctx)
 
 	service := &Service{database: store.Client, local: localState}
 	sourceMovies := []domain.Movie{
-		{ID: "known-id", Code: "作品/新版 #001"},
-		{ID: "pending-id", Code: "knb_m014"},
-		{ID: "conflicting-id", Code: "GLOD-0436"},
-		{ID: "queued-id", Code: "Current.Number"},
+		{ID: "OLD-001", Code: "OLD-001"},
+		{ID: "KNB-M014", Code: "KNB-M014"},
+		{ID: "GLOD-0436", Code: "GLOD-0436"},
+		{ID: "PREVIOUS-002", Code: "PREVIOUS-002"},
 	}
 	identities := make([]MovieIdentity, len(sourceMovies))
 	for i, item := range sourceMovies {
@@ -221,8 +213,8 @@ func TestMovieStatesUsesSourceIDBeforeCatalogueSpelling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantIDs := []int{10, 11, 0, 0}
-	wantStates := []MovieState{MovieInLibrary, MovieInLibrary, MovieNotInLibrary, MovieSaving}
+	wantIDs := []int{10, 11, 12, 0}
+	wantStates := []MovieState{MovieInLibrary, MovieInLibrary, MovieInLibrary, MovieSaving}
 	for i, item := range result {
 		if item.LibraryID != wantIDs[i] || item.State != wantStates[i] {
 			t.Fatalf("item %d: got id=%d state=%s, want id=%d state=%s", i, item.LibraryID, item.State, wantIDs[i], wantStates[i])
@@ -286,12 +278,12 @@ func TestServiceMagnetsWithAggregator(t *testing.T) {
 			{
 				Hash:    hash,
 				Name:    "duplicate from primary source",
-				Sources: []string{domain.MagnetSourceJavDB},
+				Sources: []string{"javdb"},
 			},
 		},
 	}
 
-	service, err := NewWithClients(t.Context(), store.Client, provider, nil, &stubLocalState{})
+	service, err := NewWithClients(t.Context(), store.Client, provider, nil, &stubLocalState{}, provider)
 	if err != nil {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
@@ -335,6 +327,31 @@ func TestServiceMagnetsWithAggregator(t *testing.T) {
 	}
 }
 
+// TestJavDBIsNotAMagnetSource pins that the JavDB client, though still used for
+// catalogue metadata, never contributes magnets after the source swap.
+func TestJavDBIsNotAMagnetSource(t *testing.T) {
+	store, err := database.Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	const hash = "abcdef0123456789abcdef0123456789abcdef01"
+	primary := &stubProviderWithMagnets{
+		magnets: []domain.Magnet{{Hash: hash, Name: "javdb only", Sources: []string{"javdb"}}},
+	}
+	service, err := NewWithClients(t.Context(), store.Client, primary, nil, &stubLocalState{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+
+	magnets, err := service.Magnets(t.Context(), "movie-1")
+	if err != nil || len(magnets) != 0 {
+		t.Fatalf("JavDB must not be a magnet source: %+v %v", magnets, err)
+	}
+}
+
 type stubProviderWithRoute struct {
 	stubProviderWithMagnets
 	route javdb.RouteStatus
@@ -353,7 +370,7 @@ func TestCachedJavDBIgnoresPersistActiveRouteFailure(t *testing.T) {
 	provider := &stubProviderWithRoute{
 		route: javdb.RouteStatus{Host: "https://new-route.example"},
 	}
-	service, err := NewWithClients(t.Context(), store.Client, provider, nil, &stubLocalState{})
+	service, err := NewWithClients(t.Context(), store.Client, provider, nil, &stubLocalState{}, nil)
 	if err != nil {
 		store.Close()
 		t.Fatal(err)

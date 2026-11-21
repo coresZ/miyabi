@@ -30,7 +30,7 @@ func TestMovieStatesScopeWorkflowsToSource(t *testing.T) {
 	// Create an active download in the mounted source.
 	record, err := store.Client.OfflineDownload.Create().
 		SetHash("fixture-hash").SetAccountID(source.AccountID).SetDirectoryID(source.Directory.ID).
-		SetCode("ABP-001").SetJavdbID(knownJavDBID).Save(ctx)
+		SetCode("ABP-001").Save(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,21 +74,23 @@ func TestMovieStatesScopeWorkflowsToSource(t *testing.T) {
 	}
 
 	// 4. Indexed in local library -> MovieInLibrary
-	local.movies = []domain.LocalMovie{{ID: 99, Code: "ABP-001", JavDBID: &knownJavDBID}}
+	local.movies = []domain.LocalMovie{{ID: 99, Code: "ABP-001"}}
 	states, err = service.MovieStates(ctx, identities)
 	if err != nil || len(states) != 1 || states[0].State != MovieInLibrary || states[0].LibraryID != 99 {
 		t.Fatalf("expected MovieInLibrary with ID 99, got %+v (err=%v)", states, err)
 	}
 
-	// 5. Unmounted source -> MovieNotInLibrary
-	local.source = nil
+	// 5. Not indexed and no active workflow -> MovieNotInLibrary
+	store.Client.Task.Delete().ExecX(ctx)
+	store.Client.OfflineDownload.Delete().ExecX(ctx)
+	local.movies = nil
 	states, err = service.MovieStates(ctx, identities)
 	if err != nil || len(states) != 1 || states[0].State != MovieNotInLibrary || states[0].LibraryID != 0 {
-		t.Fatalf("expected MovieNotInLibrary when unmounted, got %+v (err=%v)", states, err)
+		t.Fatalf("expected MovieNotInLibrary when not indexed, got %+v (err=%v)", states, err)
 	}
 }
 
-func TestMovieStatesDifferentAccountOrDirectoryIgnored(t *testing.T) {
+func TestMovieStatesCountsDownloadsAcrossAccounts(t *testing.T) {
 	store, err := database.Open(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -104,10 +106,10 @@ func TestMovieStatesDifferentAccountOrDirectoryIgnored(t *testing.T) {
 
 	store.Client.OfflineDownload.Create().SetHash("other-account-hash").
 		SetAccountID("other-account").SetDirectoryID(source.Directory.ID).
-		SetJavdbID("other-acc-movie").SetCode("ABP-101").SaveX(ctx)
+		SetCode("ABP-101").SaveX(ctx)
 	store.Client.OfflineDownload.Create().SetHash("other-directory-hash").
 		SetAccountID(source.AccountID).SetDirectoryID("other-dir").
-		SetJavdbID("other-dir-movie").SetCode("ABP-102").SaveX(ctx)
+		SetCode("ABP-102").SaveX(ctx)
 
 	states, err := service.MovieStates(ctx, []MovieIdentity{
 		{ID: "other-acc-movie", Code: "ABP-101"},
@@ -117,8 +119,8 @@ func TestMovieStatesDifferentAccountOrDirectoryIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i, s := range states {
-		if s.State != MovieNotInLibrary {
-			t.Fatalf("item %d crossed boundaries: %+v", i, s)
+		if s.State != MovieSaving {
+			t.Fatalf("item %d download not recognized across accounts: %+v", i, s)
 		}
 	}
 }
