@@ -1,17 +1,12 @@
-import type { OfflineActivity, OfflineSubmission } from '../../api/offline'
-import type { BatchTask, ScanTask, Task } from '../../api/tasks'
-import { sameSource } from '../../lib/source'
-
-function isScanTask(task: Task): task is ScanTask {
-  return task.type === 'scan'
-}
+import {
+  isOfflineTaskActive,
+  type OfflineActivity,
+  type OfflineSubmission
+} from '@/api/offline'
+import { isScanTask, isTaskActive, type BatchTask, type ScanTask, type Task } from '@/api/tasks'
 
 function isBatchTask(task: Task): task is BatchTask {
   return task.type === 'subscription_batch'
-}
-
-function isTaskActive(task: Task): boolean {
-  return task.status === 'queued' || task.status === 'running'
 }
 
 export type NotificationEntry = {
@@ -54,9 +49,6 @@ export const scanToastID = (id: number) => `scan:${id}`
 export const offlineToastID = (id: number) => `offline:${id}`
 export const batchToastID = (id: number) => `batch:${id}`
 
-export const isOfflineTaskActive = (task: { phase: string; processing: boolean }) =>
-  task.phase === 'downloading' || task.processing
-
 export function scanFingerprint(task: ScanTask): string {
   return `${task.status}|${task.progress}|${task.error ?? ''}|${task.scan.stage}|${task.scan.movies}|${task.scan.metadata_total}|${task.scan.metadata_completed}|${task.scan.metadata_retrying ?? 0}|${task.scan.metadata_failed ?? 0}|${task.retry_at ?? ''}|${task.updated_at}|${!!task.can_retry}|${!!task.paused}`
 }
@@ -70,7 +62,6 @@ export function diffTaskNotifications(ctx: DiffContext): DiffResult {
   const dismissIDs: string[] = []
   const nextEntries = new Map<string, NotificationEntry>()
 
-  const source = ctx.activity.source
   const waitingForScan = ctx.waiting || ctx.isTasksError
   const waitingForOffline = ctx.waiting || ctx.isActivityError
 
@@ -78,7 +69,7 @@ export function diffTaskNotifications(ctx: DiffContext): DiffResult {
   const batches = ctx.tasks.filter(isBatchTask)
 
   for (const task of scans) {
-    if (task.offline_task_id || !sameSource(task.source, source)) {
+    if (task.offline_task_id) {
       continue
     }
     const id = scanToastID(task.id)

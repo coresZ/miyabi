@@ -29,7 +29,7 @@ func (s *recoveringJavBusSource) Find(_ context.Context, ref domain.MovieRef) ([
 	if s.calls == 1 {
 		return nil, errors.New("temporary JavBus failure")
 	}
-	if ref.Code != "SSIS-001" || ref.JavDBID != "movie-1" {
+	if ref.Code != "SSIS-001" {
 		return nil, errors.New("missing primary catalogue identity")
 	}
 	return []domain.Magnet{{Hash: "2222222222222222222222222222222222222222", Name: "supplement", Sources: []string{domain.MagnetSourceJavBus}}}, nil
@@ -41,9 +41,9 @@ func TestMagnetsOptionalSourceFailureDoesNotCachePartialResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	primary := &stubProviderWithMagnets{magnets: []domain.Magnet{{Hash: "1111111111111111111111111111111111111111", Name: "primary", Sources: []string{domain.MagnetSourceJavDB}}}}
+	primary := &stubProviderWithMagnets{magnets: []domain.Magnet{{Hash: "1111111111111111111111111111111111111111", Name: "primary", Sources: []string{"javdb"}}}}
 	supplement := &recoveringJavBusSource{}
-	service, err := NewWithClients(t.Context(), store.Client, primary, supplement, &stubLocalState{})
+	service, err := NewWithClients(t.Context(), store.Client, primary, supplement, &stubLocalState{}, primary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,10 +87,10 @@ func TestMagnetsRetriesDetailBeforeCachingSupplementedResult(t *testing.T) {
 	}
 	defer store.Close()
 	primary := &recoveringDetailProvider{stubProviderWithMagnets: stubProviderWithMagnets{
-		magnets: []domain.Magnet{{Hash: "1111111111111111111111111111111111111111", Name: "primary", Sources: []string{domain.MagnetSourceJavDB}}},
+		magnets: []domain.Magnet{{Hash: "1111111111111111111111111111111111111111", Name: "primary", Sources: []string{"javdb"}}},
 	}}
 	upstream := &countingJavBusHTTP{}
-	service, err := NewWithClients(t.Context(), store.Client, primary, javbus.NewForTest(true, upstream), &stubLocalState{})
+	service, err := NewWithClients(t.Context(), store.Client, primary, javbus.NewForTest(true, upstream), &stubLocalState{}, primary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,12 +134,12 @@ func TestMagnets_WithAvailableJavBus(t *testing.T) {
 
 	provider := &detailCountingProvider{
 		stubProviderWithMagnets: stubProviderWithMagnets{
-			magnets: []domain.Magnet{{Hash: "1111111111111111111111111111111111111111", Name: "SSIS-001", Sources: []string{domain.MagnetSourceJavDB}}},
+			magnets: []domain.Magnet{{Hash: "1111111111111111111111111111111111111111", Name: "SSIS-001", Sources: []string{"javdb"}}},
 		},
 	}
 	upstream := &countingJavBusHTTP{}
 	javbusClient := javbus.NewForTest(true, upstream)
-	service, err := NewWithClients(t.Context(), store.Client, provider, javbusClient, &stubLocalState{})
+	service, err := NewWithClients(t.Context(), store.Client, provider, javbusClient, &stubLocalState{}, provider)
 	if err != nil {
 		javbusClient.Close()
 		t.Fatal(err)
@@ -184,11 +184,11 @@ func TestMagnets_WithUnavailableJavBus(t *testing.T) {
 
 	provider := &detailCountingProvider{
 		stubProviderWithMagnets: stubProviderWithMagnets{
-			magnets: []domain.Magnet{{Hash: "1111111111111111111111111111111111111111", Name: "SSIS-001", Sources: []string{domain.MagnetSourceJavDB}}},
+			magnets: []domain.Magnet{{Hash: "1111111111111111111111111111111111111111", Name: "SSIS-001", Sources: []string{"javdb"}}},
 		},
 	}
 	javbusClient := javbus.NewForTest(false)
-	service, err := NewWithClients(t.Context(), store.Client, provider, javbusClient, &stubLocalState{})
+	service, err := NewWithClients(t.Context(), store.Client, provider, javbusClient, &stubLocalState{}, provider)
 	if err != nil {
 		javbusClient.Close()
 		t.Fatal(err)
@@ -202,8 +202,8 @@ func TestMagnets_WithUnavailableJavBus(t *testing.T) {
 	if len(magnets) != 1 {
 		t.Fatalf("expected 1 magnet from JavDB, got %d", len(magnets))
 	}
-	// Item 143: CatalogueDetail must NOT be queried when JavBus is not available.
-	if provider.detailCalls.Load() != 0 {
-		t.Fatalf("expected 0 detail calls when JavBus is unavailable, got %d", provider.detailCalls.Load())
+	// Sukebei is code-based, so CatalogueDetail is still queried to derive the code.
+	if provider.detailCalls.Load() != 1 {
+		t.Fatalf("expected 1 detail call when a code-based source is available, got %d", provider.detailCalls.Load())
 	}
 }

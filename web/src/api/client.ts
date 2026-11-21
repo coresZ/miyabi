@@ -13,10 +13,6 @@ export function isPanUnauthorized(error: unknown): boolean {
   return error instanceof ApiError && error.code === 'PAN_UNAUTHORIZED'
 }
 
-export function isJavDBLoginRequired(error: unknown): boolean {
-  return error instanceof ApiError && error.code === 'JAVDB_LOGIN_REQUIRED'
-}
-
 export function describeApiError(error: unknown): string {
   if (isPanUnauthorized(error)) return '115 登录已失效，请前往设置重新登录。'
   return error instanceof ApiError ? error.message : '请检查后端服务和网络后重试。'
@@ -64,6 +60,7 @@ export function notifyUnauthorized(): void {
 // JavDB CDN hosts are not reachable from every browser network, so images go through the backend.
 export function imageURL(source: string) {
   if (source.startsWith('/api/library/artwork/')) return source
+  if (source.startsWith('/api/actors/')) return source
   if (/^\/api\/library\/movies\/\d+\/previews\/\d+(?:\?v=\d+)?$/.test(source)) return source
   // Invalidate the encoded image responses cached before the backend decoded them.
   return `/api/image?v=3&url=${encodeURIComponent(source)}`
@@ -79,8 +76,7 @@ function requestJSON<T>(path: string, method: 'POST' | 'PATCH' | 'PUT', body: un
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
-    ...init,
-    credentials: 'same-origin'
+    ...init
   })
 
   if (!response.ok) {

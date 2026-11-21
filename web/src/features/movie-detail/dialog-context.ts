@@ -1,6 +1,6 @@
 import { createContext } from 'react'
 
-export type MovieDetailTarget = { id: string } | { code: string } | { libraryId: number }
+export type MovieDetailTarget = { id: string; code?: string } | { code: string } | { libraryId: number }
 
 export function movieDetailKey(movie: MovieDetailTarget) {
   if ('libraryId' in movie) return `library:${movie.libraryId}`
@@ -8,5 +8,5 @@ export function movieDetailKey(movie: MovieDetailTarget) {
 }
 
 export const MovieDetailDialogContext = createContext<
-  ((movie: MovieDetailTarget, trigger: HTMLDivElement) => void) | null
+  ((movie: MovieDetailTarget) => void) | null
 >(null)

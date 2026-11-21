@@ -1,52 +1,34 @@
-import { Link } from '@tanstack/react-router'
+import { useState } from 'react'
 
-import { LIBRARY_PAGE_SIZE, useLibraryMovies } from '@/api/library'
+import { useLibraryMovies } from '@/api/library'
 import { isScanTask, isTaskActive, useTasks } from '@/api/tasks'
 import { AppPage } from '@/components/app-page'
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState, InlineError } from '@/components/error-state'
-import { ListPagination } from '@/components/list-pagination'
-import { MovieGridLayout } from '@/components/movie/movie-grid-layout'
-import { MovieGridSkeleton } from '@/components/movie/movie-grid-skeleton'
 import { PageHeader } from '@/components/page-header'
-import { Button } from '@/components/ui/button'
-import { LibraryMovieCard } from '@/features/library/movie-card'
-import { LibraryScanButton } from '@/features/library/scan-button'
+import { ContinueWatching } from '@/features/library/continue-watching'
+import { LibraryProgress } from '@/features/library/library-progress'
+import { LazyLibraryPlayerDialog } from '@/features/library/player-dialog-lazy'
+import { RecentlyAddedShelf } from '@/features/library/recent-shelf'
+import { TopRatedShelf } from '@/features/library/top-rated-shelf'
 import { useTaskConnection } from '@/features/tasks/task-events'
-import { sameSource } from '@/lib/source'
 
-export function LibraryPage({
-  page,
-  onPageChange
-}: {
-  page: number
-  onPageChange: (page: number) => void
-}) {
-  const library = useLibraryMovies(page)
+export function LibraryPage() {
+  const library = useLibraryMovies(1)
   const tasks = useTasks()
   const connection = useTaskConnection()
+  const [playingId, setPlayingId] = useState<number | null>(null)
   const source = library.data?.source
-  const sourceTasks = tasks.data?.filter(isScanTask).filter(task => sameSource(task.source, source))
-  const latest = sourceTasks?.find(task => !task.movie_id && !task.offline_task_id)
-  const scanning = latest !== undefined && isTaskActive(latest)
-  const processingMovies = new Set(sourceTasks?.filter(isTaskActive).map(task => task.movie_id))
+  const libraryTasks = tasks.data?.filter(isScanTask)
+  const latestScan = libraryTasks?.find(task => !task.movie_id && !task.offline_task_id)
+  const scanning = latestScan !== undefined && isTaskActive(latestScan)
+  // Show progress for any active library task, including a single-movie rescrape.
+  const progressTask = libraryTasks?.find(isTaskActive)
 
   return (
     <AppPage>
-      <PageHeader title="媒体库" description="来自 115 网盘的影片" inlineActions>
-        <LibraryScanButton
-          loading={library.isPending}
-          available={!!source}
-          scanning={scanning}
-          rebuilding={!!latest?.rebuild}
-          connected={connection.status === 'connected'}
-          onStarted={() => onPageChange(1)}
-        />
-        {library.isSuccess && !source ? (
-          <Button asChild>
-            <Link to="/settings">挂载媒体目录</Link>
-          </Button>
-        ) : null}
+      <PageHeader title="媒体库" description="最近加入、正在观看与高分影片" inlineActions>
+        <LibraryProgress task={progressTask} />
       </PageHeader>
 
       {tasks.isError ? (
@@ -59,9 +41,7 @@ export function LibraryPage({
         </InlineError>
       ) : null}
 
-      {library.isPending ? (
-        <MovieGridSkeleton count={LIBRARY_PAGE_SIZE} compact />
-      ) : library.isError ? (
+      {library.isError ? (
         <ErrorState
           message="无法读取媒体库，请检查后端服务后重试"
           onRetry={() => void library.refetch()}
@@ -69,39 +49,27 @@ export function LibraryPage({
         />
       ) : (
         <>
-          {library.data.movies.length > 0 ? (
-            <MovieGridLayout>
-              {library.data.movies.map(movie => (
-                <LibraryMovieCard
-                  key={movie.id}
-                  movie={movie}
-                  busy={!source || scanning || processingMovies.has(movie.id)}
-                />
-              ))}
-            </MovieGridLayout>
-          ) : (
+          <ContinueWatching onPlay={setPlayingId} />
+          <RecentlyAddedShelf onPlay={setPlayingId} />
+          <TopRatedShelf onPlay={setPlayingId} />
+          {!library.isPending && library.data.total === 0 ? (
             <EmptyState
               className="min-h-0 flex-1 py-12"
               title={
                 !source
-                  ? '登录 115 并挂载媒体目录后，将自动同步入库'
+                  ? '在设置 → 源管理中添加并登录存储源后，扫描入库'
                   : scanning
                     ? connection.status === 'connected'
-                      ? `${latest?.rebuild ? '正在重建' : '正在同步'}，识别到的影片会陆续显示`
+                      ? `${latestScan?.rebuild ? '正在重建' : '正在同步'}，识别到的影片会陆续显示`
                       : '连接中，等待更新媒体库进度'
                     : '未识别到影片'
               }
             />
-          )}
-          <ListPagination
-            page={page}
-            totalPages={Math.max(1, Math.ceil(library.data.total / LIBRARY_PAGE_SIZE))}
-            hasMore={library.data.has_more}
-            disabled={library.isFetching}
-            onPageChange={onPageChange}
-          />
+          ) : null}
         </>
       )}
+
+      <LazyLibraryPlayerDialog movieId={playingId} onClose={() => setPlayingId(null)} />
     </AppPage>
   )
 }

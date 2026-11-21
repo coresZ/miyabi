@@ -6,24 +6,14 @@ import { cn } from 'cn'
 type AppPageProps = {
   children: ReactNode
   className?: string
-  contentClassName?: string
   showBackTop?: boolean
 }
 
-export function AppPage({
-  children,
-  className,
-  contentClassName,
-  showBackTop = true
-}: AppPageProps) {
+export function AppPage({ children, className, showBackTop = true }: AppPageProps) {
   return (
-    <main
-      className={cn('relative flex min-h-dvh flex-col bg-background px-4 pt-8 pb-24', className)}
-    >
-      <div className={cn('mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6', contentClassName)}>
-        {children}
-      </div>
+    <div className={cn('relative flex min-h-0 flex-1 flex-col', className)}>
+      <div className="flex w-full flex-1 flex-col gap-6">{children}</div>
       {showBackTop ? <BackTopButton /> : null}
-    </main>
+    </div>
   )
 }

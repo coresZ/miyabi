@@ -3,6 +3,7 @@ package scrape
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"sync"
 	"time"
@@ -29,7 +30,6 @@ type MetadataPayload struct {
 	ScanTaskID int                  `json:"scan_task_id"`
 	MovieID    int                  `json:"movie_id"`
 	Code       string               `json:"code"`
-	JavDBID    string               `json:"javdb_id,omitempty"`
 	ManualCode string               `json:"manual_code,omitempty"`
 }
 
@@ -61,6 +61,12 @@ type SubtitleExporter interface {
 	Export(ctx context.Context, movieID int, target subtitlemeta.Target) (int, error)
 }
 
+// ActorMerger merges same-person actor rows discovered during a movie scrape.
+type ActorMerger interface {
+	MergeMovieCrossLanguage(ctx context.Context, movieID int) (int, error)
+	EnsureMovieProfiles(ctx context.Context, movieID int) error
+}
+
 const (
 	defaultDirCacheTTL = 45 * time.Second
 	maxDirCacheEntries = 128
@@ -80,6 +86,7 @@ type Service struct {
 	images        *mediaimage.Cache
 	notifier      Notifier
 	subtitles     SubtitleExporter
+	merger        ActorMerger
 	subtitleQueue *SubtitleQueue
 
 	dirMu    sync.Mutex
@@ -100,6 +107,7 @@ type Dependencies struct {
 	ExportManager *export.Manager
 	MediaNotifier export.MediaNotifier
 	Subtitles     SubtitleExporter
+	Merger        ActorMerger
 }
 
 // New installs dependencies before starting subtitle workers.
@@ -114,6 +122,7 @@ func New(db *ent.Client, d *drive.Drive, metadata MetadataSource, images *mediai
 		exportMgr:     deps.ExportManager,
 		mediaNotifier: deps.MediaNotifier,
 		subtitles:     deps.Subtitles,
+		merger:        deps.Merger,
 	}
 	service.subtitleQueue = newSubtitleQueue(service)
 	return service
@@ -214,9 +223,6 @@ func (service *Service) prepareMetadata(ctx context.Context, sess drive.Session,
 			input.PosterVersion = record.MetadataSnapshot.PosterVersion
 		}
 	} else {
-		if id := domain.ValueOrZero(record.JavdbID); id != "" {
-			input.JavDBID = id
-		}
 		if err := service.resolveMetadata(ctx, input); err != nil {
 			return err
 		}
@@ -238,6 +244,14 @@ func (service *Service) prepareMetadata(ctx context.Context, sess drive.Session,
 	}
 	if service.notifier != nil {
 		service.notifier.NotifyLibraryChanged()
+	}
+	if service.merger != nil {
+		if _, err := service.merger.MergeMovieCrossLanguage(ctx, input.MovieID); err != nil {
+			slog.WarnContext(ctx, "merge cross-language actors failed", "movie_id", input.MovieID, "error", err)
+		}
+		if err := service.merger.EnsureMovieProfiles(ctx, input.MovieID); err != nil {
+			slog.WarnContext(ctx, "reconcile actor profiles failed", "movie_id", input.MovieID, "error", err)
+		}
 	}
 	return nil
 }
@@ -377,7 +391,7 @@ func (service *Service) pruneDirCache(now time.Time) {
 }
 
 func (service *Service) resolveMetadata(ctx context.Context, input *Payload) error {
-	result, err := service.metadata.Resolve(ctx, domain.MovieRef{Code: input.Code, JavDBID: input.JavDBID, Refresh: input.Rebuild})
+	result, err := service.metadata.Resolve(ctx, domain.MovieRef{Code: input.Code, Refresh: input.Rebuild})
 	if err != nil {
 		return err
 	}

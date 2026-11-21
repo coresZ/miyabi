@@ -3,17 +3,22 @@ package metadata
 import (
 	"cmp"
 	"slices"
+	"strings"
 
 	"github.com/ppxb/miyabi/internal/domain"
 )
 
 // merge only combines confirmed results for the same film. JavDB owns catalogue
 // metadata when available, while artwork keeps the configured source order.
-// Entity lists stay intact so names cannot replace another provider's IDs.
+// Actors and tags are unioned across providers (deduplicated by name) so every
+// source can contribute instead of stopping at the first complete one.
 func merge(results []domain.MovieMetadata) domain.MovieMetadata {
 	var result domain.MovieMetadata
 	result.Detail.FieldSources = make(map[string]string)
 	images := make(map[string]bool)
+	actors := make(map[string]bool)
+	tags := make(map[string]bool)
+	javdbPlot, javdbPlotSource := "", ""
 	for _, item := range results {
 		for _, image := range item.Images {
 			key := image.Role + ":" + image.URL
@@ -45,6 +50,14 @@ func merge(results []domain.MovieMetadata) domain.MovieMetadata {
 		provider := m.Sources[0].Provider
 		out := &result.Detail
 		out.Sources = append(out.Sources, m.Sources...)
+		// Related-work panels come from whichever source renders them; JavDB first
+		// when present, otherwise a supplementary source such as freejavbt.
+		if len(out.ActorMovies) == 0 && len(m.ActorMovies) > 0 {
+			out.ActorMovies = m.ActorMovies
+		}
+		if len(out.RelatedMovies) == 0 && len(m.RelatedMovies) > 0 {
+			out.RelatedMovies = m.RelatedMovies
+		}
 		text := func(name string, dest *string, value string) {
 			if *dest == "" && value != "" {
 				*dest = value
@@ -58,6 +71,17 @@ func merge(results []domain.MovieMetadata) domain.MovieMetadata {
 		text("cover", &out.Cover, m.Cover)
 		text("thumbnail", &out.Thumbnail, m.Thumbnail)
 		text("preview_video", &out.PreviewVideo, m.PreviewVideo)
+		// Synopsis prefers any official source; JavDB is only the fallback.
+		if m.Plot != "" {
+			if provider == "javdb" {
+				if javdbPlot == "" {
+					javdbPlot, javdbPlotSource = m.Plot, provider
+				}
+			} else if out.Plot == "" {
+				out.Plot = m.Plot
+				out.FieldSources["plot"] = provider
+			}
+		}
 		if out.Zone == "" || out.Zone == domain.ZoneUnknown {
 			out.Zone = m.Zone
 		}
@@ -70,9 +94,19 @@ func merge(results []domain.MovieMetadata) domain.MovieMetadata {
 			out.RatingMax = m.RatingMax
 			out.RatingSource = provider
 		}
-		if len(out.Actors) == 0 && len(m.Actors) > 0 {
-			out.Actors = m.Actors
-			out.FieldSources["actors"] = provider
+		for _, person := range m.Actors {
+			key := "name:" + strings.ToLower(strings.TrimSpace(person.Name))
+			if strings.TrimSpace(person.Name) == "" {
+				key = person.Provider + ":" + person.ID
+			}
+			if actors[key] {
+				continue
+			}
+			actors[key] = true
+			out.Actors = append(out.Actors, person)
+			if _, ok := out.FieldSources["actors"]; !ok {
+				out.FieldSources["actors"] = provider
+			}
 		}
 		if out.Maker == nil && m.Maker != nil {
 			out.Maker = m.Maker
@@ -86,10 +120,24 @@ func merge(results []domain.MovieMetadata) domain.MovieMetadata {
 			out.Series = m.Series
 			out.FieldSources["series"] = provider
 		}
-		if len(out.Tags) == 0 && len(m.Tags) > 0 {
-			out.Tags = m.Tags
-			out.FieldSources["tags"] = provider
+		for _, label := range m.Tags {
+			key := "name:" + strings.ToLower(strings.TrimSpace(label.Name))
+			if strings.TrimSpace(label.Name) == "" {
+				key = label.Provider + ":" + label.ID
+			}
+			if tags[key] {
+				continue
+			}
+			tags[key] = true
+			out.Tags = append(out.Tags, label)
+			if _, ok := out.FieldSources["tags"]; !ok {
+				out.FieldSources["tags"] = provider
+			}
 		}
+	}
+	if result.Detail.Plot == "" && javdbPlot != "" {
+		result.Detail.Plot = javdbPlot
+		result.Detail.FieldSources["plot"] = javdbPlotSource
 	}
 	result.Detail.HasPreview = len(result.Detail.PreviewImages) > 0 || result.Detail.PreviewVideo != ""
 	return result

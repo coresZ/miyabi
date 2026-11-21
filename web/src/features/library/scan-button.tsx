@@ -1,4 +1,5 @@
-import { LoaderCircleIcon, RotateCcwIcon, ScanLineIcon } from 'lucide-react'
+import { RotateCcwIcon, ScanLineIcon } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 
 import { describeApiError } from '@/api/client'
 import { useStartLibraryScan } from '@/api/library'
@@ -24,7 +25,7 @@ export function LibraryScanButton({
   const startScan = useStartLibraryScan()
   const notifyScan = useNotifyScanTask()
   // Keep the mutation observer mounted while pagination replaces the visible control.
-  if (loading) return <Skeleton className="h-9 w-20 rounded-4xl sm:w-60" />
+  if (loading) return <Skeleton className="h-8 w-20 rounded-lg sm:w-60" />
   if (!available) return null
 
   return (
@@ -57,9 +58,7 @@ export function LibraryScanButton({
               })
             }
           >
-            {busy ? (
-              <LoaderCircleIcon className="size-4 animate-spin" />
-            ) : rebuild ? (
+            {busy ? <Spinner /> : rebuild ? (
               <RotateCcwIcon className="size-4" />
             ) : (
               <ScanLineIcon className="size-4" />

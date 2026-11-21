@@ -1,21 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { apiGet, apiPost, apiPut } from '@/api/client'
+import { apiGet, apiPut } from '@/api/client'
 
 export type NetworkConfig = {
   enabled: boolean
   url: string
-}
-
-export type NetworkProbeResult = {
-  available: boolean
-  latency_ms?: number
-  error?: string
-}
-
-export type NetworkTestResponse = {
-  javdb: NetworkProbeResult
-  javbus: NetworkProbeResult
 }
 
 export const networkKeys = {
@@ -36,28 +25,16 @@ export function useUpdateNetworkConfig() {
     mutationFn: (config: NetworkConfig) => apiPut<NetworkConfig>('/api/settings/network', config),
     onMutate: async next => {
       await queryClient.cancelQueries({ queryKey: networkKeys.config })
-      const previous = queryClient.getQueryData<NetworkConfig>(networkKeys.config)
       queryClient.setQueryData<NetworkConfig>(networkKeys.config, old => ({
         enabled: next.enabled,
         url: next.url || old?.url || ''
       }))
-      return { previous }
     },
     onSuccess: next => {
       queryClient.setQueryData(networkKeys.config, next)
     },
-    onError: (_err, _next, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(networkKeys.config, context.previous)
-      }
+    onError: () => {
       void queryClient.invalidateQueries({ queryKey: networkKeys.config })
     }
-  })
-}
-
-export function useTestNetwork() {
-  return useMutation({
-    mutationFn: (candidate: NetworkConfig) =>
-      apiPost<NetworkTestResponse>('/api/settings/network/test', candidate)
   })
 }

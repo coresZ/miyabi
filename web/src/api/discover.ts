@@ -1,22 +1,19 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useSyncExternalStore } from 'react'
 
 import { apiGet } from './client'
-import {
-  createMovieDetailLoader,
-  discoverKeys,
-  findCachedMovieCard,
-  subscribeMovieCard
-} from './movie-detail-cache'
+import { discoverKeys, findCachedMovieCard } from './movie-detail-cache'
 
 export type ReleaseStatus = 'unknown' | 'released' | 'upcoming'
-export type JavDBZone = 'censored' | 'uncensored' | 'western' | 'fc2' | 'anime'
-export type JavDBEntityType = 'actor' | 'series' | 'maker' | 'director'
+export type Zone = 'censored' | 'uncensored' | 'western' | 'fc2' | 'anime'
+export type EntityType = 'actor' | 'series' | 'maker' | 'director'
 
 export type MovieReference = {
   id: string
   code: string
   thumbnail: string
+  title?: string
+  release_date?: string
+  rating?: number
 }
 
 export type PreviewImage = {
@@ -54,6 +51,7 @@ export type DiscoverMovie = {
   code: string
   title: string
   origin_title: string
+  plot?: string
   release_date: string
   duration: number
   rating: number
@@ -73,7 +71,7 @@ export type DiscoverMovie = {
 }
 
 export type DiscoverMovieDetail = DiscoverMovie & {
-  zone: JavDBZone | 'unknown'
+  zone: Zone | 'unknown'
   actor_movies: MovieReference[]
   related_movies: MovieReference[]
 }
@@ -99,8 +97,8 @@ export type TagCategory = {
 }
 
 export type BrowseMoviesParams = {
-  zone?: JavDBZone
-  entityType?: JavDBEntityType
+  zone?: Zone
+  entityType?: EntityType
   entityID?: string
   main?: string[]
   tagIds?: string[]
@@ -111,16 +109,6 @@ export type BrowseMoviesParams = {
   page?: number
   limit?: number
 }
-
-export type SearchMoviesParams = {
-  query: string
-  page?: number
-  limit?: number
-}
-
-const movieDetails = createMovieDetailLoader((id, signal) =>
-  apiGet<DiscoverMovieDetail>(`/api/discover/movies/${encodeURIComponent(id)}`, undefined, signal)
-)
 
 export function useDiscoverMovies(params: BrowseMoviesParams) {
   return useQuery({
@@ -147,79 +135,51 @@ export function useDiscoverMovies(params: BrowseMoviesParams) {
   })
 }
 
-export function useDiscoverMovie(id: string) {
+export function useDiscoverMovie(id: string, code?: string) {
   const queryClient = useQueryClient()
-  const query = useQuery(movieDetails.options(id))
-  useEffect(() => {
-    movieDetails.prioritize(queryClient, id)
-  }, [queryClient, id])
-  return query
-}
-
-export function useResolveDiscoverMovie(code: string) {
-  return useQuery({
-    queryKey: discoverKeys.resolve(code),
+  const query = useQuery({
+    queryKey: discoverKeys.movie(id),
     queryFn: ({ signal }) =>
-      apiGet<{ id: string }>('/api/discover/movies/resolve', { code }, signal),
-    staleTime: 5 * 60_000
+      apiGet<DiscoverMovieDetail>(
+        `/api/discover/movies/${encodeURIComponent(id)}`,
+        code ? { code } : undefined,
+        signal
+      ),
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000
   })
+  // Fall back to the card already rendered in the list only when the
+  // enrichment request fails, so the dialog still opens instead of erroring.
+  const card = query.isError ? findCachedMovieCard(queryClient, id) : undefined
+  const data = query.data ?? (card ? cardToDetail(card) : undefined)
+  return { ...query, data }
 }
 
-export function useRecommendationMovie(id: string) {
-  const queryClient = useQueryClient()
-  const query = useQuery({ ...movieDetails.options(id), enabled: false })
-  const subscribe = useCallback(
-    (notify: () => void) => subscribeMovieCard(queryClient, id, notify),
-    [queryClient, id]
-  )
-  const snapshot = useCallback(() => findCachedMovieCard(queryClient, id), [queryClient, id])
-  const movie = useSyncExternalStore(subscribe, snapshot, snapshot)
-  const request = useCallback(() => movieDetails.request(queryClient, id), [queryClient, id])
-  const prioritize = useCallback(() => movieDetails.prefetch(queryClient, id), [queryClient, id])
+function cardToDetail(movie: DiscoverMovie): DiscoverMovieDetail {
+  const partial = movie as Partial<DiscoverMovieDetail>
   return {
-    movie,
-    isError: query.isError,
-    isFetching: query.isFetching,
-    request,
-    prioritize
+    ...movie,
+    zone: partial.zone ?? 'unknown',
+    actor_movies: partial.actor_movies ?? [],
+    related_movies: partial.related_movies ?? []
   }
 }
 
-export function useDiscoverMagnets(id: string) {
+export function useDiscoverMagnets(id: string, code?: string) {
   return useQuery({
-    queryKey: discoverKeys.magnets(id),
+    queryKey: discoverKeys.magnets(id, code),
     queryFn: ({ signal }) =>
       apiGet<DiscoverMagnet[]>(
         `/api/discover/movies/${encodeURIComponent(id)}/magnets`,
-        undefined,
+        code ? { code } : undefined,
         signal
       ),
-    staleTime: 60_000
+    staleTime: 60_000,
+    enabled: Boolean(code)
   })
 }
 
-export function useSearchMovies(params: SearchMoviesParams) {
-  const query = params.query.trim()
-  return useQuery({
-    queryKey: discoverKeys.search({ ...params, query }),
-    queryFn: ({ signal }) =>
-      apiGet<DiscoverMovie[]>(
-        '/api/discover/search',
-        {
-          q: query,
-          page: params.page,
-          limit: params.limit
-        },
-        signal
-      ),
-    enabled: query.length > 0,
-    // Search depends on the JavDB account; never serve a stale login/error or
-    // result set when the page is revisited after signing in.
-    staleTime: 0
-  })
-}
-
-export function useDiscoverTags(zone: JavDBZone) {
+export function useDiscoverTags(zone: Zone) {
   return useQuery({
     queryKey: discoverKeys.tags(zone),
     queryFn: ({ signal }) => apiGet<TagCategory[]>('/api/discover/tags', { zone }, signal),

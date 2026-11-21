@@ -27,7 +27,7 @@ func movieActionFixture(t *testing.T) (*libraryTestService, *ent.Movie, domain.S
 	}
 	lib.database.Task.UpdateOneID(queued.ID).SetStatus(task.StatusDone).ExecX(t.Context())
 	record := lib.database.Movie.Query().OnlyX(t.Context())
-	record = record.Update().SetScrapeStatus(movie.ScrapeStatusDone).SetJavdbID("old-id").SetTitle("old title").
+	record = record.Update().SetScrapeStatus(movie.ScrapeStatusDone).SetTitle("old title").
 		SetCover("old-cover").SetPoster("old-poster").SetFanarts([]string{"old-fanart"}).
 		SetMetadata(&nfo.Movie{Code: record.Code, Title: "old title"}).
 		SetMetadataSnapshot(&domain.MetadataSnapshot{Code: record.Code, AccountID: payload.Source.AccountID, DirectoryID: payload.Source.Directory.ID}).SaveX(t.Context())
@@ -63,7 +63,7 @@ func TestMovieRescrapeIsFreshScopedAndDeduplicated(t *testing.T) {
 	}
 	child := lib.database.Task.Query().Where(task.TypeEQ("scrape")).OnlyX(t.Context())
 	input, err := tasks.DecodePayload[scrape.Payload](child.Payload)
-	if err != nil || input.MovieID != record.ID || !input.Rebuild || input.MetadataReady || input.Artwork != nil || input.JavDBID != "old-id" {
+	if err != nil || input.MovieID != record.ID || !input.Rebuild || input.MetadataReady || input.Artwork != nil {
 		t.Fatalf("not a fresh JavDB-aware job: %+v, %v", input, err)
 	}
 	if lib.database.Movie.GetX(t.Context(), other.ID).ScrapeStatus != movie.ScrapeStatusDone {
@@ -91,7 +91,7 @@ func TestMovieRescrapeDoesNotBlockMountEnqueue(t *testing.T) {
 		})
 		mounted := make(chan error, 1)
 		go func() {
-			_, err := lib.drive.SelectDirectory(t.Context(), "20")
+			_, err := lib.drive.SelectDirectoryForAccount(t.Context(), "100", "20")
 			mounted <- err
 		}()
 		<-mountEntered
@@ -119,8 +119,8 @@ func TestMovieRescrapeDoesNotBlockMountEnqueue(t *testing.T) {
 			<-rescraped
 			t.Fatal("mount enqueue and movie rescrape are waiting for each other's locks")
 		}
-		if err := <-rescraped; !domain.IsKind(err, domain.KindNotFound) {
-			t.Fatalf("movie from the previous mount was not rejected: %v", err)
+		if err := <-rescraped; err == nil {
+			t.Fatalf("movie from the previous mount was not rejected")
 		}
 		if source := lib.drive.Source(); source == nil || source.Directory.ID != "20" {
 			t.Fatalf("new mount was not retained: %+v", source)
@@ -173,7 +173,7 @@ func TestMovieRescrapeQueueWaitDoesNotHoldDatabaseWriter(t *testing.T) {
 		}
 		// Clearing the mount must acquire the source lock even while the test
 		// still owns the queue, proving cancellation released source protection.
-		if err := lib.drive.ClearDirectory(t.Context()); err != nil {
+		if err := lib.drive.ClearDirectoryForAccount(t.Context(), "100"); err != nil {
 			t.Fatal(err)
 		}
 		got := lib.database.Movie.GetX(t.Context(), record.ID)
@@ -195,7 +195,7 @@ func TestMovieCorrectionValidatesBeforeChangingIdentity(t *testing.T) {
 		}
 	}
 	got := lib.database.Movie.GetX(t.Context(), record.ID)
-	if got.Code != record.Code || got.ManualCode != "" || got.ScrapeStatus != movie.ScrapeStatusDone || domain.ValueOrZero(got.JavdbID) != "old-id" {
+	if got.Code != record.Code || got.ManualCode != "" || got.ScrapeStatus != movie.ScrapeStatusDone {
 		t.Fatalf("rejected correction changed movie: %+v", got)
 	}
 	if _, err := lib.RescrapeMovie(t.Context(), 999, ""); !domain.IsKind(err, domain.KindNotFound) {
@@ -211,7 +211,7 @@ func TestManualCorrectionSurvivesRebuildAndStaleTaskFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := lib.database.Movie.GetX(ctx, record.ID)
-	if info.Code != "IPX-123" || got.Code != info.Code || got.ManualCode != info.Code || got.JavdbID != nil || got.Title != "" || got.Cover != nil || got.Poster != nil || len(got.Fanarts) != 0 || got.MetadataSnapshot.Code != "ABP-001" {
+	if info.Code != "IPX-123" || got.Code != info.Code || got.ManualCode != info.Code || got.Title != "" || got.Cover != nil || got.Poster != nil || len(got.Fanarts) != 0 || got.MetadataSnapshot.Code != "ABP-001" {
 		t.Fatalf("wrong correction: %+v", got)
 	}
 	file := lib.database.File.Query().OnlyX(ctx)
@@ -258,7 +258,7 @@ func TestManualCorrectionSurvivesRebuildAndStaleTaskFailure(t *testing.T) {
 	}
 	child = lib.database.Task.Query().Where(task.TypeEQ("scrape"), task.StatusEQ(task.StatusQueued)).OnlyX(ctx)
 	input, err := tasks.DecodePayload[scrape.MetadataPayload](child.Payload)
-	if err != nil || input.Code != "IPX-123" || input.ManualCode != "IPX-123" || input.JavDBID != "" {
+	if err != nil || input.Code != "IPX-123" || input.ManualCode != "IPX-123" {
 		t.Fatalf("rebuild lost manual identity: %+v %v", input, err)
 	}
 }

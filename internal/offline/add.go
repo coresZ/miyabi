@@ -12,31 +12,77 @@ import (
 	"github.com/ppxb/miyabi/internal/ent/offlinedownload"
 )
 
-// Add validates and records a new offline download for the given movie ID and magnet hash.
+// Add submits an offline download to the first mounted 115 account. It is the
+// default entry for automation without an explicit account; the API passes an
+// account explicitly through AddForAccount.
 func (service *Service) Add(ctx context.Context, movieID, hash string) (domain.OfflineSubmission, error) {
+	return service.AddByCode(ctx, movieID, "", hash)
+}
+
+// AddByCode submits a magnet for a movie whose catalogue code is already known,
+// so validating the magnet and recording the movie never re-fetches JavDB
+// detail. An empty code keeps the movie-ID lookup path.
+func (service *Service) AddByCode(ctx context.Context, movieID, code, hash string) (domain.OfflineSubmission, error) {
+	sources, err := service.drive.Mounts(ctx)
+	if err != nil {
+		return domain.OfflineSubmission{}, err
+	}
+	if len(sources) == 0 {
+		return domain.OfflineSubmission{}, domain.E(domain.KindInvalid, "没有已挂载的 115 账号", nil)
+	}
+	return service.addForAccount(ctx, sources[0].AccountID, movieID, code, hash)
+}
+
+// AddForAccount validates and records a new offline download for the given 115
+// account's mounted directory.
+func (service *Service) AddForAccount(ctx context.Context, accountID, movieID, hash string) (domain.OfflineSubmission, error) {
+	return service.addForAccount(ctx, accountID, movieID, "", hash)
+}
+
+// resolveMagnet confirms the hash belongs to the movie and returns its code.
+// A known code skips the movie-ID lookup entirely.
+func (service *Service) resolveMagnet(ctx context.Context, movieID, codeHint, hash string) (string, error) {
+	code := codeid.Normalize(movieID)
+	if codeHint != "" {
+		code = codeid.Normalize(codeHint)
+	}
+	magnets, err := service.catalogue.CatalogueMagnetsByCode(ctx, code)
+	if err != nil {
+		return "", err
+	}
+	for _, magnet := range magnets {
+		if strings.EqualFold(magnet.Hash, hash) {
+			return code, nil
+		}
+	}
+	return "", ErrMagnetNotFound
+}
+
+func (service *Service) addForAccount(ctx context.Context, accountID, movieID, codeHint, hash string) (domain.OfflineSubmission, error) {
 	hash = strings.ToLower(hash)
-	has, err := service.catalogue.HasMagnet(ctx, movieID, hash)
+	code, err := service.resolveMagnet(ctx, movieID, codeHint, hash)
 	if err != nil {
 		return domain.OfflineSubmission{}, err
 	}
-	if !has {
-		return domain.OfflineSubmission{}, ErrMagnetNotFound
-	}
-	rawCode, err := service.catalogue.MovieCode(ctx, movieID)
-	if err != nil {
-		return domain.OfflineSubmission{}, err
-	}
-	code := codeid.Normalize(rawCode)
 	_, prefs, err := service.config(ctx)
 	if err != nil {
 		return domain.OfflineSubmission{}, err
 	}
 
-	sess, err := service.drive.Open(ctx)
-	if err != nil {
-		return domain.OfflineSubmission{}, fmt.Errorf("get 115 account for offline download: %w", err)
+	if accountID == "" {
+		return domain.OfflineSubmission{}, domain.E(domain.KindInvalid, "请选择 115 账号", nil)
 	}
-	source := sess.Source()
+	source, ok, err := service.drive.Mount(ctx, accountID)
+	if err != nil {
+		return domain.OfflineSubmission{}, err
+	}
+	if !ok {
+		return domain.OfflineSubmission{}, domain.E(domain.KindInvalid, "所选 115 账号未挂载媒体目录", nil)
+	}
+	sess, err := service.drive.OpenSource(ctx, source)
+	if err != nil {
+		return domain.OfflineSubmission{}, fmt.Errorf("open 115 account for offline download: %w", err)
+	}
 	directory := source.Directory
 
 	unlock, err := service.operations.Lock(ctx, source.AccountID, hash)
@@ -92,13 +138,10 @@ func (service *Service) Add(ctx context.Context, movieID, hash string) (domain.O
 	if err := service.drive.Commit(submitContext, func(tx *ent.Tx) error {
 		var err error
 		created, err = tx.OfflineDownload.Create().
-			SetCode(code).SetJavdbID(movieID).SetHash(hash).SetInfoHash(hash).SetRecovery(state).
+			SetCode(code).SetHash(hash).SetInfoHash(hash).SetRecovery(state).
 			SetAccountID(source.AccountID).SetDirectoryID(directory.ID).
 			Save(submitContext)
-		if err != nil {
-			return err
-		}
-		return nil
+		return err
 	}); err != nil {
 		return domain.OfflineSubmission{}, fmt.Errorf("record 115 offline download: %w", err)
 	}
@@ -106,7 +149,7 @@ func (service *Service) Add(ctx context.Context, movieID, hash string) (domain.O
 	if err != nil {
 		return domain.OfflineSubmission{}, service.deferAction(submitContext, created, state, fmt.Errorf("submit 115 offline download: %w", err))
 	}
-	if err := service.recordSubmission(submitContext, created, state, remote); err != nil {
+	if err := service.recordSubmission(submitContext, sess, created, state, remote); err != nil {
 		return domain.OfflineSubmission{}, service.deferAction(submitContext, created, state, err)
 	}
 

@@ -90,6 +90,11 @@ func Avatar(v string) predicate.Actor {
 	return predicate.Actor(sql.FieldEQ(FieldAvatar, v))
 }
 
+// NameKey applies equality check predicate on the "name_key" field. It's identical to NameKeyEQ.
+func NameKey(v string) predicate.Actor {
+	return predicate.Actor(sql.FieldEQ(FieldNameKey, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Actor {
 	return predicate.Actor(sql.FieldEQ(FieldCreatedAt, v))
@@ -535,6 +540,71 @@ func AvatarContainsFold(v string) predicate.Actor {
 	return predicate.Actor(sql.FieldContainsFold(FieldAvatar, v))
 }
 
+// NameKeyEQ applies the EQ predicate on the "name_key" field.
+func NameKeyEQ(v string) predicate.Actor {
+	return predicate.Actor(sql.FieldEQ(FieldNameKey, v))
+}
+
+// NameKeyNEQ applies the NEQ predicate on the "name_key" field.
+func NameKeyNEQ(v string) predicate.Actor {
+	return predicate.Actor(sql.FieldNEQ(FieldNameKey, v))
+}
+
+// NameKeyIn applies the In predicate on the "name_key" field.
+func NameKeyIn(vs ...string) predicate.Actor {
+	return predicate.Actor(sql.FieldIn(FieldNameKey, vs...))
+}
+
+// NameKeyNotIn applies the NotIn predicate on the "name_key" field.
+func NameKeyNotIn(vs ...string) predicate.Actor {
+	return predicate.Actor(sql.FieldNotIn(FieldNameKey, vs...))
+}
+
+// NameKeyGT applies the GT predicate on the "name_key" field.
+func NameKeyGT(v string) predicate.Actor {
+	return predicate.Actor(sql.FieldGT(FieldNameKey, v))
+}
+
+// NameKeyGTE applies the GTE predicate on the "name_key" field.
+func NameKeyGTE(v string) predicate.Actor {
+	return predicate.Actor(sql.FieldGTE(FieldNameKey, v))
+}
+
+// NameKeyLT applies the LT predicate on the "name_key" field.
+func NameKeyLT(v string) predicate.Actor {
+	return predicate.Actor(sql.FieldLT(FieldNameKey, v))
+}
+
+// NameKeyLTE applies the LTE predicate on the "name_key" field.
+func NameKeyLTE(v string) predicate.Actor {
+	return predicate.Actor(sql.FieldLTE(FieldNameKey, v))
+}
+
+// NameKeyContains applies the Contains predicate on the "name_key" field.
+func NameKeyContains(v string) predicate.Actor {
+	return predicate.Actor(sql.FieldContains(FieldNameKey, v))
+}
+
+// NameKeyHasPrefix applies the HasPrefix predicate on the "name_key" field.
+func NameKeyHasPrefix(v string) predicate.Actor {
+	return predicate.Actor(sql.FieldHasPrefix(FieldNameKey, v))
+}
+
+// NameKeyHasSuffix applies the HasSuffix predicate on the "name_key" field.
+func NameKeyHasSuffix(v string) predicate.Actor {
+	return predicate.Actor(sql.FieldHasSuffix(FieldNameKey, v))
+}
+
+// NameKeyEqualFold applies the EqualFold predicate on the "name_key" field.
+func NameKeyEqualFold(v string) predicate.Actor {
+	return predicate.Actor(sql.FieldEqualFold(FieldNameKey, v))
+}
+
+// NameKeyContainsFold applies the ContainsFold predicate on the "name_key" field.
+func NameKeyContainsFold(v string) predicate.Actor {
+	return predicate.Actor(sql.FieldContainsFold(FieldNameKey, v))
+}
+
 // HasMovies applies the HasEdge predicate on the "movies" edge.
 func HasMovies() predicate.Actor {
 	return predicate.Actor(func(s *sql.Selector) {
@@ -550,6 +620,29 @@ func HasMovies() predicate.Actor {
 func HasMoviesWith(preds ...predicate.Movie) predicate.Actor {
 	return predicate.Actor(func(s *sql.Selector) {
 		step := newMoviesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasProfile applies the HasEdge predicate on the "profile" edge.
+func HasProfile() predicate.Actor {
+	return predicate.Actor(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, ProfileTable, ProfileColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasProfileWith applies the HasEdge predicate on the "profile" edge with a given conditions (other predicates).
+func HasProfileWith(preds ...predicate.ActorProfile) predicate.Actor {
+	return predicate.Actor(func(s *sql.Selector) {
+		step := newProfileStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

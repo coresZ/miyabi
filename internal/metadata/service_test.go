@@ -59,7 +59,7 @@ func TestRefreshBypassesSuccessfulAndMissingSourceCaches(t *testing.T) {
 	}
 }
 
-func TestRefreshDoesNotPublishOfficialOnlyDataWhenJavDBFails(t *testing.T) {
+func TestRefreshAcceptsCompleteOfficialDataWhenJavDBFails(t *testing.T) {
 	official := &sourceStub{id: "fanza", fetch: func(_ context.Context, code string) (domain.MovieMetadata, error) {
 		return completeFixture("fanza", code), nil
 	}}
@@ -68,11 +68,8 @@ func TestRefreshDoesNotPublishOfficialOnlyDataWhenJavDBFails(t *testing.T) {
 	}}
 	s := newTestService(t, official, catalogue)
 	m, err := s.Resolve(t.Context(), domain.MovieRef{Code: "IPZZ-960", Refresh: true})
-	if err == nil || m.Detail.Code != "" {
-		t.Fatalf("partial rebuild accepted: %+v %v", m, err)
-	}
-	if _, retry := domain.RetryDelay(err); !retry {
-		t.Fatalf("source failure cannot retry: %v", err)
+	if err != nil || m.Detail.Code != "IPZZ-960" || m.Detail.Title != "fanza title" {
+		t.Fatalf("complete official result rejected: %+v %v", m, err)
 	}
 }
 
@@ -137,8 +134,11 @@ func TestCompleteOfficialMetadataStillQueriesJavDBAndReusesCache(t *testing.T) {
 	if fallback.calls.Load() != 1 {
 		t.Fatal("image fallback did not reuse source cache")
 	}
-	if err := s.UpdateSettings(t.Context(), []SourceSetting{{ID: "fanza", Enabled: true}, {ID: "javdb", Enabled: false}}); err == nil {
-		t.Fatal("fallback accepted a user-controlled switch")
+	if err := s.UpdateSettings(t.Context(), []SourceSetting{{ID: "fanza", Enabled: true}, {ID: "javdb", Enabled: false}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Fallback(t.Context(), domain.MovieRef{Code: "ABP-123"}); err == nil {
+		t.Fatal("disabled javdb should not be used as a fallback")
 	}
 }
 
@@ -228,16 +228,17 @@ func TestFANZAFirstAndJavDBLastSurviveSavedSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	want := []SourceSetting{{ID: "fanza", Enabled: true}, {ID: "fc2", Enabled: false}}
+	want := []SourceSetting{{ID: "fanza", Enabled: true}, {ID: "fc2", Enabled: false}, {ID: "javdb", Enabled: true}}
 	if !reflect.DeepEqual(s.Settings(), want) {
 		t.Fatalf("order=%v", s.Settings())
 	}
-	if err := s.UpdateSettings(t.Context(), []SourceSetting{want[1], want[0]}); err == nil {
+	reversed := []SourceSetting{want[1], want[0], want[2]}
+	if err := s.UpdateSettings(t.Context(), reversed); err == nil {
 		t.Fatal("FANZA can lose its priority")
 	}
 }
 
-func TestJavDBIsHiddenAndAlwaysEnabled(t *testing.T) {
+func TestJavDBHonorsSavedSwitch(t *testing.T) {
 	store, err := database.Open(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -260,46 +261,20 @@ func TestJavDBIsHiddenAndAlwaysEnabled(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	want := []SourceSetting{{ID: "fanza", Enabled: false}}
+	want := []SourceSetting{{ID: "fanza", Enabled: false}, {ID: "javdb", Enabled: false}}
 	if !reflect.DeepEqual(s.Settings(), want) {
-		t.Fatalf("public settings include fallback: %v", s.Settings())
+		t.Fatalf("public settings = %v", s.Settings())
 	}
 	if err := s.UpdateSettings(t.Context(), want); err != nil {
 		t.Fatal(err)
 	}
 	for _, resolve := range []func(context.Context, domain.MovieRef) (domain.MovieMetadata, error){s.Resolve, s.Fallback} {
-		m, err := resolve(t.Context(), domain.MovieRef{Code: "ABP-123"})
-		if err != nil || m.Detail.Sources[0].Provider != "javdb" {
-			t.Fatalf("fallback disabled by settings: %+v %v", m, err)
+		if _, err := resolve(t.Context(), domain.MovieRef{Code: "ABP-123"}); err == nil {
+			t.Fatal("disabled javdb still resolved")
 		}
 	}
 }
 
-func TestKnownJavDBIDCanRecoverFromCachedSearchMiss(t *testing.T) {
-	source := &sourceStub{id: "javdb"}
-	source.fetch = func(_ context.Context, code string) (domain.MovieMetadata, error) {
-		if source.calls.Load() == 1 {
-			return domain.MovieMetadata{}, ErrNotFound
-		}
-		m := completeFixture("javdb", code)
-		m.Detail.ID = "known"
-		m.Detail.Sources[0].ID = "known"
-		return m, nil
-	}
-	s := newTestService(t, source)
-	if _, err := s.Resolve(t.Context(), domain.MovieRef{Code: "ABP-123"}); !errors.Is(err, ErrNotFound) {
-		t.Fatal(err)
-	}
-	for range 2 {
-		m, err := s.Fallback(t.Context(), domain.MovieRef{Code: "ABP-123", JavDBID: "known"})
-		if err != nil || m.Detail.ID != "known" {
-			t.Fatalf("cached search miss blocked ID lookup: %+v %v", m, err)
-		}
-	}
-	if source.calls.Load() != 2 {
-		t.Fatal("known identity was not cached")
-	}
-}
 func newTestService(t *testing.T, sources ...Source) *Service {
 	t.Helper()
 	store, err := database.Open(t.Context(), t.TempDir())

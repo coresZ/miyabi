@@ -116,10 +116,10 @@ func TestOfflineStartedSubmissionKeepsOriginalSourceAfterCancellation(t *testing
 			upstream := awaitPan(t, started)
 			cancel()
 			if action == "disconnect" {
-				if _, err := service.drive.Disconnect(t.Context()); err != nil {
+				if err := service.drive.DisconnectAccount(t.Context(), "100"); err != nil {
 					t.Fatal(err)
 				}
-			} else if err := service.drive.ClearDirectory(t.Context()); err != nil {
+			} else if err := service.drive.ClearDirectoryForAccount(t.Context(), "100"); err != nil {
 				t.Fatal(err)
 			}
 			if deadline, ok := upstream.Deadline(); !ok || time.Until(deadline) > 2*time.Minute || upstream.Err() != nil {
@@ -159,18 +159,21 @@ func TestOfflineSyncRespectsSourceChangesDuringRemotePolling(t *testing.T) {
 			go func() { finished <- service.Sync(t.Context()) }()
 			awaitPan(t, started)
 			if action == "disconnect" {
-				if _, err := service.drive.Disconnect(t.Context()); err != nil {
+				if err := service.drive.DisconnectAccount(t.Context(), "100"); err != nil {
 					t.Fatal(err)
 				}
-			} else if err := service.drive.ClearDirectory(t.Context()); err != nil {
+			} else if err := service.drive.ClearDirectoryForAccount(t.Context(), "100"); err != nil {
 				t.Fatal(err)
 			}
 			release()
 			err := awaitPan(t, finished)
 			current := service.database.OfflineDownload.GetX(t.Context(), record.ID)
 			if action == "disconnect" {
-				if !errors.Is(err, pan.ErrUnauthorized) || current.Status != offlinedownload.StatusRunning {
-					t.Fatalf("old account sync changed state: %+v, %v", current, err)
+				if err != nil && !errors.Is(err, pan.ErrUnauthorized) {
+					t.Fatalf("unexpected sync error: %v", err)
+				}
+				if current.Status != offlinedownload.StatusRunning {
+					t.Fatalf("old account sync changed state: %+v", current)
 				}
 				return
 			}
@@ -181,7 +184,7 @@ func TestOfflineSyncRespectsSourceChangesDuringRemotePolling(t *testing.T) {
 			if current.Status != offlinedownload.StatusDone || saved.FileID != "download-folder" || saved.ScanTaskID != 0 {
 				t.Fatalf("completion on replaced mount = %+v", saved)
 			}
-			if _, err := service.drive.SelectDirectory(t.Context(), source.Directory.ID); err != nil {
+			if _, err := service.drive.SelectDirectoryForAccount(t.Context(), "100", source.Directory.ID); err != nil {
 				t.Fatal(err)
 			}
 			if err := service.Sync(t.Context()); err != nil {
@@ -282,7 +285,7 @@ func TestOfflinePlayableProcessingStillDeduplicatesUntilWorkflowFinishes(t *test
 		t.Fatal(err)
 	}
 	input := ent.OfflineDownload{AccountID: source.AccountID, DirectoryID: source.Directory.ID,
-		Code: "ABP-001", JavdbID: "fixture-movie", Hash: offlineHashA, InfoHash: offlineHashA}
+		Code: "ABP-001", Hash: offlineHashA, InfoHash: offlineHashA}
 
 	record := createDownload(service.database, input).SetStatus(offlinedownload.StatusRunning).SaveX(ctx)
 	if err := service.UpdateTask(ctx, sess, record, pan.OfflineTask{Status: 2, FileID: "download-folder"}); err != nil {
@@ -291,7 +294,7 @@ func TestOfflinePlayableProcessingStillDeduplicatesUntilWorkflowFinishes(t *test
 	record = service.database.OfflineDownload.GetX(ctx, record.ID)
 	input = *record
 
-	film := service.database.Movie.Create().SetCode(input.Code).SetJavdbID(input.JavdbID).SaveX(ctx)
+	film := service.database.Movie.Create().SetCode(input.Code).SaveX(ctx)
 	video := service.database.File.Create().SetFileID("video").SetName("ABP-001.mp4").SetSize(1).
 		SetAccountID(source.AccountID).SetRootID(source.Directory.ID).SetMovie(film).SaveX(ctx)
 	record.FileIds = []string{video.FileID}
@@ -301,7 +304,7 @@ func TestOfflinePlayableProcessingStillDeduplicatesUntilWorkflowFinishes(t *test
 		adds++
 		return offlineHashA, nil
 	}
-	result, err := service.Add(ctx, input.JavdbID, input.Hash)
+	result, err := service.Add(ctx, input.Code, input.Hash)
 	if err != nil || result.TaskID != record.ID || result.Phase != "in_library" || !result.Processing || adds != 0 {
 		t.Fatalf("playable processing download was resubmitted: %+v adds=%d err=%v", result, adds, err)
 	}
@@ -309,7 +312,7 @@ func TestOfflinePlayableProcessingStillDeduplicatesUntilWorkflowFinishes(t *test
 		t.Fatal(err)
 	}
 	service.database.File.DeleteOne(video).ExecX(ctx)
-	result, err = service.Add(ctx, input.JavdbID, input.Hash)
+	result, err = service.Add(ctx, input.Code, input.Hash)
 	if err != nil || result.TaskID == record.ID || result.Phase != "downloading" || adds != 1 {
 		t.Fatalf("deleted video could not be downloaded again: %+v adds=%d err=%v", result, adds, err)
 	}
@@ -324,7 +327,7 @@ func TestOfflineCompletionAndScanPagePreserveEachOthersFields(t *testing.T) {
 	}
 	parent := service.database.Task.Query().Where(task.TypeEQ("scan")).OnlyX(ctx)
 	payload := domain.ScanPayload{Source: source, OfflineTaskID: record.ID, TargetID: "download-folder",
-		Code: input.Code, JavDBID: input.JavdbID}
+		Code: input.Code}
 	video := scan.IdentifyVideo(pan.File{ID: "video", ParentID: payload.TargetID, Name: input.Code + ".mp4", Size: 1 << 30})
 	start := make(chan struct{})
 	finished := make(chan error, 2)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ppxb/miyabi/internal/domain"
+	subtitlemeta "github.com/ppxb/miyabi/internal/domain/subtitle"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/nfo"
@@ -14,6 +15,7 @@ type MovieDetail struct {
 	domain.MovieDetail
 	LibraryID    int                `json:"library_id"`
 	ScrapeStatus movie.ScrapeStatus `json:"scrape_status"`
+	Source       string             `json:"source,omitempty"`
 }
 
 // Movie reads saved metadata within the same scope as the library list. Opening
@@ -28,9 +30,10 @@ func (s *Service) Movie(ctx context.Context, id int) (MovieDetail, error) {
 	detail.MovieDetail = domain.MovieDetail{
 		Zone: doc.Zone,
 		Movie: domain.Movie{
-			ID: doc.JavDBID(), Code: record.Code, Title: doc.Title,
-			ReleaseDate: doc.Premiered, Duration: doc.Runtime, Rating: doc.Rating,
-			RatingSource: doc.RatingSource, RatingMax: doc.RatingMax, FieldSources: doc.FieldSources,
+			ID: record.Code, Code: record.Code, Title: doc.Title, Plot: doc.Plot,
+			ReleaseDate: doc.Premiered, Duration: doc.Runtime,
+			Rating: domain.NormalizeRating10(doc.Rating, doc.RatingMax), RatingMax: 10,
+			RatingSource: doc.RatingSource, FieldSources: doc.FieldSources,
 			Thumbnail: domain.ValueOrZero(record.Cover), Cover: domain.ValueOrZero(record.Poster),
 			Actors: []domain.Actor{}, Tags: []domain.Tag{}, PreviewImages: []domain.PreviewImage{},
 		},
@@ -67,6 +70,32 @@ func (s *Service) Movie(ctx context.Context, id int) (MovieDetail, error) {
 		detail.PreviewImages = append(detail.PreviewImages, domain.PreviewImage{Original: url, Thumbnail: url})
 	}
 	detail.HasPreview = len(detail.PreviewImages) > 0
+	// Derive the Chinese-subtitle flag from file and local subtitle names so it
+	// survives metadata rescrapes and needs no dedicated column.
+	files, err := record.QueryFiles().All(ctx)
+	if err != nil {
+		return MovieDetail{}, err
+	}
+	for _, file := range files {
+		if file.AccountID != "" && file.AccountID != domain.LocalAccountID {
+			detail.Source = "115"
+		}
+		if !detail.HasSubtitle && subtitlemeta.HasChineseSubtitle(file.Name) {
+			detail.HasSubtitle = true
+		}
+	}
+	if !detail.HasSubtitle {
+		tracks, err := record.QuerySubtitles().All(ctx)
+		if err != nil {
+			return MovieDetail{}, err
+		}
+		for _, track := range tracks {
+			if subtitlemeta.HasChineseSubtitle(track.Name) {
+				detail.HasSubtitle = true
+				break
+			}
+		}
+	}
 	return detail, nil
 }
 
@@ -83,7 +112,7 @@ func (s *Service) Preview(ctx context.Context, id, index int) (domain.ImageCandi
 }
 
 func (s *Service) detailRecord(ctx context.Context, id int) (*ent.Movie, error) {
-	record, err := s.database.Movie.Query().Where(movie.IDEQ(id), movie.HasFilesWith(libraryScope(s.Source()))).
+	record, err := s.database.Movie.Query().Where(movie.IDEQ(id), movie.HasFilesWith(s.scope(ctx))).
 		Only(ctx)
 	if ent.IsNotFound(err) {
 		return nil, domain.E(domain.KindNotFound, "影片不在当前媒体库中", err)

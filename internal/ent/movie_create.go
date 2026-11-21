@@ -90,20 +90,6 @@ func (_c *MovieCreate) SetNillableCanonicalCode(v *string) *MovieCreate {
 	return _c
 }
 
-// SetJavdbID sets the "javdb_id" field.
-func (_c *MovieCreate) SetJavdbID(v string) *MovieCreate {
-	_c.mutation.SetJavdbID(v)
-	return _c
-}
-
-// SetNillableJavdbID sets the "javdb_id" field if the given value is not nil.
-func (_c *MovieCreate) SetNillableJavdbID(v *string) *MovieCreate {
-	if v != nil {
-		_c.SetJavdbID(*v)
-	}
-	return _c
-}
-
 // SetTitle sets the "title" field.
 func (_c *MovieCreate) SetTitle(v string) *MovieCreate {
 	_c.mutation.SetTitle(v)
@@ -240,6 +226,20 @@ func (_c *MovieCreate) SetRating(v float64) *MovieCreate {
 func (_c *MovieCreate) SetNillableRating(v *float64) *MovieCreate {
 	if v != nil {
 		_c.SetRating(*v)
+	}
+	return _c
+}
+
+// SetRating10 sets the "rating10" field.
+func (_c *MovieCreate) SetRating10(v float64) *MovieCreate {
+	_c.mutation.SetRating10(v)
+	return _c
+}
+
+// SetNillableRating10 sets the "rating10" field if the given value is not nil.
+func (_c *MovieCreate) SetNillableRating10(v *float64) *MovieCreate {
+	if v != nil {
+		_c.SetRating10(*v)
 	}
 	return _c
 }
@@ -427,6 +427,10 @@ func (_c *MovieCreate) defaults() error {
 		v := movie.DefaultTitle
 		_c.mutation.SetTitle(v)
 	}
+	if _, ok := _c.mutation.Rating10(); !ok {
+		v := movie.DefaultRating10
+		_c.mutation.SetRating10(v)
+	}
 	if _, ok := _c.mutation.Fanarts(); !ok {
 		if movie.DefaultFanarts == nil {
 			return fmt.Errorf("ent: uninitialized movie.DefaultFanarts (forgotten import ent/runtime?)")
@@ -465,6 +469,9 @@ func (_c *MovieCreate) check() error {
 	}
 	if _, ok := _c.mutation.Title(); !ok {
 		return &ValidationError{Name: "title", err: errors.New(`ent: missing required field "Movie.title"`)}
+	}
+	if _, ok := _c.mutation.Rating10(); !ok {
+		return &ValidationError{Name: "rating10", err: errors.New(`ent: missing required field "Movie.rating10"`)}
 	}
 	if _, ok := _c.mutation.Fanarts(); !ok {
 		return &ValidationError{Name: "fanarts", err: errors.New(`ent: missing required field "Movie.fanarts"`)}
@@ -524,10 +531,6 @@ func (_c *MovieCreate) createSpec() (*Movie, *sqlgraph.CreateSpec) {
 		_spec.SetField(movie.FieldCanonicalCode, field.TypeString, value)
 		_node.CanonicalCode = value
 	}
-	if value, ok := _c.mutation.JavdbID(); ok {
-		_spec.SetField(movie.FieldJavdbID, field.TypeString, value)
-		_node.JavdbID = &value
-	}
 	if value, ok := _c.mutation.Title(); ok {
 		_spec.SetField(movie.FieldTitle, field.TypeString, value)
 		_node.Title = value
@@ -567,6 +570,10 @@ func (_c *MovieCreate) createSpec() (*Movie, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Rating(); ok {
 		_spec.SetField(movie.FieldRating, field.TypeFloat64, value)
 		_node.Rating = &value
+	}
+	if value, ok := _c.mutation.Rating10(); ok {
+		_spec.SetField(movie.FieldRating10, field.TypeFloat64, value)
+		_node.Rating10 = value
 	}
 	if value, ok := _c.mutation.Cover(); ok {
 		_spec.SetField(movie.FieldCover, field.TypeString, value)
@@ -756,24 +763,6 @@ func (u *MovieUpsert) UpdateCanonicalCode() *MovieUpsert {
 	return u
 }
 
-// SetJavdbID sets the "javdb_id" field.
-func (u *MovieUpsert) SetJavdbID(v string) *MovieUpsert {
-	u.Set(movie.FieldJavdbID, v)
-	return u
-}
-
-// UpdateJavdbID sets the "javdb_id" field to the value that was provided on create.
-func (u *MovieUpsert) UpdateJavdbID() *MovieUpsert {
-	u.SetExcluded(movie.FieldJavdbID)
-	return u
-}
-
-// ClearJavdbID clears the value of the "javdb_id" field.
-func (u *MovieUpsert) ClearJavdbID() *MovieUpsert {
-	u.SetNull(movie.FieldJavdbID)
-	return u
-}
-
 // SetTitle sets the "title" field.
 func (u *MovieUpsert) SetTitle(v string) *MovieUpsert {
 	u.Set(movie.FieldTitle, v)
@@ -957,6 +946,24 @@ func (u *MovieUpsert) AddRating(v float64) *MovieUpsert {
 // ClearRating clears the value of the "rating" field.
 func (u *MovieUpsert) ClearRating() *MovieUpsert {
 	u.SetNull(movie.FieldRating)
+	return u
+}
+
+// SetRating10 sets the "rating10" field.
+func (u *MovieUpsert) SetRating10(v float64) *MovieUpsert {
+	u.Set(movie.FieldRating10, v)
+	return u
+}
+
+// UpdateRating10 sets the "rating10" field to the value that was provided on create.
+func (u *MovieUpsert) UpdateRating10() *MovieUpsert {
+	u.SetExcluded(movie.FieldRating10)
+	return u
+}
+
+// AddRating10 adds v to the "rating10" field.
+func (u *MovieUpsert) AddRating10(v float64) *MovieUpsert {
+	u.Add(movie.FieldRating10, v)
 	return u
 }
 
@@ -1154,27 +1161,6 @@ func (u *MovieUpsertOne) SetCanonicalCode(v string) *MovieUpsertOne {
 func (u *MovieUpsertOne) UpdateCanonicalCode() *MovieUpsertOne {
 	return u.Update(func(s *MovieUpsert) {
 		s.UpdateCanonicalCode()
-	})
-}
-
-// SetJavdbID sets the "javdb_id" field.
-func (u *MovieUpsertOne) SetJavdbID(v string) *MovieUpsertOne {
-	return u.Update(func(s *MovieUpsert) {
-		s.SetJavdbID(v)
-	})
-}
-
-// UpdateJavdbID sets the "javdb_id" field to the value that was provided on create.
-func (u *MovieUpsertOne) UpdateJavdbID() *MovieUpsertOne {
-	return u.Update(func(s *MovieUpsert) {
-		s.UpdateJavdbID()
-	})
-}
-
-// ClearJavdbID clears the value of the "javdb_id" field.
-func (u *MovieUpsertOne) ClearJavdbID() *MovieUpsertOne {
-	return u.Update(func(s *MovieUpsert) {
-		s.ClearJavdbID()
 	})
 }
 
@@ -1392,6 +1378,27 @@ func (u *MovieUpsertOne) UpdateRating() *MovieUpsertOne {
 func (u *MovieUpsertOne) ClearRating() *MovieUpsertOne {
 	return u.Update(func(s *MovieUpsert) {
 		s.ClearRating()
+	})
+}
+
+// SetRating10 sets the "rating10" field.
+func (u *MovieUpsertOne) SetRating10(v float64) *MovieUpsertOne {
+	return u.Update(func(s *MovieUpsert) {
+		s.SetRating10(v)
+	})
+}
+
+// AddRating10 adds v to the "rating10" field.
+func (u *MovieUpsertOne) AddRating10(v float64) *MovieUpsertOne {
+	return u.Update(func(s *MovieUpsert) {
+		s.AddRating10(v)
+	})
+}
+
+// UpdateRating10 sets the "rating10" field to the value that was provided on create.
+func (u *MovieUpsertOne) UpdateRating10() *MovieUpsertOne {
+	return u.Update(func(s *MovieUpsert) {
+		s.UpdateRating10()
 	})
 }
 
@@ -1774,27 +1781,6 @@ func (u *MovieUpsertBulk) UpdateCanonicalCode() *MovieUpsertBulk {
 	})
 }
 
-// SetJavdbID sets the "javdb_id" field.
-func (u *MovieUpsertBulk) SetJavdbID(v string) *MovieUpsertBulk {
-	return u.Update(func(s *MovieUpsert) {
-		s.SetJavdbID(v)
-	})
-}
-
-// UpdateJavdbID sets the "javdb_id" field to the value that was provided on create.
-func (u *MovieUpsertBulk) UpdateJavdbID() *MovieUpsertBulk {
-	return u.Update(func(s *MovieUpsert) {
-		s.UpdateJavdbID()
-	})
-}
-
-// ClearJavdbID clears the value of the "javdb_id" field.
-func (u *MovieUpsertBulk) ClearJavdbID() *MovieUpsertBulk {
-	return u.Update(func(s *MovieUpsert) {
-		s.ClearJavdbID()
-	})
-}
-
 // SetTitle sets the "title" field.
 func (u *MovieUpsertBulk) SetTitle(v string) *MovieUpsertBulk {
 	return u.Update(func(s *MovieUpsert) {
@@ -2009,6 +1995,27 @@ func (u *MovieUpsertBulk) UpdateRating() *MovieUpsertBulk {
 func (u *MovieUpsertBulk) ClearRating() *MovieUpsertBulk {
 	return u.Update(func(s *MovieUpsert) {
 		s.ClearRating()
+	})
+}
+
+// SetRating10 sets the "rating10" field.
+func (u *MovieUpsertBulk) SetRating10(v float64) *MovieUpsertBulk {
+	return u.Update(func(s *MovieUpsert) {
+		s.SetRating10(v)
+	})
+}
+
+// AddRating10 adds v to the "rating10" field.
+func (u *MovieUpsertBulk) AddRating10(v float64) *MovieUpsertBulk {
+	return u.Update(func(s *MovieUpsert) {
+		s.AddRating10(v)
+	})
+}
+
+// UpdateRating10 sets the "rating10" field to the value that was provided on create.
+func (u *MovieUpsertBulk) UpdateRating10() *MovieUpsertBulk {
+	return u.Update(func(s *MovieUpsert) {
+		s.UpdateRating10()
 	})
 }
 

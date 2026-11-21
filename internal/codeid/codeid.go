@@ -72,6 +72,10 @@ func Parse(name string) (string, bool) {
 	}
 	code := Normalize(name[match[2]:match[3]])
 	code = ssniSubtitle.ReplaceAllString(code, "$1")
+	// A trailing CH marks a Chinese-subtitle variant, not part of the number.
+	if base := withoutSubtitleSuffix(code); base != "" {
+		code = base
+	}
 	// SCUTE includes the model name in its catalogue number. Other studios'
 	// filename titles must not become catalogue suffixes just because they contain dashes.
 	if strings.HasPrefix(code, "SCUTE-") {
@@ -98,6 +102,17 @@ func Parse(name string) (string, bool) {
 
 func removeNameNoise(name string) string {
 	return codecNoise.ReplaceAllString(domainNoise.ReplaceAllString(name, " "), " ")
+}
+
+// subtitleSuffix marks a Chinese-subtitle variant (CH) appended to a code.
+// A bare single letter stays a serial identity (FJIN-106 vs FJIN-106C).
+var subtitleSuffix = regexp.MustCompile(`(?i)^(.+[0-9])(?:CH)$`)
+
+func withoutSubtitleSuffix(code string) string {
+	if match := subtitleSuffix.FindStringSubmatch(code); match != nil {
+		return match[1]
+	}
+	return ""
 }
 
 // Layers generates catalogue candidates in priority order:
@@ -160,6 +175,11 @@ func Layers(name string) [][]string {
 		}
 	}
 
+	// Subtitle/release suffixes (CH/C) usually only exist locally; query the base code.
+	if base := withoutSubtitleSuffix(complete); base != "" {
+		addLayer([]string{base})
+	}
+
 	// Level 1: 前缀回退 (先剥离发行商/渠道前缀，保留尾部)
 	prefixFallbacks := stripPrefix(complete)
 	addLayer(prefixFallbacks)
@@ -190,6 +210,12 @@ func Queries(candidate string) []string {
 		queries = append(queries, "FC2-"+strings.TrimPrefix(candidate, "FC2-PPV-"))
 	}
 	queries = append(queries, candidate)
+	if base := withoutSubtitleSuffix(candidate); base != "" {
+		queries = append(queries, base)
+		if unpadded, ok := unpaddedNumericCandidate(base); ok {
+			queries = append(queries, unpadded)
+		}
+	}
 	if variant := dateVariant(candidate); variant != "" {
 		queries = append(queries, variant)
 	}
@@ -355,6 +381,12 @@ func IsFormatEquivalent(a, b string) bool {
 	normB := Normalize(b)
 	if normA == "" || normB == "" {
 		return false
+	}
+	if base := withoutSubtitleSuffix(normA); base != "" {
+		normA = base
+	}
+	if base := withoutSubtitleSuffix(normB); base != "" {
+		normB = base
 	}
 	if normA == normB {
 		return true

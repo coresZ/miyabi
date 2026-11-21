@@ -80,11 +80,6 @@ func CanonicalCode(v string) predicate.Movie {
 	return predicate.Movie(sql.FieldEQ(FieldCanonicalCode, v))
 }
 
-// JavdbID applies equality check predicate on the "javdb_id" field. It's identical to JavdbIDEQ.
-func JavdbID(v string) predicate.Movie {
-	return predicate.Movie(sql.FieldEQ(FieldJavdbID, v))
-}
-
 // Title applies equality check predicate on the "title" field. It's identical to TitleEQ.
 func Title(v string) predicate.Movie {
 	return predicate.Movie(sql.FieldEQ(FieldTitle, v))
@@ -133,6 +128,11 @@ func SeriesName(v string) predicate.Movie {
 // Rating applies equality check predicate on the "rating" field. It's identical to RatingEQ.
 func Rating(v float64) predicate.Movie {
 	return predicate.Movie(sql.FieldEQ(FieldRating, v))
+}
+
+// Rating10 applies equality check predicate on the "rating10" field. It's identical to Rating10EQ.
+func Rating10(v float64) predicate.Movie {
+	return predicate.Movie(sql.FieldEQ(FieldRating10, v))
 }
 
 // Cover applies equality check predicate on the "cover" field. It's identical to CoverEQ.
@@ -418,81 +418,6 @@ func CanonicalCodeEqualFold(v string) predicate.Movie {
 // CanonicalCodeContainsFold applies the ContainsFold predicate on the "canonical_code" field.
 func CanonicalCodeContainsFold(v string) predicate.Movie {
 	return predicate.Movie(sql.FieldContainsFold(FieldCanonicalCode, v))
-}
-
-// JavdbIDEQ applies the EQ predicate on the "javdb_id" field.
-func JavdbIDEQ(v string) predicate.Movie {
-	return predicate.Movie(sql.FieldEQ(FieldJavdbID, v))
-}
-
-// JavdbIDNEQ applies the NEQ predicate on the "javdb_id" field.
-func JavdbIDNEQ(v string) predicate.Movie {
-	return predicate.Movie(sql.FieldNEQ(FieldJavdbID, v))
-}
-
-// JavdbIDIn applies the In predicate on the "javdb_id" field.
-func JavdbIDIn(vs ...string) predicate.Movie {
-	return predicate.Movie(sql.FieldIn(FieldJavdbID, vs...))
-}
-
-// JavdbIDNotIn applies the NotIn predicate on the "javdb_id" field.
-func JavdbIDNotIn(vs ...string) predicate.Movie {
-	return predicate.Movie(sql.FieldNotIn(FieldJavdbID, vs...))
-}
-
-// JavdbIDGT applies the GT predicate on the "javdb_id" field.
-func JavdbIDGT(v string) predicate.Movie {
-	return predicate.Movie(sql.FieldGT(FieldJavdbID, v))
-}
-
-// JavdbIDGTE applies the GTE predicate on the "javdb_id" field.
-func JavdbIDGTE(v string) predicate.Movie {
-	return predicate.Movie(sql.FieldGTE(FieldJavdbID, v))
-}
-
-// JavdbIDLT applies the LT predicate on the "javdb_id" field.
-func JavdbIDLT(v string) predicate.Movie {
-	return predicate.Movie(sql.FieldLT(FieldJavdbID, v))
-}
-
-// JavdbIDLTE applies the LTE predicate on the "javdb_id" field.
-func JavdbIDLTE(v string) predicate.Movie {
-	return predicate.Movie(sql.FieldLTE(FieldJavdbID, v))
-}
-
-// JavdbIDContains applies the Contains predicate on the "javdb_id" field.
-func JavdbIDContains(v string) predicate.Movie {
-	return predicate.Movie(sql.FieldContains(FieldJavdbID, v))
-}
-
-// JavdbIDHasPrefix applies the HasPrefix predicate on the "javdb_id" field.
-func JavdbIDHasPrefix(v string) predicate.Movie {
-	return predicate.Movie(sql.FieldHasPrefix(FieldJavdbID, v))
-}
-
-// JavdbIDHasSuffix applies the HasSuffix predicate on the "javdb_id" field.
-func JavdbIDHasSuffix(v string) predicate.Movie {
-	return predicate.Movie(sql.FieldHasSuffix(FieldJavdbID, v))
-}
-
-// JavdbIDIsNil applies the IsNil predicate on the "javdb_id" field.
-func JavdbIDIsNil() predicate.Movie {
-	return predicate.Movie(sql.FieldIsNull(FieldJavdbID))
-}
-
-// JavdbIDNotNil applies the NotNil predicate on the "javdb_id" field.
-func JavdbIDNotNil() predicate.Movie {
-	return predicate.Movie(sql.FieldNotNull(FieldJavdbID))
-}
-
-// JavdbIDEqualFold applies the EqualFold predicate on the "javdb_id" field.
-func JavdbIDEqualFold(v string) predicate.Movie {
-	return predicate.Movie(sql.FieldEqualFold(FieldJavdbID, v))
-}
-
-// JavdbIDContainsFold applies the ContainsFold predicate on the "javdb_id" field.
-func JavdbIDContainsFold(v string) predicate.Movie {
-	return predicate.Movie(sql.FieldContainsFold(FieldJavdbID, v))
 }
 
 // TitleEQ applies the EQ predicate on the "title" field.
@@ -1158,6 +1083,46 @@ func RatingIsNil() predicate.Movie {
 // RatingNotNil applies the NotNil predicate on the "rating" field.
 func RatingNotNil() predicate.Movie {
 	return predicate.Movie(sql.FieldNotNull(FieldRating))
+}
+
+// Rating10EQ applies the EQ predicate on the "rating10" field.
+func Rating10EQ(v float64) predicate.Movie {
+	return predicate.Movie(sql.FieldEQ(FieldRating10, v))
+}
+
+// Rating10NEQ applies the NEQ predicate on the "rating10" field.
+func Rating10NEQ(v float64) predicate.Movie {
+	return predicate.Movie(sql.FieldNEQ(FieldRating10, v))
+}
+
+// Rating10In applies the In predicate on the "rating10" field.
+func Rating10In(vs ...float64) predicate.Movie {
+	return predicate.Movie(sql.FieldIn(FieldRating10, vs...))
+}
+
+// Rating10NotIn applies the NotIn predicate on the "rating10" field.
+func Rating10NotIn(vs ...float64) predicate.Movie {
+	return predicate.Movie(sql.FieldNotIn(FieldRating10, vs...))
+}
+
+// Rating10GT applies the GT predicate on the "rating10" field.
+func Rating10GT(v float64) predicate.Movie {
+	return predicate.Movie(sql.FieldGT(FieldRating10, v))
+}
+
+// Rating10GTE applies the GTE predicate on the "rating10" field.
+func Rating10GTE(v float64) predicate.Movie {
+	return predicate.Movie(sql.FieldGTE(FieldRating10, v))
+}
+
+// Rating10LT applies the LT predicate on the "rating10" field.
+func Rating10LT(v float64) predicate.Movie {
+	return predicate.Movie(sql.FieldLT(FieldRating10, v))
+}
+
+// Rating10LTE applies the LTE predicate on the "rating10" field.
+func Rating10LTE(v float64) predicate.Movie {
+	return predicate.Movie(sql.FieldLTE(FieldRating10, v))
 }
 
 // CoverEQ applies the EQ predicate on the "cover" field.

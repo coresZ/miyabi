@@ -57,11 +57,9 @@ type MovieStateItem struct {
 	State     MovieState `json:"state"`
 }
 
-// JavDBClient supplies the primary catalogue, route management and magnets.
+// JavDBClient supplies the primary catalogue and route management.
 type JavDBClient interface {
-	magnet.Source
 	Close()
-	Search(context.Context, string, domain.SearchOptions) ([]domain.Movie, error)
 	Browse(context.Context, domain.BrowseOptions) ([]domain.Movie, error)
 	MovieDetail(context.Context, string) (domain.MovieDetail, error)
 	FetchMedia(context.Context, string) (domain.Media, error)
@@ -80,6 +78,5 @@ type JavBusSource interface {
 // LocalState supplies the mounted library source and matches local movies.
 // It is implemented by library.Service to decouple catalogue from library storage.
 type LocalState interface {
-	Source() *domain.LibrarySource
-	MatchingMovies(ctx context.Context, javdbIDs []string, codes []string) ([]domain.LocalMovie, error)
+	MatchingMovies(ctx context.Context, codes []string) ([]domain.LocalMovie, error)
 }
