@@ -5,6 +5,7 @@ import {
   CompassIcon,
   FilmIcon,
   HistoryIcon,
+  PlayIcon,
   SettingsIcon,
   UsersIcon,
   type LucideIcon
@@ -20,12 +21,21 @@ import {
 type AppNavItem = {
   label: string
   icon: LucideIcon
-  to: '/' | '/movies' | '/actors' | '/history' | '/discover' | '/subscriptions' | '/settings'
+  to:
+    | '/'
+    | '/movies'
+    | '/play'
+    | '/actors'
+    | '/history'
+    | '/discover'
+    | '/subscriptions'
+    | '/settings'
 }
 
 export const APP_NAV_ITEMS: readonly AppNavItem[] = [
   { label: '媒体库', icon: FilmIcon, to: '/' },
   { label: '影片', icon: ClapperboardIcon, to: '/movies' },
+  { label: '播放', icon: PlayIcon, to: '/play' },
   { label: '演员', icon: UsersIcon, to: '/actors' },
   { label: '关注', icon: BookmarkIcon, to: '/subscriptions' },
   { label: '探索', icon: CompassIcon, to: '/discover' },

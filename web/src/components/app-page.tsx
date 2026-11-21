@@ -11,14 +11,8 @@ type AppPageProps = {
 
 export function AppPage({ children, className, showBackTop = true }: AppPageProps) {
   return (
-    <main
-      className={cn('relative flex min-h-dvh flex-col bg-background px-4 pt-8 pb-24', className)}
-    >
-      <div
-        className={cn('mx-auto flex w-full max-w-[90rem] flex-1 flex-col gap-6', contentClassName)}
-      >
-        {children}
-      </div>
+    <div className={cn('relative flex min-h-0 flex-1 flex-col', className)}>
+      <div className="flex w-full flex-1 flex-col gap-6">{children}</div>
       {showBackTop ? <BackTopButton /> : null}
     </div>
   )

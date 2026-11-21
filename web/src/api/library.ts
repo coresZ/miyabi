@@ -85,6 +85,8 @@ export type LocalVideo = {
 export type LibraryMovieDetail = Omit<DiscoverMovieDetail, 'release_status'> & {
   library_id: number
   scrape_status: LibraryMovie['scrape_status']
+  /** Storage the movie was indexed from; `videos` is only filled for local sources. */
+  source?: string
   videos?: LocalVideo[]
 }
 

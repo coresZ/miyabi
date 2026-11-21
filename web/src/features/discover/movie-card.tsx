@@ -18,19 +18,12 @@ export function DiscoverMovieCard({ movie }: { movie: DiscoverMovieCardData }) {
     >
       <MovieCard
         movie={movie}
+        hideContent
         state={<MovieStateBadge movie={movie} />}
         coverOverlay={
           <>
-            {subscribable ? (
-              <div className="absolute top-2 right-2">
-                <MovieSubscribeButton movie={movie} />
-              </div>
-            ) : null}
-            {movie.release_date ? (
-              <span className="absolute right-2 bottom-2 text-[0.65rem] font-medium text-white tabular-nums drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]">
-                {movie.release_date}
-              </span>
-            ) : null}
+            <MovieRatingPill rating={movie.rating} />
+            <MovieCoverCaption title={title} subtitle={movie.release_date} />
           </>
         }
       />

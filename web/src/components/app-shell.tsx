@@ -1,5 +1,6 @@
-import { BellIcon, CompassIcon, FilmIcon, PlayIcon, SearchIcon, SettingsIcon } from 'lucide-react'
-import type { PropsWithChildren } from 'react'
+import { useState, type CSSProperties, type PropsWithChildren } from 'react'
+import { useLocation } from '@tanstack/react-router'
+import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 
 import { AppSidebar } from '@/components/app-sidebar'
 import { SearchDialog, SearchTrigger } from '@/components/app-search'
@@ -10,27 +11,43 @@ import { Toaster } from '@/components/ui/sonner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { TaskEventsProvider } from '@/features/tasks/task-events'
 import { TaskNotifications } from '@/features/tasks/task-notifications'
-import { useShellChrome } from '@/stores/shell-chrome'
+import { useTheme } from '@/stores/theme'
 
-const NAV_ITEMS: FloatingNavItem[] = [
-  { id: 'library', label: '媒体库', icon: FilmIcon, to: '/' },
-  { id: 'play', label: '播放', icon: PlayIcon, to: '/play' },
-  { id: 'subscriptions', label: '订阅', icon: BellIcon, to: '/subscriptions' },
-  { id: 'discover', label: '发现', icon: CompassIcon, to: '/discover' },
-  { id: 'search', label: '搜索', icon: SearchIcon, to: '/search' },
-  { id: 'settings', label: '设置', icon: SettingsIcon, to: '/settings' }
-]
+const THEME_CYCLE = ['light', 'dark', 'system'] as const
 
 export function AppShell({ children }: PropsWithChildren) {
-  const navHidden = useShellChrome(state => state.navHidden)
+  const [searchOpen, setSearchOpen] = useState(false)
+  // The player owns the whole window: on that route the sidebar, the header and
+  // the content padding would squeeze its h-dvh layout. Deciding by route (not
+  // by state) keeps the tree shape stable, so pages never remount mid-life.
+  const bare = useLocation({ select: location => location.pathname === '/play' })
+
   return (
     <TaskEventsProvider>
-      <div className="relative min-h-dvh">
-        {navHidden ? null : <FloatingNav items={NAV_ITEMS} />}
-        {children}
-        <Toaster position="top-right" closeButton duration={6000} />
-        <TaskNotifications />
-      </div>
+      {bare ? (
+        children
+      ) : (
+        <>
+          <SidebarProvider
+            className="flex-row"
+            style={{ '--sidebar-width': '272px' } as CSSProperties}
+          >
+            <div className="flex min-h-0 w-full flex-1">
+              <AppSidebar variant="inset" collapsible="icon" />
+              <SidebarInset className="peer-data-[variant=inset]:border">
+                <AppHeader onOpenSearch={() => setSearchOpen(true)} />
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden p-4">
+                  {children}
+                </div>
+              </SidebarInset>
+            </div>
+          </SidebarProvider>
+
+          <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+        </>
+      )}
+      <Toaster position="top-right" closeButton duration={6000} />
+      <TaskNotifications />
     </TaskEventsProvider>
   )
 }

@@ -11,11 +11,20 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DiscoverRouteImport } from './routes/discover'
+import { Route as HistoryRouteImport } from './routes/history'
+import { Route as MoviesRouteImport } from './routes/movies'
 import { Route as PlayRouteImport } from './routes/play'
-import { Route as SearchRouteImport } from './routes/search'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SubscriptionsRouteImport } from './routes/subscriptions'
-import { Route as DiscoverSearchRouteImport } from './routes/discover_.search'
+import { Route as ActorsIndexRouteImport } from './routes/actors.index'
+import { Route as ActorsKeyRouteImport } from './routes/actors.$key'
+import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsDataRouteImport } from './routes/settings.data'
+import { Route as SettingsMetadataRouteImport } from './routes/settings.metadata'
+import { Route as SettingsNetworkRouteImport } from './routes/settings.network'
+import { Route as SettingsOutputsRouteImport } from './routes/settings.outputs'
+import { Route as SettingsSourcesRouteImport } from './routes/settings.sources'
+import { Route as SettingsSubscriptionRouteImport } from './routes/settings.subscription'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -27,14 +36,19 @@ const DiscoverRoute = DiscoverRouteImport.update({
   path: '/discover',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HistoryRoute = HistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MoviesRoute = MoviesRouteImport.update({
+  id: '/movies',
+  path: '/movies',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PlayRoute = PlayRouteImport.update({
   id: '/play',
   path: '/play',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SearchRoute = SearchRouteImport.update({
-  id: '/search',
-  path: '/search',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -47,78 +61,172 @@ const SubscriptionsRoute = SubscriptionsRouteImport.update({
   path: '/subscriptions',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DiscoverSearchRoute = DiscoverSearchRouteImport.update({
-  id: '/discover_/search',
-  path: '/discover/search',
+const ActorsIndexRoute = ActorsIndexRouteImport.update({
+  id: '/actors/',
+  path: '/actors/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ActorsKeyRoute = ActorsKeyRouteImport.update({
+  id: '/actors/$key',
+  path: '/actors/$key',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsDataRoute = SettingsDataRouteImport.update({
+  id: '/data',
+  path: '/data',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsMetadataRoute = SettingsMetadataRouteImport.update({
+  id: '/metadata',
+  path: '/metadata',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsNetworkRoute = SettingsNetworkRouteImport.update({
+  id: '/network',
+  path: '/network',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsOutputsRoute = SettingsOutputsRouteImport.update({
+  id: '/outputs',
+  path: '/outputs',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsSourcesRoute = SettingsSourcesRouteImport.update({
+  id: '/sources',
+  path: '/sources',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsSubscriptionRoute = SettingsSubscriptionRouteImport.update({
+  id: '/subscription',
+  path: '/subscription',
+  getParentRoute: () => SettingsRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/discover': typeof DiscoverRoute
+  '/history': typeof HistoryRoute
+  '/movies': typeof MoviesRoute
   '/play': typeof PlayRoute
-  '/search': typeof SearchRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
-  '/discover/search': typeof DiscoverSearchRoute
+  '/actors/$key': typeof ActorsKeyRoute
+  '/settings/data': typeof SettingsDataRoute
+  '/settings/metadata': typeof SettingsMetadataRoute
+  '/settings/network': typeof SettingsNetworkRoute
+  '/settings/outputs': typeof SettingsOutputsRoute
+  '/settings/sources': typeof SettingsSourcesRoute
+  '/settings/subscription': typeof SettingsSubscriptionRoute
+  '/actors/': typeof ActorsIndexRoute
+  '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/discover': typeof DiscoverRoute
+  '/history': typeof HistoryRoute
+  '/movies': typeof MoviesRoute
   '/play': typeof PlayRoute
-  '/search': typeof SearchRoute
-  '/settings': typeof SettingsRoute
   '/subscriptions': typeof SubscriptionsRoute
-  '/discover/search': typeof DiscoverSearchRoute
+  '/actors/$key': typeof ActorsKeyRoute
+  '/settings/data': typeof SettingsDataRoute
+  '/settings/metadata': typeof SettingsMetadataRoute
+  '/settings/network': typeof SettingsNetworkRoute
+  '/settings/outputs': typeof SettingsOutputsRoute
+  '/settings/sources': typeof SettingsSourcesRoute
+  '/settings/subscription': typeof SettingsSubscriptionRoute
+  '/actors': typeof ActorsIndexRoute
+  '/settings': typeof SettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/discover': typeof DiscoverRoute
+  '/history': typeof HistoryRoute
+  '/movies': typeof MoviesRoute
   '/play': typeof PlayRoute
-  '/search': typeof SearchRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
-  '/discover_/search': typeof DiscoverSearchRoute
+  '/actors/$key': typeof ActorsKeyRoute
+  '/settings/data': typeof SettingsDataRoute
+  '/settings/metadata': typeof SettingsMetadataRoute
+  '/settings/network': typeof SettingsNetworkRoute
+  '/settings/outputs': typeof SettingsOutputsRoute
+  '/settings/sources': typeof SettingsSourcesRoute
+  '/settings/subscription': typeof SettingsSubscriptionRoute
+  '/actors/': typeof ActorsIndexRoute
+  '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/discover'
+    | '/history'
+    | '/movies'
     | '/play'
-    | '/search'
     | '/settings'
     | '/subscriptions'
-    | '/discover/search'
+    | '/actors/$key'
+    | '/settings/data'
+    | '/settings/metadata'
+    | '/settings/network'
+    | '/settings/outputs'
+    | '/settings/sources'
+    | '/settings/subscription'
+    | '/actors/'
+    | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/discover'
+    | '/history'
+    | '/movies'
     | '/play'
-    | '/search'
-    | '/settings'
     | '/subscriptions'
-    | '/discover/search'
+    | '/actors/$key'
+    | '/settings/data'
+    | '/settings/metadata'
+    | '/settings/network'
+    | '/settings/outputs'
+    | '/settings/sources'
+    | '/settings/subscription'
+    | '/actors'
+    | '/settings'
   id:
     | '__root__'
     | '/'
     | '/discover'
+    | '/history'
+    | '/movies'
     | '/play'
-    | '/search'
     | '/settings'
     | '/subscriptions'
-    | '/discover_/search'
+    | '/actors/$key'
+    | '/settings/data'
+    | '/settings/metadata'
+    | '/settings/network'
+    | '/settings/outputs'
+    | '/settings/sources'
+    | '/settings/subscription'
+    | '/actors/'
+    | '/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DiscoverRoute: typeof DiscoverRoute
+  HistoryRoute: typeof HistoryRoute
+  MoviesRoute: typeof MoviesRoute
   PlayRoute: typeof PlayRoute
-  SearchRoute: typeof SearchRoute
-  SettingsRoute: typeof SettingsRoute
+  SettingsRoute: typeof SettingsRouteWithChildren
   SubscriptionsRoute: typeof SubscriptionsRoute
-  DiscoverSearchRoute: typeof DiscoverSearchRoute
+  ActorsKeyRoute: typeof ActorsKeyRoute
+  ActorsIndexRoute: typeof ActorsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -137,18 +245,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DiscoverRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/history': {
+      id: '/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof HistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/movies': {
+      id: '/movies'
+      path: '/movies'
+      fullPath: '/movies'
+      preLoaderRoute: typeof MoviesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/play': {
       id: '/play'
       path: '/play'
       fullPath: '/play'
       preLoaderRoute: typeof PlayRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/search': {
-      id: '/search'
-      path: '/search'
-      fullPath: '/search'
-      preLoaderRoute: typeof SearchRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -165,24 +280,106 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubscriptionsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/discover_/search': {
-      id: '/discover_/search'
-      path: '/discover/search'
-      fullPath: '/discover/search'
-      preLoaderRoute: typeof DiscoverSearchRouteImport
+    '/actors/': {
+      id: '/actors/'
+      path: '/actors'
+      fullPath: '/actors/'
+      preLoaderRoute: typeof ActorsIndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/actors/$key': {
+      id: '/actors/$key'
+      path: '/actors/$key'
+      fullPath: '/actors/$key'
+      preLoaderRoute: typeof ActorsKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/': {
+      id: '/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/data': {
+      id: '/settings/data'
+      path: '/data'
+      fullPath: '/settings/data'
+      preLoaderRoute: typeof SettingsDataRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/metadata': {
+      id: '/settings/metadata'
+      path: '/metadata'
+      fullPath: '/settings/metadata'
+      preLoaderRoute: typeof SettingsMetadataRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/network': {
+      id: '/settings/network'
+      path: '/network'
+      fullPath: '/settings/network'
+      preLoaderRoute: typeof SettingsNetworkRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/outputs': {
+      id: '/settings/outputs'
+      path: '/outputs'
+      fullPath: '/settings/outputs'
+      preLoaderRoute: typeof SettingsOutputsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/sources': {
+      id: '/settings/sources'
+      path: '/sources'
+      fullPath: '/settings/sources'
+      preLoaderRoute: typeof SettingsSourcesRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/subscription': {
+      id: '/settings/subscription'
+      path: '/subscription'
+      fullPath: '/settings/subscription'
+      preLoaderRoute: typeof SettingsSubscriptionRouteImport
+      parentRoute: typeof SettingsRoute
     }
   }
 }
 
+interface SettingsRouteChildren {
+  SettingsDataRoute: typeof SettingsDataRoute
+  SettingsMetadataRoute: typeof SettingsMetadataRoute
+  SettingsNetworkRoute: typeof SettingsNetworkRoute
+  SettingsOutputsRoute: typeof SettingsOutputsRoute
+  SettingsSourcesRoute: typeof SettingsSourcesRoute
+  SettingsSubscriptionRoute: typeof SettingsSubscriptionRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
+}
+
+const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsDataRoute: SettingsDataRoute,
+  SettingsMetadataRoute: SettingsMetadataRoute,
+  SettingsNetworkRoute: SettingsNetworkRoute,
+  SettingsOutputsRoute: SettingsOutputsRoute,
+  SettingsSourcesRoute: SettingsSourcesRoute,
+  SettingsSubscriptionRoute: SettingsSubscriptionRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
+}
+
+const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
+  SettingsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DiscoverRoute: DiscoverRoute,
+  HistoryRoute: HistoryRoute,
+  MoviesRoute: MoviesRoute,
   PlayRoute: PlayRoute,
-  SearchRoute: SearchRoute,
-  SettingsRoute: SettingsRoute,
+  SettingsRoute: SettingsRouteWithChildren,
   SubscriptionsRoute: SubscriptionsRoute,
-  DiscoverSearchRoute: DiscoverSearchRoute,
+  ActorsKeyRoute: ActorsKeyRoute,
+  ActorsIndexRoute: ActorsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

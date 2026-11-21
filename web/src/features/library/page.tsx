@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
+import { Link, useNavigate } from '@tanstack/react-router'
 
 import { useLibraryMovies } from '@/api/library'
 import { isTaskActive } from '@/api/tasks'
@@ -6,11 +7,13 @@ import { AppPage } from '@/components/app-page'
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState, InlineError } from '@/components/error-state'
 import { PageHeader } from '@/components/page-header'
+import { Button } from '@/components/ui/button'
 import { ContinueWatching } from '@/features/library/continue-watching'
 import { LibraryProgress } from '@/features/library/library-progress'
 import { LazyLibraryPlayerDialog } from '@/features/library/player-dialog-lazy'
 import { RecentlyAddedShelf } from '@/features/library/recent-shelf'
 import { TopRatedShelf } from '@/features/library/top-rated-shelf'
+import { isDesktopShell } from '@/features/settings/desktop-bridge'
 import { useTaskConnection } from '@/features/tasks/task-events'
 import { useActiveScan } from '@/features/tasks/use-active-scan'
 
@@ -19,17 +22,23 @@ export function LibraryPage() {
   // `active` covers any active library task, including a single-movie rescrape.
   const { tasks, scans, active: progressTask } = useActiveScan()
   const connection = useTaskConnection()
+  const navigate = useNavigate()
   const [playingId, setPlayingId] = useState<number | null>(null)
   const source = library.data?.source
-  const sourceTasks = tasks.data?.filter(isScanTask).filter(task => sameSource(task.source, source))
-  const latest = sourceTasks?.find(task => !task.movie_id && !task.offline_task_id)
-  const scanning = latest !== undefined && isTaskActive(latest)
-  // Per-movie rescrape is source-agnostic: local movies join the same queue.
-  const processingMovies = new Set(
-    tasks.data
-      ?.filter(isScanTask)
-      .filter(isTaskActive)
-      .flatMap(task => (task.movie_id != null ? [task.movie_id] : []))
+  const latestScan = scans?.find(task => !task.movie_id && !task.offline_task_id)
+  const scanning = latestScan !== undefined && isTaskActive(latestScan)
+
+  // The desktop shell plays on the immersive /play page; the browser keeps the
+  // dialog player so the library list stays behind it.
+  const openPlayer = useCallback(
+    (id: number) => {
+      if (isDesktopShell()) {
+        void navigate({ to: '/play', search: { movie: id } })
+        return
+      }
+      setPlayingId(id)
+    },
+    [navigate]
   )
 
   return (
@@ -56,17 +65,10 @@ export function LibraryPage() {
         />
       ) : (
         <>
-          {library.data.movies.length > 0 ? (
-            <MovieGridLayout>
-              {library.data.movies.map(movie => (
-                <LibraryMovieCard
-                  key={movie.id}
-                  movie={movie}
-                  busy={scanning || processingMovies.has(movie.id)}
-                />
-              ))}
-            </MovieGridLayout>
-          ) : (
+          <ContinueWatching onPlay={openPlayer} />
+          <RecentlyAddedShelf onPlay={openPlayer} />
+          <TopRatedShelf onPlay={openPlayer} />
+          {!library.isPending && library.data.total === 0 ? (
             <EmptyState
               className="min-h-0 flex-1 py-12"
               title={
@@ -100,13 +102,13 @@ export function LibraryPage() {
                         <span className="font-medium text-foreground">3.</span> 返回此处扫描入库
                       </li>
                     </ol>
-                    <Button asChild size="lg">
-                      <Link to="/settings">去设置挂载目录</Link>
+                    <Button size="lg" nativeButton={false} render={<Link to="/settings" />}>
+                      去设置挂载目录
                     </Button>
                   </div>
                 ) : !scanning ? (
-                  <Button asChild variant="outline">
-                    <Link to="/settings">检查媒体目录</Link>
+                  <Button variant="outline" nativeButton={false} render={<Link to="/settings" />}>
+                    检查媒体目录
                   </Button>
                 ) : null
               }

@@ -1,5 +1,5 @@
 import { ImageIcon, ImageOffIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { imageURL } from '@/api/client'
 import { cn } from 'cn'

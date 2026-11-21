@@ -22,7 +22,7 @@ import { Link, useSearch } from '@tanstack/react-router'
 import { toast } from 'sonner'
 
 import { useLocalSources } from '@/api/local-sources'
-import { usePanAccount } from '@/api/pan'
+import { usePanAccounts } from '@/api/pan'
 import { playableVideoUrl, usePlayables, type Playable, type PlayableKind } from '@/api/playables'
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState, InlineError } from '@/components/error-state'
@@ -30,7 +30,6 @@ import { MediaImage } from '@/components/media-image'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from 'cn'
 import { useUiState } from '@/stores/ui-state'
-import { useShellChrome } from '@/stores/shell-chrome'
 import { PlayerStage, type PlayerInstance, type PlayerTrack } from './player-stage'
 import { readPlayerPrefs, savePlayerPrefs } from './prefs'
 import {
@@ -83,7 +82,9 @@ export function PlayerPage() {
   const lookupAttempts = useRef(0)
   const triedRemote = useRef(false)
   const sources = useLocalSources()
-  const pan = usePanAccount()
+  const accounts = usePanAccounts()
+  // The catalog exposes a single 115 source: the first connected account.
+  const pan = accounts.data?.find(account => account.connected)
   const [sourceID, setSourceID] = useState(ALL_LOCAL.id)
   const [search, setSearch] = useState('')
   const [term, setTerm] = useState('')
@@ -109,7 +110,6 @@ export function PlayerPage() {
   const resizeFrame = useRef<number | null>(null)
   const isDesktop = useIsDesktop()
   const desktopShell = isDesktopWindow()
-  const setNavHidden = useShellChrome(state => state.setNavHidden)
   const nsfwMode = useUiState(state => state.nsfwMode)
   const immersiveSize = useUiState(state => state.player.immersiveSize)
   const [immersive, setImmersive] = useState(false)
@@ -186,14 +186,8 @@ export function PlayerPage() {
     pendingPlayRef.current = null
   }, [])
 
-  // The play page hides the floating navigation in the desktop shell: on this
-  // page the nav sits on top of the player controls, and the toolbar already
-  // carries a way back to the library.
-  useEffect(() => {
-    if (!desktopShell) return
-    setNavHidden(true)
-    return () => setNavHidden(false)
-  }, [desktopShell, setNavHidden])
+  // The app shell is not rendered on this route (see `components/app-shell`),
+  // so the page owns the whole window; the toolbar carries the way back.
 
   // Escape closes the catalog first, then exits immersive. Fullscreen is left
   // to WebView2/the browser; the page never intercepts it.
@@ -264,17 +258,17 @@ export function PlayerPage() {
         directory: source.id
       })
     }
-    if (pan.data?.connected && pan.data.directory) {
+    if (pan?.directory) {
       list.push({
         id: 'remote',
-        label: `115 · ${pan.data.directory.name}`,
+        label: `115 · ${pan.directory.name}`,
         scope: 'remote',
         directory: ''
       })
     }
     list.push({ id: 'favorite', label: '收藏', scope: 'favorite', directory: '', disabled: true })
     return list
-  }, [sources.data, pan.data])
+  }, [sources.data, pan])
 
   const active = options.find(option => option.id === sourceID) ?? ALL_LOCAL
   const query = usePlayables(active.scope, active.directory, term)
@@ -406,7 +400,7 @@ export function PlayerPage() {
     if (!hasNextPage) {
       // A movie opened from the 115 library is not in the local catalog: retry
       // once against the remote scope before giving up.
-      if (!triedRemote.current && active.scope === 'local' && pan.data?.connected) {
+      if (!triedRemote.current && active.scope === 'local' && pan?.connected) {
         triedRemote.current = true
         lookupAttempts.current = 0
         setSourceID('remote')
@@ -428,7 +422,7 @@ export function PlayerPage() {
     isFetchingNextPage,
     fetchNextPage,
     active.scope,
-    pan.data?.connected
+    pan?.connected
   ])
 
   const partIndex = activeMovie ? current - activeMovie.start + 1 : 0
@@ -569,9 +563,9 @@ export function PlayerPage() {
       className={cn(
         'mx-auto flex h-dvh w-full flex-col overflow-hidden bg-background',
         desktopShell ? 'max-w-none gap-0 p-0' : 'max-w-[84rem] gap-5 px-4 pt-7',
-        // The floating nav is hidden in the desktop shell, so its reserved lane
-        // would just be an empty strip under the player.
-        desktopShell ? 'pb-0' : 'pb-24',
+        // The shell (and its floating nav) is hidden here, so nothing needs a
+        // reserved lane under the player; the browser just keeps a small inset.
+        desktopShell ? 'pb-0' : 'pb-6',
         // Immersive only shows the video: pin the page to the window edges so
         // no page padding or max-width leaves a gap around the player.
         immersive && 'fixed inset-0 z-40 h-auto w-auto max-w-none gap-0 bg-black p-0'
@@ -813,19 +807,21 @@ export function PlayerPage() {
               </span>
             )}
             <div className="ml-auto flex flex-none gap-2">
-              {desktopShell ? (
-                <Link
-                  to="/"
-                  aria-label="返回媒体库"
-                  title="返回媒体库"
-                  className={cn(
-                    buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
-                    'text-white hover:bg-white/20 hover:text-white'
-                  )}
-                >
-                  <ArrowLeftIcon />
-                </Link>
-              ) : null}
+              {/* The app shell is hidden on this page, so both the desktop and
+                  the browser need their own way back to the library. */}
+              <Link
+                to="/"
+                aria-label="返回媒体库"
+                title="返回媒体库"
+                className={cn(
+                  buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+                  desktopShell
+                    ? 'text-white hover:bg-white/20 hover:text-white'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <ArrowLeftIcon />
+              </Link>
               {isDesktop && !immersive ? (
                 <Button
                   variant={desktopShell ? 'ghost' : 'outline'}

@@ -33,18 +33,14 @@ function LibraryMovieDetail({ movieId }: { movieId: number }) {
     )
   }
   return (
-    <div className="space-y-10">
-      {detail.isRefetchError ? (
-        <InlineError onRetry={() => void detail.refetch()} retrying={detail.isFetching}>
-          刷新失败，请重试。
-        </InlineError>
-      ) : null}
-      <MovieHero
-        movie={detail.data}
-        libraryStatus={detail.data.scrape_status}
-        playMovieId={detail.data.videos?.length ? movieId : undefined}
-      />
-      <MoviePreviews images={detail.data.preview_images} />
+    <CatalogueSections
+      movie={detail.data}
+      libraryStatus={detail.data.scrape_status}
+      playMovieId={detail.data.videos?.length ? movieId : undefined}
+      isRefetchError={detail.isRefetchError}
+      fetching={detail.isFetching}
+      onRetry={() => void detail.refetch()}
+    >
       {detail.data.id ? (
         <LibraryCatalogueExtras movieId={detail.data.id} code={detail.data.code} />
       ) : null}
@@ -70,6 +66,7 @@ type HeroStatus = ComponentProps<typeof MovieHero>['libraryStatus']
 function CatalogueSections({
   movie,
   libraryStatus,
+  playMovieId,
   isRefetchError,
   fetching,
   onRetry,
@@ -77,6 +74,7 @@ function CatalogueSections({
 }: {
   movie: HeroMovie
   libraryStatus?: HeroStatus
+  playMovieId?: number
   isRefetchError: boolean
   fetching: boolean
   onRetry: () => void
@@ -89,7 +87,7 @@ function CatalogueSections({
           刷新失败，请重试。
         </InlineError>
       ) : null}
-      <MovieHero movie={movie} libraryStatus={libraryStatus} />
+      <MovieHero movie={movie} libraryStatus={libraryStatus} playMovieId={playMovieId} />
       <MoviePlot plot={movie.plot} />
       <MoviePreviews images={movie.preview_images} />
       {children}

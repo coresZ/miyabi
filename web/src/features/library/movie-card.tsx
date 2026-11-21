@@ -1,10 +1,8 @@
 import { PlayIcon } from 'lucide-react'
 
-import type { LibraryMovie } from '@/api/library'
-import { MovieCard } from '@/components/movie'
-import { PlayOverlay } from '@/components/movie/play-overlay'
-import { MovieDetailTrigger } from '@/features/movie-detail/detail-trigger'
-import { LibraryMovieStatus } from './movie-status'
+import { MovieCard, MovieCoverCaption, MovieRatingPill } from '@/components/movie'
+import { Badge } from '@/components/ui/badge'
+import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { LibraryMovieActions } from './movie-actions'
 
 /** The fields the library card actually renders; kept narrow so callers pass
@@ -37,24 +35,55 @@ export function LibraryMovieCard({
     .join(' / ')
 
   return (
-    <div className="group relative h-full min-w-0">
-      <MovieDetailTrigger
-        movie={{ libraryId: movie.id }}
-        className="block h-full min-w-0 rounded-2xl outline-ring"
-      >
-        <MovieCard movie={movie} titleTooltip={false}>
-          <div className="flex min-h-7 items-center pr-9">
-            <LibraryMovieStatus movie={movie} />
-          </div>
-        </MovieCard>
-      </MovieDetailTrigger>
-      {/* Sibling of the detail trigger, not a child: an anchor inside a
-          role="button" wrapper is invalid and swallows the detail click.
-          `hideOnTouch` keeps touch behaviour (tap opens details). */}
-      <PlayOverlay movieId={movie.id} label={movie.code} hideOnTouch />
-      <div className="absolute right-2 bottom-2">
-        <LibraryMovieActions movie={movie} disabled={busy} />
-      </div>
-    </div>
+    <ContextMenu>
+      <ContextMenuTrigger className="block h-full min-w-0">
+        <div
+          role="button"
+          tabIndex={0}
+          className="group relative block h-full min-w-0 cursor-pointer rounded-2xl outline-ring"
+          onClick={() => onPlay?.()}
+          onKeyDown={event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            if (!event.repeat) onPlay?.()
+          }}
+        >
+          <MovieCard
+            movie={movie}
+            hideContent
+            state={
+              movie.source === '115' || movie.has_subtitle || movie.finished ? (
+                <>
+                  {movie.source === '115' ? <Badge variant="frosted">115</Badge> : null}
+                  {movie.has_subtitle ? <Badge variant="frosted">中文</Badge> : null}
+                  {movie.finished ? <Badge variant="success">已看完</Badge> : null}
+                </>
+              ) : undefined
+            }
+            coverOverlay={
+              <>
+                <MovieRatingPill rating={movie.rating} />
+                <MovieCoverCaption title={title} subtitle={actors || 'N/A'}>
+                  {progress !== undefined ? (
+                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/25">
+                      <div
+                        className="h-full bg-success"
+                        style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+                      />
+                    </div>
+                  ) : null}
+                </MovieCoverCaption>
+              </>
+            }
+          />
+          <span className="pointer-events-none absolute inset-0 grid place-items-center opacity-0 transition-opacity group-hover:opacity-100">
+            <span className="grid size-12 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm">
+              <PlayIcon className="size-6 fill-current" />
+            </span>
+          </span>
+        </div>
+      </ContextMenuTrigger>
+      <LibraryMovieActions movie={movie} />
+    </ContextMenu>
   )
 }

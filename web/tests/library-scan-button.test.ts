@@ -31,6 +31,17 @@ vi.mock('@/features/tasks/task-toast', () => {
   const notifyScanTask = vi.fn()
   return { notifyScanTask, useNotifyScanTask: () => notifyScanTask, notifyTaskError: vi.fn() }
 })
+// The page renders router links in its empty state; the static markup test only
+// needs them to degrade to plain anchors.
+vi.mock('@tanstack/react-router', async importOriginal => {
+  const actual = await importOriginal<typeof import('@tanstack/react-router')>()
+  return {
+    ...actual,
+    Link: ({ to, children }: { to: unknown; children?: ReactNode }) =>
+      createElement('a', { href: typeof to === 'string' ? to : '#' }, children),
+    useNavigate: () => () => {}
+  }
+})
 
 function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
   return Children.toArray(node).filter(isValidElement) as ReactElement<Record<string, unknown>>[]
@@ -45,6 +56,8 @@ test('library page header shows the multi-source description without scan contro
   const html = renderToStaticMarkup(createElement(LibraryPage))
   expect(html).toContain('最近加入、正在观看与高分影片')
   expect(html).not.toContain('同步媒体库')
+  // The empty state still points at the settings page that mounts a source.
+  expect(html).toContain('href="/settings"')
 })
 
 test('loading and hidden controls still retain the scan mutation hook', () => {

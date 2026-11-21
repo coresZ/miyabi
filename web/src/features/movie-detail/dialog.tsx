@@ -54,20 +54,19 @@ export function MovieDetailDialogProvider({ children }: PropsWithChildren) {
           className="flex h-[min(56rem,calc(100dvh-2rem))] w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
         >
           <DialogTitle className="sr-only">影片详情</DialogTitle>
-          <DialogClose asChild>
-            <Button
-              variant="secondary"
-              size="icon-sm"
-              aria-label="关闭"
-              className="absolute top-3 right-3 z-10 sm:hidden"
-            >
-              <XIcon />
-            </Button>
-          </DialogClose>
-          <div
-            key={movie && movieDetailKey(movie)}
-            className="min-h-0 flex-1 scroll-fade no-scrollbar overflow-y-auto overscroll-contain p-4 sm:p-6"
+          <DialogClose
+            render={
+              <Button
+                variant="secondary"
+                size="icon-sm"
+                aria-label="关闭"
+                className="absolute top-3 right-3 z-10 sm:hidden"
+              />
+            }
           >
+            <XIcon />
+          </DialogClose>
+          <DetailScrollBody key={movie && movieDetailKey(movie)}>
             <Suspense fallback={<MovieDetailSkeleton />}>
               {movie ? <MovieDetailContent movie={movie} /> : null}
             </Suspense>

@@ -12,20 +12,16 @@ import { cn } from 'cn'
 
 import { AppPage } from '@/components/app-page'
 import { PageHeader } from '@/components/page-header'
-import { Card, CardContent } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
-import { AppearanceSection } from '@/features/settings/appearance-section'
-import { DataSection } from '@/features/settings/data-section'
-import { DesktopSection } from '@/features/settings/desktop-section'
-import { EmbySection } from '@/features/settings/emby-section'
-import { LocalSourceSection } from '@/features/settings/local-sources-section'
-import { NetworkSection } from '@/features/settings/network-section'
-import { PanSection } from '@/features/settings/pan-section'
-import { PlayerSection } from '@/features/settings/player-section'
-import { PrivacySection } from '@/features/settings/privacy-section'
-import { SubscriptionSection } from '@/features/settings/subscription-section'
-import { ScrapingSection } from '@/features/settings/scraping-section'
-import { TasksSection } from '@/features/settings/tasks-section'
+
+const SETTINGS_NAV = [
+  { to: '/settings', label: '常规', icon: SlidersHorizontalIcon },
+  { to: '/settings/sources', label: '源管理', icon: HardDriveIcon },
+  { to: '/settings/metadata', label: '元数据', icon: TagsIcon },
+  { to: '/settings/data', label: '数据', icon: DatabaseIcon },
+  { to: '/settings/outputs', label: '输出目标', icon: Share2Icon },
+  { to: '/settings/network', label: '网络', icon: NetworkIcon },
+  { to: '/settings/subscription', label: '订阅', icon: BellIcon }
+] as const
 
 export const Route = createFileRoute('/settings')({
   component: SettingsLayout
@@ -48,30 +44,27 @@ function SettingsLayout() {
                 ? pathname === '/settings'
                 : pathname === item.to || pathname.startsWith(`${item.to}/`)
 
-      <Card>
-        <CardContent className="space-y-8">
-          <AppearanceSection />
-          <Separator />
-          <PrivacySection />
-          <PlayerSection />
-          <Separator />
-          <NetworkSection />
-          <DesktopSection />
-          <ScrapingSection />
-          <Separator />
-          <EmbySection />
-          <Separator />
-          <LocalSourceSection />
-          <Separator />
-          <PanSection />
-          <Separator />
-          <SubscriptionSection />
-          <Separator />
-          <TasksSection />
-          <Separator />
-          <DataSection />
-        </CardContent>
-      </Card>
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={cn(
+                  'flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm whitespace-nowrap transition-colors',
+                  active
+                    ? 'bg-muted font-medium text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                )}
+              >
+                <item.icon className="size-4" />
+                {item.label}
+              </Link>
+            )
+          })}
+        </nav>
+        <div className="min-w-0 flex-1">
+          <Outlet />
+        </div>
+      </div>
     </AppPage>
   )
 }

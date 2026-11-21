@@ -5,6 +5,7 @@ import type { LibraryMovieDetail } from '@/api/library'
 import { MovieStateBadge } from '@/components/movie/movie-badges'
 import { MovieCover } from '@/components/movie/movie-cover'
 import { PlayOverlay } from '@/components/movie/play-overlay'
+import { StatList } from '@/components/stat-list'
 import { Badge } from '@/components/ui/badge'
 import { MovieMetadata } from './metadata'
 

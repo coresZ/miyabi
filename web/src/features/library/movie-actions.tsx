@@ -27,68 +27,41 @@ export function LibraryMovieActions({ movie }: { movie: Pick<LibraryMovie, 'id' 
   const busy = scrape.isPending
 
   return (
-    <Dialog
-      open={correcting}
-      onOpenChange={open => {
-        if (!scrape.isPending) setCorrecting(open)
-      }}
-    >
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            ref={trigger}
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="max-sm:size-6! max-sm:[&_svg]:size-3.5!"
-            disabled={busy}
-          >
-            <Ellipsis />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          className="max-sm:min-w-32 max-sm:p-0.5 max-sm:rounded-xl"
-          onCloseAutoFocus={event => {
-            if (correcting) event.preventDefault()
+    <>
+      <ContextMenuContent>
+        <ContextMenuItem
+          disabled={busy}
+          onClick={() =>
+            scrape.mutate(undefined, {
+              onSuccess: notifyScan,
+              onError: error =>
+                notifyTaskError(
+                  `movie:${movie.id}:submit-error`,
+                  '无法创建刮削任务',
+                  describeApiError(error)
+                )
+            })
+          }
+        >
+          <RefreshCwIcon />
+          重新刮削
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={busy}
+          onClick={() => {
+            scrape.reset()
+            setCode(movie.code)
+            setCorrecting(true)
           }}
         >
-          <DropdownMenuItem
-            disabled={busy}
-            className="max-sm:py-1.5 max-sm:pl-2 max-sm:text-xs max-sm:[&_svg]:size-3.5"
-            onSelect={() =>
-              scrape.mutate(undefined, {
-                onSuccess: notifyScan,
-                onError: error =>
-                  notifyTaskError(
-                    `movie:${movie.id}:submit-error`,
-                    '无法创建刮削任务',
-                    describeApiError(error)
-                  )
-              })
-            }
-          >
-            <RefreshCwIcon />
-            重新刮削
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={busy}
-            className="max-sm:py-1.5 max-sm:pl-2 max-sm:text-xs max-sm:[&_svg]:size-3.5"
-            onSelect={() => {
-              scrape.reset()
-              setCode(movie.code)
-              setCorrecting(true)
-            }}
-          >
-            <PencilIcon />
-            纠正番号
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <DialogContent
-        onCloseAutoFocus={event => {
-          event.preventDefault()
-          trigger.current?.focus()
+          <PencilIcon />
+          纠正番号
+        </ContextMenuItem>
+      </ContextMenuContent>
+      <Dialog
+        open={correcting}
+        onOpenChange={open => {
+          if (!scrape.isPending) setCorrecting(open)
         }}
       >
         <DialogContent>

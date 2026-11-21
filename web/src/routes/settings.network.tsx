@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 
+import { DesktopSection } from '@/features/settings/desktop-section'
 import { NetworkSection } from '@/features/settings/network-section'
 import { SettingsCard } from '@/features/settings/shared'
 
@@ -11,6 +12,7 @@ function SettingsNetworkPage() {
   return (
     <SettingsCard>
       <NetworkSection />
+      <DesktopSection />
     </SettingsCard>
   )
 }
