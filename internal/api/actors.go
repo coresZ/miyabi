@@ -17,6 +17,7 @@ type ActorManager interface {
 	Catalog(context.Context, string, int, int) (actors.Page, error)
 	Detail(context.Context, string) (actors.Detail, error)
 	FetchImage(context.Context, string, int) ([]byte, error)
+	FetchAvatar(context.Context, string) ([]byte, error)
 	Settings(context.Context) ([]actors.SourceSetting, error)
 	UpdateSettings(context.Context, []actors.SourceSetting) error
 }
@@ -45,17 +46,14 @@ func actorSourceUpdateHandler(manager ActorManager) gin.HandlerFunc {
 
 func actorListHandler(manager ActorManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		page, err := queryInt(c, "page", 1, 1, 1<<31-1)
-		if err != nil {
-			c.Error(badRequest(err))
+		query, ok := bindQuery[struct {
+			Page  int `form:"page,default=1" binding:"min=1"`
+			Limit int `form:"limit,default=24" binding:"min=1,max=100"`
+		}](c)
+		if !ok {
 			return
 		}
-		limit, err := queryInt(c, "limit", 24, 1, 100)
-		if err != nil {
-			c.Error(badRequest(err))
-			return
-		}
-		result, err := manager.Catalog(c.Request.Context(), c.Query("q"), page, limit)
+		result, err := manager.Catalog(c.Request.Context(), c.Query("q"), query.Page, query.Limit)
 		respond(c, result, err)
 	}
 }
@@ -106,15 +104,32 @@ func actorImageHandler(manager ActorManager) gin.HandlerFunc {
 			return
 		}
 		data, err := manager.FetchImage(c.Request.Context(), uri.Key, uri.Index)
-		if err != nil {
-			if errors.Is(err, actors.ErrNotFound) {
-				c.Status(http.StatusNotFound)
-				return
-			}
-			c.Error(err)
+		writeActorImage(c, data, err)
+	}
+}
+
+func actorAvatarHandler(manager ActorManager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uri, ok := bindURI[struct {
+			Key string `uri:"key" binding:"required,len=40,hexadecimal"`
+		}](c)
+		if !ok {
 			return
 		}
-		c.Header("Cache-Control", "private, max-age=86400")
-		c.Data(http.StatusOK, http.DetectContentType(data), data)
+		data, err := manager.FetchAvatar(c.Request.Context(), uri.Key)
+		writeActorImage(c, data, err)
 	}
+}
+
+func writeActorImage(c *gin.Context, data []byte, err error) {
+	if err != nil {
+		if errors.Is(err, actors.ErrNotFound) {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		c.Error(err)
+		return
+	}
+	c.Header("Cache-Control", "private, max-age=86400")
+	c.Data(http.StatusOK, http.DetectContentType(data), data)
 }

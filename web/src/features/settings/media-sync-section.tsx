@@ -1,21 +1,20 @@
-import { LoaderCircleIcon, RefreshCwIcon, ScanSearchIcon } from 'lucide-react'
+import { RefreshCwIcon, ScanSearchIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { describeApiError } from '@/api/client'
 import { useLibraryPending, useSyncLibrary } from '@/api/library'
-import { isScanTask, isTaskActive, useTasks } from '@/api/tasks'
 import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 import { LibraryScanButton } from '@/features/library/scan-button'
 import { useTaskConnection } from '@/features/tasks/task-events'
+import { useActiveScan } from '@/features/tasks/use-active-scan'
 import { SettingRow, SettingsSection } from './shared'
 
 export function MediaSyncSection() {
   const sync = useSyncLibrary()
   const pending = useLibraryPending()
-  const tasks = useTasks()
+  const { tasks, active } = useActiveScan()
   const connection = useTaskConnection()
-  const scans = tasks.data?.filter(isScanTask)
-  const active = scans?.find(isTaskActive)
 
   return (
     <SettingsSection icon={<ScanSearchIcon className="size-4" />} title="媒体库同步">
@@ -36,7 +35,11 @@ export function MediaSyncSection() {
             })
           }
         >
-          {sync.isPending ? <LoaderCircleIcon className="animate-spin" /> : <RefreshCwIcon />}
+          {sync.isPending ? (
+            <Spinner data-icon="inline-start" />
+          ) : (
+            <RefreshCwIcon data-icon="inline-start" />
+          )}
           同步新增文件
         </Button>
       </SettingRow>

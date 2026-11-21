@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { LoaderCircleIcon, RefreshCwIcon, TvMinimalIcon } from 'lucide-react'
+import { RefreshCwIcon, SaveIcon, TvMinimalIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { describeApiError } from '@/api/client'
@@ -7,8 +7,10 @@ import { type EmbyConfig, useEmbyConfig, useTestEmbyConfig, useUpdateEmbyConfig 
 import { InlineError } from '@/components/error-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
-import { SettingRow, SettingsSection } from './shared'
+import { SettingRow, SettingsActions, SettingsSection } from './shared'
 
 interface EmbyFormData {
   enabled: boolean
@@ -36,6 +38,7 @@ export function EmbySection() {
 
   return (
     <SettingsSection icon={<TvMinimalIcon className="size-4" />} title="Emby">
+      {emby.isPending ? <Skeleton className="h-4 w-40" /> : null}
       {emby.data ? (
         <EmbyForm
           key={resetToken}
@@ -44,7 +47,11 @@ export function EmbySection() {
         />
       ) : null}
 
-      {emby.isError ? <InlineError>后端服务暂不可用，无法读取 Emby 配置。</InlineError> : null}
+      {emby.isError ? (
+        <InlineError onRetry={() => void emby.refetch()} retrying={emby.isFetching}>
+          后端服务暂不可用，无法读取 Emby 配置。
+        </InlineError>
+      ) : null}
     </SettingsSection>
   )
 }
@@ -126,15 +133,13 @@ function EmbyForm({ config, onSaved }: { config: EmbyConfig; onSaved: () => void
     const trimmedServerUrl = form.server_url.trim()
     const trimmedKey = form.api_key.trim()
 
-    if (form.enabled) {
-      if (!trimmedServerUrl) {
-        toast.error('启用 Emby 集成时必须填写服务器地址')
-        return
-      }
-      if (!trimmedKey) {
-        toast.error('启用 Emby 集成时必须填写 API Key')
-        return
-      }
+    if (!trimmedServerUrl) {
+      toast.error('请填写服务器地址')
+      return
+    }
+    if (!trimmedKey) {
+      toast.error('请填写 API Key')
+      return
     }
 
     const payload: EmbyConfig = {
@@ -159,11 +164,7 @@ function EmbyForm({ config, onSaved }: { config: EmbyConfig; onSaved: () => void
 
   return (
     <>
-      <SettingRow
-        title="启用 Emby"
-        description="媒体扫描与刮削完成后，主动通知 Emby 增量刷新"
-        inline
-      >
+      <SettingRow title="启用 Emby" description="连接和管理 Emby" inline>
         <Switch checked={form.enabled} disabled={disabled} onCheckedChange={handleToggle} />
       </SettingRow>
 
@@ -225,22 +226,29 @@ function EmbyForm({ config, onSaved }: { config: EmbyConfig; onSaved: () => void
             />
           </SettingRow>
 
-          <div className="flex items-center justify-end gap-2">
+          <SettingsActions>
             <Button
               type="button"
               variant="outline"
-              size="sm"
               disabled={disabled || testConfig.isPending}
               onClick={handleTest}
             >
-              <RefreshCwIcon className={testConfig.isPending ? 'animate-spin' : undefined} />
+              {testConfig.isPending ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <RefreshCwIcon data-icon="inline-start" />
+              )}
               测试连接
             </Button>
-            <Button type="button" size="sm" disabled={disabled || !isDirty} onClick={handleSave}>
-              <LoaderCircleIcon className={updateConfig.isPending ? 'animate-spin' : 'invisible'} />
+            <Button type="button" disabled={disabled || !isDirty} onClick={handleSave}>
+              {updateConfig.isPending ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <SaveIcon data-icon="inline-start" />
+              )}
               保存
             </Button>
-          </div>
+          </SettingsActions>
         </>
       ) : null}
     </>

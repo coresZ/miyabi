@@ -1,4 +1,4 @@
-import { PlayIcon, StarIcon } from 'lucide-react'
+import { PlayIcon } from 'lucide-react'
 
 import type { LibraryMovie } from '@/api/library'
 import { MovieCard } from '@/components/movie'
@@ -7,12 +7,26 @@ import { MovieDetailTrigger } from '@/features/movie-detail/detail-trigger'
 import { LibraryMovieStatus } from './movie-status'
 import { LibraryMovieActions } from './movie-actions'
 
+/** The fields the library card actually renders; kept narrow so callers pass
+ * only what the card needs (e.g. a history item) without fabricating a movie. */
+export type LibraryMovieCardData = {
+  id: number
+  code: string
+  title: string
+  cover?: string
+  rating: number
+  actors: Array<{ name: string }>
+  source?: string
+  has_subtitle?: boolean
+  finished?: boolean
+}
+
 export function LibraryMovieCard({
   movie,
   onPlay,
   progress
 }: {
-  movie: LibraryMovie
+  movie: LibraryMovieCardData
   onPlay?: () => void
   progress?: number
 }) {

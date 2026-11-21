@@ -1,9 +1,11 @@
 package drive
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
-	"sort"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/ppxb/miyabi/internal/database"
@@ -95,6 +97,21 @@ func (d *Drive) syncAccountMounts(store accountStore) {
 		next[id] = record.Directory
 	}
 	d.accountMounts = next
+}
+
+// loadAccountsAndMounts reloads the account store and refreshes the in-memory
+// mount registry under accountsMu. Holding the write lock across both steps
+// prevents a concurrent saveAccountMount from having its newer mount overwritten
+// by the stale snapshot this call just loaded.
+func (d *Drive) loadAccountsAndMounts(ctx context.Context) (accountStore, error) {
+	d.accountsMu.Lock()
+	defer d.accountsMu.Unlock()
+	store, err := d.loadAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	d.syncAccountMounts(store)
+	return store, nil
 }
 
 func (d *Drive) accountCredVersion(accountID string) uint64 {
@@ -212,27 +229,22 @@ func (d *Drive) Mounts(_ context.Context) ([]domain.LibrarySource, error) {
 		result = append(result, record.source())
 	}
 	d.mu.Unlock()
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].AccountID != result[j].AccountID {
-			return result[i].AccountID < result[j].AccountID
+	slices.SortFunc(result, func(a, b domain.LibrarySource) int {
+		if a.AccountID != b.AccountID {
+			return cmp.Compare(a.AccountID, b.AccountID)
 		}
-		return result[i].Directory.ID < result[j].Directory.ID
+		return cmp.Compare(a.Directory.ID, b.Directory.ID)
 	})
 	return result, nil
 }
 
 // Accounts lists every stored 115 account and its mounted directory.
 func (d *Drive) Accounts(ctx context.Context) ([]AccountStatus, error) {
-	store, err := d.loadAccounts(ctx)
+	store, err := d.loadAccountsAndMounts(ctx)
 	if err != nil {
 		return nil, err
 	}
-	d.syncAccountMounts(store)
-	ids := make([]string, 0, len(store))
-	for id := range store {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
+	ids := slices.Sorted(maps.Keys(store))
 
 	result := make([]AccountStatus, 0, len(ids))
 	for _, id := range ids {
@@ -297,12 +309,11 @@ func (d *Drive) StartAccountRefresh(ctx context.Context) {
 }
 
 func (d *Drive) refreshExpiringAccounts(ctx context.Context) {
-	store, err := d.loadAccounts(ctx)
+	store, err := d.loadAccountsAndMounts(ctx)
 	if err != nil {
 		slog.Warn("load 115 accounts for refresh", "error", err)
 		return
 	}
-	d.syncAccountMounts(store)
 	for id, record := range store {
 		if tokensNeedRefresh(record.Tokens) {
 			if err := d.refreshAccountTokens(ctx, id); err != nil {

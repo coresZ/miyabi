@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { useLibraryMovies } from '@/api/library'
-import { isScanTask, isTaskActive, useTasks } from '@/api/tasks'
+import { isTaskActive } from '@/api/tasks'
 import { AppPage } from '@/components/app-page'
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState, InlineError } from '@/components/error-state'
@@ -12,10 +12,12 @@ import { LazyLibraryPlayerDialog } from '@/features/library/player-dialog-lazy'
 import { RecentlyAddedShelf } from '@/features/library/recent-shelf'
 import { TopRatedShelf } from '@/features/library/top-rated-shelf'
 import { useTaskConnection } from '@/features/tasks/task-events'
+import { useActiveScan } from '@/features/tasks/use-active-scan'
 
 export function LibraryPage() {
   const library = useLibraryMovies(1)
-  const tasks = useTasks()
+  // `active` covers any active library task, including a single-movie rescrape.
+  const { tasks, scans, active: progressTask } = useActiveScan()
   const connection = useTaskConnection()
   const [playingId, setPlayingId] = useState<number | null>(null)
   const source = library.data?.source

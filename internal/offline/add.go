@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ppxb/miyabi/internal/codeid"
 	"github.com/ppxb/miyabi/internal/domain"
@@ -56,6 +57,20 @@ func (service *Service) resolveMagnet(ctx context.Context, movieID, codeHint, ha
 		}
 	}
 	return "", ErrMagnetNotFound
+}
+
+// warmMetadata resolves a code's metadata in the background to populate the
+// shared scrape cache. Failures are ignored: the later scrape will retry.
+func (service *Service) warmMetadata(code string) {
+	if service.metadata == nil || code == "" {
+		return
+	}
+	code = codeid.Normalize(code)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		_, _ = service.metadata.Resolve(ctx, domain.MovieRef{Code: code})
+	}()
 }
 
 func (service *Service) addForAccount(ctx context.Context, accountID, movieID, codeHint, hash string) (domain.OfflineSubmission, error) {
@@ -153,6 +168,9 @@ func (service *Service) addForAccount(ctx context.Context, accountID, movieID, c
 		return domain.OfflineSubmission{}, service.deferAction(submitContext, created, state, err)
 	}
 
+	// Prewarm the metadata cache only after a successful submission, so failed
+	// attempts do not trigger a wasted metadata scrape.
+	service.warmMetadata(code)
 	service.tasks.NotifyOfflineChanged()
 	created, err = service.database.OfflineDownload.Get(submitContext, created.ID)
 	if err != nil {

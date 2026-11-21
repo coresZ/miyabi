@@ -1,3 +1,4 @@
+import { useScrollFade } from '@animate-ui/react/primitives/effects/scroll-fade'
 import { useRouter } from '@tanstack/react-router'
 import { XIcon } from 'lucide-react'
 import {
@@ -18,6 +19,20 @@ import { MovieDetailSkeleton } from './skeleton'
 const MovieDetailContent = lazy(() =>
   import('./content').then(module => ({ default: module.MovieDetailContent }))
 )
+
+/** Scrollable detail body with the shared animated scroll fade. */
+function DetailScrollBody({ children }: PropsWithChildren) {
+  const ref = useRef<HTMLDivElement>(null)
+  useScrollFade(ref)
+  return (
+    <div
+      ref={ref}
+      className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6"
+    >
+      {children}
+    </div>
+  )
+}
 
 export function MovieDetailDialogProvider({ children }: PropsWithChildren) {
   const router = useRouter()
@@ -56,7 +71,7 @@ export function MovieDetailDialogProvider({ children }: PropsWithChildren) {
             <Suspense fallback={<MovieDetailSkeleton />}>
               {movie ? <MovieDetailContent movie={movie} /> : null}
             </Suspense>
-          </div>
+          </DetailScrollBody>
         </DialogContent>
       </Dialog>
     </MovieDetailDialogContext>

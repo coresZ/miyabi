@@ -6,6 +6,7 @@ import {
   CalendarDaysIcon,
   CupSodaIcon,
   DropletIcon,
+  ExternalLinkIcon,
   MapPinIcon,
   PersonStandingIcon,
   RulerIcon,
@@ -20,16 +21,13 @@ import { ErrorState } from '@/components/error-state'
 import { MediaImage } from '@/components/media-image'
 import { MovieGridLayout } from '@/components/movie/movie-grid-layout'
 import { MovieGridSkeleton } from '@/components/movie/movie-grid-skeleton'
+import { StatList } from '@/components/stat-list'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { LibraryMovieCard } from '@/features/library/movie-card'
 import { LazyLibraryPlayerDialog } from '@/features/library/player-dialog-lazy'
-
-function displayAvatar(src?: string) {
-  if (!src) return undefined
-  return src.startsWith('/api/actors/') ? src : imageURL(src)
-}
 
 function ActorStats({ actor }: { actor: ReturnType<typeof useActorDetail>['data'] }) {
   if (!actor) return null
@@ -47,22 +45,7 @@ function ActorStats({ actor }: { actor: ReturnType<typeof useActorDetail>['data'
   }
   if (stats.length === 0) return null
 
-  return (
-    <dl className="flex flex-wrap divide-x divide-border/60 rounded-2xl bg-muted py-1 ring-1 ring-border dark:bg-card/60 dark:ring-0">
-      {stats.map(stat => (
-        <div
-          key={stat.label}
-          className="flex min-w-0 flex-1 flex-col items-center gap-2 p-3 sm:p-4"
-        >
-          <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <stat.icon className="size-4" />
-            {stat.label}
-          </dt>
-          <dd className="text-sm font-semibold whitespace-nowrap tabular-nums">{stat.value}</dd>
-        </div>
-      ))}
-    </dl>
-  )
+  return <StatList stats={stats} />
 }
 
 export function ActorDetailPage({ actorKey }: { actorKey: string }) {
@@ -91,7 +74,7 @@ export function ActorDetailPage({ actorKey }: { actorKey: string }) {
           ))}
         </div>
         <Skeleton className="h-6 w-24" />
-        <MovieGridSkeleton count={6} compact />
+        <MovieGridSkeleton count={6} />
       </AppPage>
     )
   }
@@ -122,7 +105,7 @@ export function ActorDetailPage({ actorKey }: { actorKey: string }) {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <Avatar className="size-32">
-          <AvatarImage src={displayAvatar(actor.avatar)} alt={actor.name} loading="eager" />
+          <AvatarImage src={actor.avatar ? imageURL(actor.avatar) : undefined} alt={actor.name} loading="eager" />
           <AvatarFallback>{actor.name.slice(0, 1)}</AvatarFallback>
         </Avatar>
         <div className="flex flex-col gap-2">
@@ -140,11 +123,39 @@ export function ActorDetailPage({ actorKey }: { actorKey: string }) {
             {actor.sources.map(source => (
               <Badge key={`${source.provider}:${source.source_id}`}>{source.provider}</Badge>
             ))}
+            {actor.source_url ? (
+              <Button
+                variant="link"
+                size="sm"
+                nativeButton={false}
+                render={<a href={actor.source_url} target="_blank" rel="noreferrer" />}
+              >
+                资料来源
+                <ExternalLinkIcon data-icon="inline-end" />
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>
 
       <ActorStats actor={actor} />
+
+      {actor.hobby || actor.skill ? (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+          {actor.hobby ? (
+            <>
+              <dt className="text-muted-foreground">爱好</dt>
+              <dd>{actor.hobby}</dd>
+            </>
+          ) : null}
+          {actor.skill ? (
+            <>
+              <dt className="text-muted-foreground">特长</dt>
+              <dd>{actor.skill}</dd>
+            </>
+          ) : null}
+        </dl>
+      ) : null}
 
       {actor.summary ? (
         <p className="text-sm leading-6 whitespace-pre-line text-muted-foreground">
@@ -154,7 +165,7 @@ export function ActorDetailPage({ actorKey }: { actorKey: string }) {
 
       {actor.image_count > 0 ? (
         <div className="flex flex-col gap-2">
-          <h2 className="text-xl font-semibold">图片</h2>
+          <h2 className="text-xl font-semibold">图集</h2>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
             {Array.from({ length: Math.min(actor.image_count, 12) }).map((_, index) => (
               <div key={index} className="aspect-3/4 w-full overflow-hidden rounded-lg">

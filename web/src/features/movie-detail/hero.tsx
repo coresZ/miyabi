@@ -66,31 +66,16 @@ function MovieStats({
   if (movie.duration > 0) {
     stats.push({ label: '片长', value: `${movie.duration} 分钟`, icon: ClockIcon })
   }
-  if (movie.rating > 0) {
-    stats.push({
-      label: '评分',
-      value: movie.rating_max
-        ? `${movie.rating.toFixed(1)} / ${movie.rating_max}`
-        : movie.rating.toFixed(1),
-      icon: StarIcon
-    })
-  }
-  if (stats.length === 0) return null
+  stats.push({
+    label: '评分',
+    value:
+      movie.rating > 0
+        ? movie.rating_max
+          ? `${movie.rating.toFixed(1)} / ${movie.rating_max}`
+          : movie.rating.toFixed(1)
+        : '暂无评分',
+    icon: StarIcon
+  })
 
-  return (
-    <dl className="flex flex-wrap divide-x divide-border/60 rounded-2xl bg-muted py-1 ring-1 ring-border dark:bg-card/60 dark:ring-0">
-      {stats.map(stat => (
-        <div
-          key={stat.label}
-          className="flex min-w-0 flex-1 flex-col items-center gap-2 p-3 sm:p-4"
-        >
-          <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <stat.icon className="size-4" />
-            {stat.label}
-          </dt>
-          <dd className="text-sm font-semibold tabular-nums sm:text-base">{stat.value}</dd>
-        </div>
-      ))}
-    </dl>
-  )
+  return <StatList stats={stats} />
 }

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { useBrowseLibraryMovies, useLibraryFilterOptions } from '@/api/library'
 import { AppPage } from '@/components/app-page'
@@ -25,7 +25,7 @@ export function MoviesPage({
 }) {
   const [playingId, setPlayingId] = useState<number | null>(null)
   const options = useLibraryFilterOptions()
-  const filters = moviesFilterFromSearch(search)
+  const filters = useMemo(() => moviesFilterFromSearch(search), [search])
   const page = search.page ?? 1
   const movies = useBrowseLibraryMovies({ ...filters, page, limit: PAGE_SIZE })
   const items = movies.data?.movies ?? []
@@ -52,7 +52,7 @@ export function MoviesPage({
       <MovieFilterBar options={options.data} value={filters} onChange={handleFiltersChange} />
 
       {movies.isPending ? (
-        <MovieGridSkeleton count={PAGE_SIZE} compact />
+        <MovieGridSkeleton count={PAGE_SIZE} />
       ) : movies.isError ? (
         <ErrorState
           message="无法读取影片，请检查后端服务后重试"

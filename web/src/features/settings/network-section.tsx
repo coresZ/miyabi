@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { GlobeIcon, LoaderCircleIcon } from 'lucide-react'
+import { GlobeIcon, SaveIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { describeApiError } from '@/api/client'
@@ -7,8 +7,10 @@ import { type NetworkConfig, useNetworkConfig, useUpdateNetworkConfig } from '@/
 import { InlineError } from '@/components/error-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
-import { SettingRow, SettingsSection } from './shared'
+import { SettingRow, SettingsActions, SettingsSection } from './shared'
 
 interface NetworkFormData {
   enabled: boolean
@@ -25,6 +27,7 @@ export function NetworkSection() {
 
   return (
     <SettingsSection icon={<GlobeIcon className="size-4" />} title="网络代理">
+      {network.isPending ? <Skeleton className="h-4 w-40" /> : null}
       {network.data ? (
         <NetworkForm
           key={resetToken}
@@ -34,7 +37,7 @@ export function NetworkSection() {
       ) : null}
 
       {network.isError ? (
-        <InlineError>
+        <InlineError onRetry={() => void network.refetch()} retrying={network.isFetching}>
           后端服务暂不可用，无法读取网络设置。请检查后端服务状态后刷新重试。
         </InlineError>
       ) : null}
@@ -62,14 +65,9 @@ function NetworkForm({ config, onSaved }: { config: NetworkConfig; onSaved: () =
       return
     }
 
-    if (!config.enabled) {
-      updateField('enabled', false)
-      return
-    }
-
     updateField('enabled', false)
     updateConfig.mutate(
-      { enabled: false, url: normalizeProxyInput(form.url) },
+      { ...config, enabled: false },
       {
         onSuccess: () => {
           toast.success('已关闭网络代理')
@@ -118,8 +116,7 @@ function NetworkForm({ config, onSaved }: { config: NetworkConfig; onSaved: () =
           <SettingRow title="代理地址" description="支持 HTTP、HTTPS 与 SOCKS5 代理协议">
             <Input
               ref={inputRef}
-              autoFocus={form.enabled && !initial.enabled}
-              type="text"
+              autoFocus={!initial.enabled}
               value={form.url}
               placeholder="http://127.0.0.1:7890"
               disabled={disabled}
@@ -127,12 +124,16 @@ function NetworkForm({ config, onSaved }: { config: NetworkConfig; onSaved: () =
             />
           </SettingRow>
 
-          <div className="flex items-center justify-end gap-2">
-            <Button type="button" size="sm" disabled={disabled || !isDirty} onClick={handleSave}>
-              <LoaderCircleIcon className={updateConfig.isPending ? 'animate-spin' : 'invisible'} />
+          <SettingsActions>
+            <Button type="button" disabled={disabled || !isDirty} onClick={handleSave}>
+              {updateConfig.isPending ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <SaveIcon data-icon="inline-start" />
+              )}
               保存
             </Button>
-          </div>
+          </SettingsActions>
         </>
       ) : null}
     </>

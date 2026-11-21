@@ -1,19 +1,15 @@
-import { StarIcon } from 'lucide-react'
-
 import type { DiscoverMovie } from '@/api/discover'
-import { MovieCard } from '@/components/movie'
+import { MovieCard, MovieCoverCaption, MovieRatingPill } from '@/components/movie'
 import { MovieStateBadge } from '@/components/movie/movie-badges'
 import { MovieDetailTrigger } from '@/features/movie-detail/detail-trigger'
-import { MovieSubscribeButton } from './movie-subscribe-button'
 
-export function DiscoverMovieCard({
-  movie,
-  allowSubscribe = true
-}: {
-  movie: DiscoverMovie
-  allowSubscribe?: boolean
-}) {
-  const subscribable = allowSubscribe && movie.release_status === 'upcoming' && movie.magnets_count === 0
+/** The fields the explore card actually renders (no subscription affordance). */
+export type DiscoverMovieCardData = Pick<
+  DiscoverMovie,
+  'id' | 'code' | 'title' | 'cover' | 'rating' | 'release_date'
+>
+
+export function DiscoverMovieCard({ movie }: { movie: DiscoverMovieCardData }) {
   const title = movie.title || movie.code
   return (
     <MovieDetailTrigger

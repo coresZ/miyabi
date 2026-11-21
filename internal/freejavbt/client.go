@@ -1,7 +1,6 @@
 package freejavbt
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -122,6 +121,9 @@ func (c *Client) get(ctx context.Context, target string) ([]byte, error) {
 	if response.StatusCode == http.StatusNotFound {
 		return nil, metadata.ErrNotFound
 	}
+	if response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusServiceUnavailable {
+		return nil, domain.Blocked(fmt.Sprintf("freejavbt 返回状态 %d", response.StatusCode))
+	}
 	if response.StatusCode != http.StatusOK {
 		return nil, domain.E(domain.KindUpstream, fmt.Sprintf("freejavbt 返回状态 %d", response.StatusCode), nil)
 	}
@@ -132,8 +134,8 @@ func (c *Client) get(ctx context.Context, target string) ([]byte, error) {
 	if len(body) > maxBodyBytes {
 		return nil, fmt.Errorf("freejavbt 响应超过 %d 字节", maxBodyBytes)
 	}
-	if bytes.Contains(body, []byte("Just a moment...")) || bytes.Contains(body, []byte("Attention Required! | Cloudflare")) {
-		return nil, domain.E(domain.KindUpstream, "freejavbt 遇到 Cloudflare 挑战", nil)
+	if netx.IsCloudflareInterstitial(body) {
+		return nil, domain.Blocked("freejavbt 遇到 Cloudflare 挑战")
 	}
 	return body, nil
 }

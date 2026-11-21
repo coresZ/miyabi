@@ -3,11 +3,11 @@ import { toast } from 'sonner'
 import {
   FolderOpenIcon,
   HardDriveIcon,
-  LoaderCircleIcon,
   LogOutIcon,
   PencilIcon,
   PlusIcon,
   QrCodeIcon,
+  SaveIcon,
   UserRoundIcon
 } from 'lucide-react'
 
@@ -182,10 +182,10 @@ export function SourcesSection() {
         <Dialog
           open
           onOpenChange={next => {
-            if (!next && !save.isPending) setDeleteTarget(null)
+            if (!next) setDeleteTarget(null)
           }}
         >
-          <DialogContent showCloseButton={!save.isPending}>
+          <DialogContent>
             <DialogHeader>
               <DialogTitle>删除存储源？</DialogTitle>
               <DialogDescription>
@@ -194,18 +194,12 @@ export function SourcesSection() {
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={save.isPending}
-                onClick={() => setDeleteTarget(null)}
-              >
+              <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>
                 取消
               </Button>
               <Button
                 type="button"
                 variant="destructive"
-                disabled={save.isPending}
                 onClick={() => {
                   const id = deleteTarget.id
                   setDeleteTarget(null)
@@ -240,7 +234,7 @@ function SourceCard({
 
 function EditAction({ onEdit }: { onEdit: () => void }) {
   return (
-    <Button variant="ghost" size="icon-sm" aria-label="编辑存储源" onClick={onEdit}>
+    <Button variant="ghost" size="icon" aria-label="编辑存储源" onClick={onEdit}>
       <PencilIcon />
     </Button>
   )
@@ -296,17 +290,17 @@ function PanSourceCard({
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground">未绑定账号</span>
             <PanLoginDialog onAuthorized={onBind}>
-              <Button size="icon-sm" aria-label="登录 115">
+              <Button size="icon" aria-label="登录 115">
                 <QrCodeIcon />
               </Button>
             </PanLoginDialog>
           </div>
         ) : status.isPending ? (
-          <LoaderCircleIcon className="size-4 animate-spin text-muted-foreground" />
+          <Spinner className="text-muted-foreground" />
         ) : status.isError || !profile ? (
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground">账号不可用</span>
-            <Button size="sm" variant="outline" onClick={() => onBind('')}>
+            <Button variant="outline" onClick={() => onBind('')}>
               重新绑定
             </Button>
           </div>
@@ -324,7 +318,7 @@ function PanSourceCard({
               </div>
               <Button
                 variant="ghost"
-                size="icon-sm"
+                size="icon"
                 aria-label="退出登录"
                 disabled={disconnect.isPending}
                 onClick={() => disconnect.mutate(undefined, { onSuccess: () => onBind('') })}
@@ -340,7 +334,7 @@ function PanSourceCard({
                 {status.data?.directory?.path ?? '未绑定目录'}
               </span>
               <PanDirectoryDialog accountID={profile.id} directory={status.data?.directory}>
-                <Button variant="ghost" size="icon-sm" aria-label="修改目录">
+                <Button variant="ghost" size="icon" aria-label="修改目录">
                   <FolderOpenIcon />
                 </Button>
               </PanDirectoryDialog>
@@ -389,12 +383,6 @@ function SourceDialog({
   const [enabled, setEnabled] = useState(source.enabled)
   const [nameError, setNameError] = useState<string | null>(null)
   const [pathError, setPathError] = useState<string | null>(null)
-  const option = {
-    label: KIND_LABELS[kind],
-    pathKey: 'path',
-    pathLabel: LOCAL_PATH.label,
-    placeholder: LOCAL_PATH.placeholder
-  }
   const needsPath = kind === 'local'
 
   function submit() {
@@ -414,7 +402,7 @@ function SourceDialog({
       name: name.trim(),
       enabled,
       config: needsPath
-        ? { ...source.config, [option.pathKey]: path.trim(), scrape_mode: scrapeMode }
+        ? { ...source.config, path: path.trim(), scrape_mode: scrapeMode }
         : { ...source.config }
     })
   }
@@ -460,7 +448,7 @@ function SourceDialog({
             <FieldLabel>类型</FieldLabel>
             <Select value={kind} onValueChange={value => setKind(value as SourceKind)}>
               <SelectTrigger>
-                <SelectValue>{option.label}</SelectValue>
+                <SelectValue>{KIND_LABELS[kind]}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {KIND_ORDER.map(value => (
@@ -475,13 +463,13 @@ function SourceDialog({
           {needsPath ? (
             <>
               <Field data-invalid={Boolean(pathError)}>
-                <FieldLabel htmlFor="source-path">{option.pathLabel}</FieldLabel>
+                <FieldLabel htmlFor="source-path">{LOCAL_PATH.label}</FieldLabel>
                 <Input
                   id="source-path"
                   value={path}
                   disabled={saving}
                   aria-invalid={Boolean(pathError)}
-                  placeholder={option.placeholder}
+                  placeholder={LOCAL_PATH.placeholder}
                   onChange={event => {
                     setPath(event.target.value)
                     setPathError(null)
@@ -548,13 +536,11 @@ function SourceDialog({
             </Button>
             <Button type="submit" disabled={saving}>
               {saving ? (
-                <>
-                  <Spinner />
-                  保存中
-                </>
+                <Spinner data-icon="inline-start" />
               ) : (
-                '保存'
+                <SaveIcon data-icon="inline-start" />
               )}
+              保存
             </Button>
           </DialogFooter>
         </form>
