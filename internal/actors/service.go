@@ -167,12 +167,6 @@ func (s *Service) sourceEnabled(ctx context.Context, id string) bool {
 	return true
 }
 
-// Key returns a stable URL key for a normalized name.
-func Key(norm string) string {
-	sum := sha1.Sum([]byte(norm))
-	return hex.EncodeToString(sum[:])
-}
-
 // normalizeName lowercases and drops all whitespace so "... りり" == "...りり".
 func normalizeName(name string) string {
 	return domain.NormalizeActorName(name)
@@ -294,21 +288,17 @@ func (s *Service) groups(ctx context.Context) ([]*group, error) {
 }
 
 func (g *group) summary() Summary {
-	avatar := g.avatar
-	if avatar == "" {
-		avatar = avatarPath(Key(g.norm))
-	}
+	// Same key as the indexed Actor.name_key column, so URLs resolve via findNames.
+	key := domain.ActorNameKey(g.norm)
 	return Summary{
-		Key:        Key(g.norm),
+		Key:        key,
 		Name:       g.displayName,
 		NameZHT:    g.nameZHT,
-		Avatar:     avatar,
+		Avatar:     "/api/actors/" + key + "/avatar",
 		MovieCount: len(g.movies),
 		Sources:    g.sources,
 	}
 }
-
-func avatarPath(key string) string { return "/api/actors/" + key + "/image/0" }
 
 // Catalog lists canonical actors, optionally filtered by a name substring.
 func (s *Service) Catalog(ctx context.Context, query string, page, limit int) (Page, error) {
@@ -361,6 +351,22 @@ func (g *group) matches(q string) bool {
 	return false
 }
 
+// linkedProfileID returns the canonical profile id matching a raw actor name, or
+// 0 when none exists. A database error is returned instead of being swallowed.
+func (s *Service) linkedProfileID(ctx context.Context, name string) (int, error) {
+	if name == "" {
+		return 0, nil
+	}
+	pid, err := s.db.ActorProfile.Query().Where(actorprofile.MatchKeyEQ(normalizeName(name))).OnlyID(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return pid, nil
+}
+
 // loadGroup resolves a single group by its public key through the indexed
 // name_key column, so Detail never builds the whole catalog in memory.
 func (s *Service) loadGroup(ctx context.Context, key string) (*group, error) {
@@ -375,7 +381,9 @@ func (s *Service) loadGroup(ctx context.Context, key string) (*group, error) {
 		return nil, err
 	}
 	query := s.db.Actor.Query().Where(actor.NameKeyEQ(key))
-	if pid, perr := s.db.ActorProfile.Query().Where(actorprofile.MatchKeyEQ(normalizeName(seed.Name))).OnlyID(ctx); perr == nil {
+	if pid, perr := s.linkedProfileID(ctx, seed.Name); perr != nil {
+		return nil, perr
+	} else if pid > 0 {
 		query = s.db.Actor.Query().Where(actor.Or(actor.NameKeyEQ(key), actor.HasProfileWith(actorprofile.ID(pid))))
 	}
 	records, err := query.
@@ -407,7 +415,7 @@ func (s *Service) Detail(ctx context.Context, key string) (Detail, error) {
 			detail.Aliases = append(detail.Aliases, name)
 		}
 	}
-	pid, perr := s.ensureProfile(ctx, g.norm, display, g.nameZHT, g.avatar)
+	pid, perr := ensureProfile(ctx, s.db, g.norm, display, g.nameZHT, g.avatar)
 	if perr != nil {
 		return Detail{}, perr
 	}
@@ -554,7 +562,7 @@ func (s *Service) mergeActorPair(ctx context.Context, ja, en actorSig) error {
 
 	canonical := ja.profileID
 	if canonical == 0 {
-		pid, err := s.ensureProfileTx(ctx, tx, normalizeName(ja.name), ja.name, "", "")
+		pid, err := ensureProfile(ctx, tx.Client(), normalizeName(ja.name), ja.name, "", "")
 		if err != nil {
 			return err
 		}
@@ -565,7 +573,7 @@ func (s *Service) mergeActorPair(ctx context.Context, ja, en actorSig) error {
 	}
 	enPid := en.profileID
 	if enPid == 0 {
-		pid, err := s.ensureProfileTx(ctx, tx, normalizeName(en.name), en.name, "", "")
+		pid, err := ensureProfile(ctx, tx.Client(), normalizeName(en.name), en.name, "", "")
 		if err != nil {
 			return err
 		}
@@ -772,16 +780,20 @@ func (s *Service) findNames(ctx context.Context, key string) ([]string, error) {
 	// Also include provider rows merged into the same canonical profile (e.g. a
 	// Latin alias of a CJK actor), matching the previous profile-aware lookup.
 	if len(records) > 0 {
-		norm := normalizeName(records[0].Name)
-		if pid, perr := s.db.ActorProfile.Query().Where(actorprofile.MatchKeyEQ(norm)).OnlyID(ctx); perr == nil {
+		pid, perr := s.linkedProfileID(ctx, records[0].Name)
+		if perr != nil {
+			return nil, perr
+		}
+		if pid > 0 {
 			linked, lerr := s.db.Actor.Query().
 				Where(actor.HasProfileWith(actorprofile.ID(pid))).
 				Select(actor.FieldName).
 				All(ctx)
-			if lerr == nil {
-				for _, r := range linked {
-					add(r.Name)
-				}
+			if lerr != nil {
+				return nil, lerr
+			}
+			for _, r := range linked {
+				add(r.Name)
 			}
 		}
 	}
@@ -811,6 +823,40 @@ func (s *Service) FetchImage(ctx context.Context, key string, index int) ([]byte
 		return nil, ErrNotFound
 	}
 	return s.loadImage(ctx, sources[index])
+}
+
+// FetchAvatar returns the round avatar: the first gfriends image when there is
+// one, else the avatar scraped with the actor's movies. av-league photos are
+// gallery-only and never used here.
+func (s *Service) FetchAvatar(ctx context.Context, key string) ([]byte, error) {
+	names, err := s.findNames(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if s.sourceEnabled(ctx, "gfriends") {
+		for _, src := range s.imageSources(ctx, normalizeName(names[0]), names) {
+			if src.provider != "gfriends" {
+				continue
+			}
+			data, err := s.loadImage(ctx, src)
+			if err == nil {
+				return data, nil
+			}
+			slog.WarnContext(ctx, "load gfriends actor avatar failed", "key", key, "error", err)
+			break
+		}
+	}
+	scraped, err := s.db.Actor.Query().
+		Where(actor.NameIn(names...), actor.AvatarNEQ("")).
+		Select(actor.FieldAvatar).
+		First(ctx)
+	if ent.IsNotFound(err) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.loadImage(ctx, imageSource{provider: "scraped", ref: *scraped.Avatar})
 }
 
 type imageSource struct {
@@ -993,7 +1039,7 @@ func (s *Service) applyProfile(ctx context.Context, pid int, providerName string
 func (s *Service) appendProfileImages(ctx context.Context, tx *ent.Tx, pid int, providerName string, urls []string) error {
 	items := make([]imageItem, 0, len(urls))
 	for _, url := range urls {
-		items = append(items, imageItem{url: url, provider: providerName, role: "portrait"})
+		items = append(items, imageItem{url: url, provider: providerName, role: "gallery"})
 	}
 	return s.appendImageRows(ctx, tx, pid, items)
 }
@@ -1072,71 +1118,67 @@ func (s *Service) reconcileActorProfiles(ctx context.Context, movieID int) error
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var errs []error
+
+	profileIDs := make([]int, 0, len(profiles))
+	for _, p := range profiles {
+		profileIDs = append(profileIDs, p.ID)
+	}
+	aliases, err := tx.ActorAlias.Query().
+		Where(actoralias.HasActorWith(actorprofile.IDIn(profileIDs...))).
+		WithActor(func(q *ent.ActorProfileQuery) { q.Select(actorprofile.FieldID) }).
+		All(ctx)
+	if err != nil {
+		return err
+	}
+	have := make(map[int]map[string]bool, len(profiles))
+	for _, alias := range aliases {
+		if alias.Edges.Actor == nil {
+			continue
+		}
+		pid := alias.Edges.Actor.ID
+		if have[pid] == nil {
+			have[pid] = make(map[string]bool)
+		}
+		have[pid][alias.Alias] = true
+	}
+
+	var bulk []*ent.ActorAliasCreate
 	for _, p := range profiles {
 		ids := idsByNorm[p.MatchKey]
 		if len(ids) == 0 {
 			continue
 		}
 		if err := tx.Actor.Update().Where(actor.IDIn(ids...)).SetProfileID(p.ID).Exec(ctx); err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		existing, err := tx.ActorAlias.Query().
-			Where(actoralias.HasActorWith(actorprofile.ID(p.ID))).
-			Select(actoralias.FieldAlias).
-			All(ctx)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		have := make(map[string]bool, len(existing))
-		for _, alias := range existing {
-			have[alias.Alias] = true
+			return err
 		}
 		for name := range namesByNorm[p.MatchKey] {
-			if have[name] {
+			if have[p.ID][name] {
 				continue
 			}
-			if _, err := tx.ActorAlias.Create().
+			bulk = append(bulk, tx.ActorAlias.Create().
 				SetActorID(p.ID).
 				SetAlias(name).
-				SetNormalized(p.MatchKey).
-				Save(ctx); err != nil {
-				errs = append(errs, err)
-			}
+				SetNormalized(p.MatchKey))
+		}
+	}
+	if len(bulk) > 0 {
+		if err := tx.ActorAlias.CreateBulk(bulk...).Exec(ctx); err != nil {
+			return err
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	return errors.Join(errs...)
+	return nil
 }
 
-func (s *Service) ensureProfile(ctx context.Context, norm, name, nameZHT, avatar string) (int, error) {
-	if id, err := s.db.ActorProfile.Query().Where(actorprofile.MatchKeyEQ(norm)).OnlyID(ctx); err == nil {
+// ensureProfile returns the canonical profile for norm, creating it when absent.
+// Pass tx.Client() to run inside a transaction.
+func ensureProfile(ctx context.Context, db *ent.Client, norm, name, nameZHT, avatar string) (int, error) {
+	if id, err := db.ActorProfile.Query().Where(actorprofile.MatchKeyEQ(norm)).OnlyID(ctx); err == nil {
 		return id, nil
 	}
-	builder := s.db.ActorProfile.Create().SetMatchKey(norm).SetName(name)
-	if nameZHT != "" {
-		builder.SetNameZht(nameZHT)
-	}
-	if avatar != "" {
-		builder.SetAvatar(avatar)
-	}
-	profile, err := builder.Save(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return profile.ID, nil
-}
-
-// ensureProfileTx is ensureProfile bound to the caller's transaction.
-func (s *Service) ensureProfileTx(ctx context.Context, tx *ent.Tx, norm, name, nameZHT, avatar string) (int, error) {
-	if id, err := tx.ActorProfile.Query().Where(actorprofile.MatchKeyEQ(norm)).OnlyID(ctx); err == nil {
-		return id, nil
-	}
-	builder := tx.ActorProfile.Create().SetMatchKey(norm).SetName(name)
+	builder := db.ActorProfile.Create().SetMatchKey(norm).SetName(name)
 	if nameZHT != "" {
 		builder.SetNameZht(nameZHT)
 	}

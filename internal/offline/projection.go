@@ -8,6 +8,7 @@ import (
 	"github.com/ppxb/miyabi/internal/codeid"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
+	"github.com/ppxb/miyabi/internal/pan"
 	"github.com/ppxb/miyabi/internal/ent/file"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/ent/offlinedownload"
@@ -164,7 +165,7 @@ func (service *Service) submissions(ctx context.Context, records []*ent.OfflineD
 				item.DownloadState = "exhausted"
 			case state.Stalled:
 				item.DownloadState = "stalled"
-			case state.RemoteStatus == 0:
+			case state.RemoteStatus == pan.OfflineStatusWaiting:
 				item.DownloadState = "queued"
 			}
 			if item.RetryAt != nil {
@@ -185,9 +186,6 @@ func (service *Service) submissions(ctx context.Context, records []*ent.OfflineD
 			}
 			if scan.Status == string(task.StatusQueued) || scan.Status == string(task.StatusRunning) {
 				item.Processing = true
-			}
-			if scan.Error != nil {
-				item.Error = scan.Error
 			}
 		} else if record.Status == offlinedownload.StatusDone && (record.FileID != "" || record.AwaitingLocation) {
 			// Remote completion may arrive before its file location. Keep the

@@ -14,11 +14,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 const PAGE_SIZE = 40
 
-function displayAvatar(src?: string) {
-  if (!src) return undefined
-  return src.startsWith('/api/actors/') ? src : imageURL(src)
-}
-
 export function ActorsCatalogPage({
   q,
   page,
@@ -31,11 +26,15 @@ export function ActorsCatalogPage({
   const [query, setQuery] = useState(q ?? '')
   const [syncedQ, setSyncedQ] = useState(q ?? '')
 
-  // Reflect external URL changes (back/forward) into the input. Adjusting state
-  // during render (guarded) avoids a setState-in-effect loop.
-  if ((q ?? '') !== syncedQ) {
-    setSyncedQ(q ?? '')
-    setQuery(q ?? '')
+  // Reflect external URL changes (back/forward) into the input, but never erase
+  // what the user is still typing: skip the write when the URL value merely
+  // echoes our own trimmed submission ("abc " -> "abc").
+  const externalQ = q ?? ''
+  if (externalQ !== syncedQ) {
+    setSyncedQ(externalQ)
+    if (externalQ !== query.trim()) {
+      setQuery(externalQ)
+    }
   }
 
   useEffect(() => {
@@ -91,7 +90,7 @@ export function ActorsCatalogPage({
               >
                 <Avatar className="size-32">
                   <AvatarImage
-                    src={displayAvatar(actor.avatar)}
+                    src={actor.avatar ? imageURL(actor.avatar) : undefined}
                     alt={actor.name}
                     loading="eager"
                   />

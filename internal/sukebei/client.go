@@ -1,7 +1,6 @@
 package sukebei
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -86,23 +85,9 @@ func (*Client) Name() string { return domain.MagnetSourceSukebei }
 
 // watchProxy rebuilds the transport when the proxy changes.
 func (c *Client) watchProxy(fingerprint *netx.ProxiedFingerprintClient) {
-	changes := fingerprint.Changes()
-	if changes == nil {
-		return
-	}
-	for {
-		select {
-		case <-c.done:
-			return
-		case _, ok := <-changes:
-			if !ok {
-				return
-			}
-			if err := fingerprint.Refresh(); err != nil {
-				continue
-			}
-		}
-	}
+	fingerprint.Watch(c.done, func() {
+		_ = fingerprint.Refresh()
+	})
 }
 
 // Find returns the Sukebei magnets whose title carries the requested code.
@@ -162,6 +147,10 @@ func (c *Client) search(ctx context.Context, code string) ([]byte, error) {
 		return nil, domain.E(domain.KindUpstream, "Sukebei 请求失败", err)
 	}
 	defer response.Body.Close()
+	if response.StatusCode == 403 || response.StatusCode == 503 {
+		_, _ = io.CopyN(io.Discard, response.Body, 4096)
+		return nil, domain.Blocked(fmt.Sprintf("Sukebei 返回状态 %d", response.StatusCode))
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		_, _ = io.CopyN(io.Discard, response.Body, 4096)
 		return nil, domain.E(domain.KindUpstream, fmt.Sprintf("Sukebei 返回状态 %d", response.StatusCode), nil)
@@ -170,18 +159,10 @@ func (c *Client) search(ctx context.Context, code string) ([]byte, error) {
 	if err != nil {
 		return nil, domain.E(domain.KindUpstream, "读取 Sukebei 响应失败", err)
 	}
-	if isChallenge(body) {
-		return nil, domain.E(domain.KindUpstream, "Sukebei 遇到 Cloudflare 挑战", nil)
+	if netx.IsCloudflareInterstitial(body) {
+		return nil, domain.Blocked("Sukebei 遇到 Cloudflare 挑战")
 	}
 	return body, nil
-}
-
-// isChallenge reports whether the body is a Cloudflare interstitial rather than
-// the RSS feed, so a challenge is not misreported as a parse failure.
-func isChallenge(body []byte) bool {
-	return bytes.Contains(body, []byte("Just a moment...")) ||
-		bytes.Contains(body, []byte("Attention Required! | Cloudflare")) ||
-		bytes.Contains(body, []byte("challenge-platform"))
 }
 
 // Close releases the transport and stops proxy watching. Safe to call twice.
