@@ -5,7 +5,8 @@
   "version": "0.4.19",
   "identifier": "com.ppxb.miyabi.desktop",
   "build": {
-    "frontendDist": "stub"
+    "frontendDist": "stub",
+    "beforeBuildCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-desktop-server.ps1"
   },
   "app": {
     "windows": [],

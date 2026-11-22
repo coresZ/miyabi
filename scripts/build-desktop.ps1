@@ -4,21 +4,18 @@
 $ErrorActionPreference = "Stop"
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot ".."))
 
-# 1. Frontend — embedded into the Go binary via //go:embed web/dist.
-pnpm --dir web install --frozen-lockfile
-pnpm --dir web build
+# 1. Frontend + Go server — the server embeds web/dist, so it is built (and
+#    checked for the embedded frontend) by one helper shared with CI and the
+#    Tauri beforeBuildCommand hook.
+& (Join-Path $PSScriptRoot 'build-desktop-server.ps1') -RebuildFrontend
 
-# 2. Go server — bundled as a resource so the installer nests it under runtime/.
-New-Item -ItemType Directory -Force -Path "src-tauri/runtime" | Out-Null
-go build -ldflags "-s -w -H=windowsgui" -o "src-tauri/runtime/miyabi-server.exe" ./cmd
-
-# 3. Package (NSIS installer), then a second shell build with the portable
+# 2. Package (NSIS installer), then a second shell build with the portable
 #    identity so an installed copy and a portable folder can run side by side.
 if (-not (Test-Path "src-tauri/tauri.conf.json")) { throw "src-tauri/tauri.conf.json missing" }
 pnpm dlx @tauri-apps/cli@^2 build --config src-tauri/tauri.conf.json --ci
 pnpm dlx @tauri-apps/cli@^2 build --no-bundle --config src-tauri/tauri.portable.conf.json --ci
 
-# 4. Assemble installer + portable zip (same layout as CI).
+# 3. Assemble installer + portable zip (same layout as CI).
 # `mainBinaryName = miyabi`: tauri-cli renames the shell binary, so both the
 # installer and the portable zip ship miyabi.exe.
 $shell = "src-tauri/target/release/miyabi.exe"

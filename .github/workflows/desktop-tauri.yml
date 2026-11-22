@@ -109,11 +109,13 @@ jobs:
           Write-Host "Tauri project root: $(Resolve-Path src-tauri)"
 
       - name: Build Go server
+        shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path src-tauri/runtime | Out-Null
+          $ErrorActionPreference = 'Stop'
           # Bundled as a resource, so the installer nests it under runtime/
-          # instead of dropping a second exe next to miyabi.exe.
-          go build -trimpath -ldflags "-s -w -H=windowsgui" -o "src-tauri/runtime/miyabi-server.exe" ./cmd
+          # instead of dropping a second exe next to miyabi.exe. The helper also
+          # rejects a -tags dev build, which would ship without a frontend.
+          & ./scripts/build-desktop-server.ps1
 
       - name: Build desktop app (installer)
         run: pnpm dlx @tauri-apps/cli@^2 build --config src-tauri/tauri.conf.json --ci
