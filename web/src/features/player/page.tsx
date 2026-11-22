@@ -186,8 +186,8 @@ export function PlayerPage() {
     pendingPlayRef.current = null
   }, [])
 
-  // The app shell is not rendered on this route (see `components/app-shell`),
-  // so the page owns the whole window; the toolbar carries the way back.
+  // The desktop shell gives this route the whole window and drops its own
+  // navigation, so the page fills whatever area it is given.
 
   // Escape closes the catalog first, then exits immersive. Fullscreen is left
   // to WebView2/the browser; the page never intercepts it.
@@ -561,14 +561,13 @@ export function PlayerPage() {
   return (
     <main
       className={cn(
-        'mx-auto flex h-dvh w-full flex-col overflow-hidden bg-background',
-        desktopShell ? 'max-w-none gap-0 p-0' : 'max-w-[84rem] gap-5 px-4 pt-7',
-        // The shell (and its floating nav) is hidden here, so nothing needs a
-        // reserved lane under the player; the browser just keeps a small inset.
-        desktopShell ? 'pb-0' : 'pb-6',
+        'flex w-full flex-col overflow-hidden bg-background',
+        // The desktop shell hands the page the whole window; a browser keeps the
+        // shell, so the page fills the content area the sidebar leaves over.
+        desktopShell ? 'h-dvh gap-0' : 'min-h-0 flex-1 gap-5',
         // Immersive only shows the video: pin the page to the window edges so
         // no page padding or max-width leaves a gap around the player.
-        immersive && 'fixed inset-0 z-40 h-auto w-auto max-w-none gap-0 bg-black p-0'
+        immersive && 'fixed inset-0 z-40 h-auto w-auto gap-0 bg-black p-0'
       )}
     >
       {immersive ? (
@@ -807,8 +806,8 @@ export function PlayerPage() {
               </span>
             )}
             <div className="ml-auto flex flex-none gap-2">
-              {/* The app shell is hidden on this page, so both the desktop and
-                  the browser need their own way back to the library. */}
+              {/* The desktop shell hides its navigation on this route, so the
+                  toolbar carries the way back; a browser keeps both. */}
               <Link
                 to="/"
                 aria-label="返回媒体库"

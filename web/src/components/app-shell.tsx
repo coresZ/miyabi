@@ -9,6 +9,8 @@ import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Toaster } from '@/components/ui/sonner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from 'cn'
+import { isDesktopShell } from '@/features/settings/desktop-bridge'
 import { TaskEventsProvider } from '@/features/tasks/task-events'
 import { TaskNotifications } from '@/features/tasks/task-notifications'
 import { useTheme } from '@/stores/theme'
@@ -17,10 +19,11 @@ const THEME_CYCLE = ['light', 'dark', 'system'] as const
 
 export function AppShell({ children }: PropsWithChildren) {
   const [searchOpen, setSearchOpen] = useState(false)
-  // The player owns the whole window: on that route the sidebar, the header and
-  // the content padding would squeeze its h-dvh layout. Deciding by route (not
-  // by state) keeps the tree shape stable, so pages never remount mid-life.
-  const bare = useLocation({ select: location => location.pathname === '/play' })
+  // The player takes the whole window, but only in the desktop shell: a browser
+  // keeps the sidebar and the header around it. Deciding by route (not by state)
+  // keeps the tree shape stable, so pages never remount mid-life.
+  const playerRoute = useLocation({ select: location => location.pathname === '/play' })
+  const bare = playerRoute && isDesktopShell()
 
   return (
     <TaskEventsProvider>
@@ -29,7 +32,7 @@ export function AppShell({ children }: PropsWithChildren) {
       ) : (
         <>
           <SidebarProvider
-            className="flex-row"
+            className={cn('flex-row', playerRoute && 'h-svh overflow-hidden')}
             style={{ '--sidebar-width': '272px' } as CSSProperties}
           >
             <div className="flex min-h-0 w-full flex-1">
