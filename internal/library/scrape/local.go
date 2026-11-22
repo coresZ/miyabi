@@ -77,12 +77,11 @@ func (service *Service) publishLocal(ctx context.Context, job tasks.Job, input P
 		if record.ManualCode != input.ManualCode {
 			return domain.E(domain.KindConflict, "影片番号已纠正，请使用新的刮削任务", nil)
 		}
+		// The movie table has no JavDB id column; the catalogue id is only kept
+		// in the stored document, so there is nothing extra to write here.
 		update := tx.Movie.UpdateOneID(input.MovieID).SetCode(input.Code).SetMetadata(&input.Document).
 			SetCover(artwork.Thumbnail).SetPoster(artwork.Poster).SetFanarts([]string{artwork.Fanart}).
 			SetScrapeStatus(movie.ScrapeStatusDone).SetMetadataSnapshot(snapshot)
-		if id := input.Document.JavDBID(); id != "" {
-			update.SetJavdbID(id)
-		}
 		if err := update.Exec(ctx); err != nil {
 			return err
 		}

@@ -12,11 +12,24 @@ import (
 	"github.com/ppxb/miyabi/internal/tasks"
 )
 
-// EnqueueLocalScrapes queues metadata jobs for indexed local movies that still
-// need scraping. A local import without an NFO only registers the code, so the
-// scrape service fills the central database instead of writing sidecars beside
-// the media files.
-func EnqueueLocalScrapes(ctx context.Context, db *ent.Client, taskID int, source domain.LibrarySource) (int, error) {
+// EnqueueLocalScrapes handles the metadata work a local scan leaves behind. A
+// metadata-only scan keeps what the media root already provides, so the movies
+// it discovered without local metadata are settled instead of queued; a full
+// scan queues them, because a local import without an NFO only registers the
+// code and the scrape service must fill the central database instead of writing
+// sidecars beside the media files.
+func EnqueueLocalScrapes(ctx context.Context, db *ent.Client, taskID int, source domain.LibrarySource, pendingIDs []int, metadataOnly bool) (int, error) {
+	if metadataOnly {
+		if len(pendingIDs) == 0 {
+			return 0, nil
+		}
+		if _, err := db.Movie.Update().
+			Where(movie.IDIn(pendingIDs...), movie.ScrapeStatusEQ(movie.ScrapeStatusPending)).
+			SetScrapeStatus(movie.ScrapeStatusDone).Save(ctx); err != nil {
+			return 0, fmt.Errorf("settle local movies without metadata: %w", err)
+		}
+		return 0, nil
+	}
 	records, err := db.Movie.Query().Where(
 		movie.HasFilesWith(scrape.FileScope(source)),
 		movie.ScrapeStatusNEQ(movie.ScrapeStatusDone),

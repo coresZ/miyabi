@@ -8,7 +8,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
 	"github.com/ppxb/miyabi/internal/codeid"
-	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/file"
@@ -117,7 +116,7 @@ func (s *Scanner) RescrapeMovie(ctx context.Context, id int, code string) (*ent.
 			}
 			body, err = tasks.EncodePayload(scrape.MetadataPayload{
 				Rebuild: true, Source: source, ScanTaskID: parent.ID, MovieID: id,
-				Code: record.Code, JavDBID: domain.ValueOrZero(record.JavdbID), ManualCode: record.ManualCode,
+				Code: record.Code, ManualCode: record.ManualCode,
 			})
 			if err != nil {
 				return err
@@ -134,17 +133,24 @@ func (s *Scanner) RescrapeMovie(ctx context.Context, id int, code string) (*ent.
 }
 
 // rescrapeTarget resolves the media source that owns a movie and the lock that
-// keeps it from changing. A mounted 115 source wins when it indexes the movie;
-// otherwise the local media root recorded on its files is used.
+// keeps it from changing. A mounted 115 source wins when it holds the movie's
+// files; otherwise the local media root recorded on them is used.
 func (s *Scanner) rescrapeTarget(ctx context.Context, id int) (domain.LibrarySource, sourceLock, error) {
 	if s.driveSvc != nil {
-		if sess, err := s.driveSvc.Open(ctx); err == nil {
-			exists, queryErr := s.db.Movie.Query().Where(movie.IDEQ(id),
-				movie.HasFilesWith(database.LibraryFiles(sess.Source()))).Exist(ctx)
-			if queryErr != nil {
-				return domain.LibrarySource{}, nil, queryErr
+		accountID, err := s.remoteMovieAccount(ctx, id)
+		if err != nil {
+			return domain.LibrarySource{}, nil, err
+		}
+		if accountID != "" {
+			source, ok, err := s.driveSvc.Mount(ctx, accountID)
+			if err != nil {
+				return domain.LibrarySource{}, nil, err
 			}
-			if exists {
+			if ok {
+				sess, err := s.driveSvc.OpenSource(ctx, source)
+				if err != nil {
+					return domain.LibrarySource{}, nil, err
+				}
 				return sess.Source(), sess.WithSource, nil
 			}
 		}
@@ -157,6 +163,20 @@ func (s *Scanner) rescrapeTarget(ctx context.Context, id int) (domain.LibrarySou
 		return source, func(_ context.Context, fn func() error) error { return fn() }, nil
 	}
 	return domain.LibrarySource{}, nil, domain.E(domain.KindNotFound, "媒体库中未找到该影片的媒体文件", nil)
+}
+
+// remoteMovieAccount returns the 115 account that indexes a movie, if any.
+func (s *Scanner) remoteMovieAccount(ctx context.Context, id int) (string, error) {
+	record, err := s.db.File.Query().
+		Where(file.MovieIDEQ(id), file.AccountIDNEQ(domain.LocalAccountID)).
+		Select(file.FieldAccountID).First(ctx)
+	if ent.IsNotFound(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return record.AccountID, nil
 }
 
 // localMovieSource builds the local source from the root recorded on a movie's

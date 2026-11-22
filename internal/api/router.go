@@ -23,6 +23,7 @@ type Dependencies struct {
 	Offline        OfflineManager
 	Monitor        SubscriptionManager
 	Library        LibraryManager
+	Play           PlayManager
 	LocalPlay      LocalPlayer
 	Playables      PlayablesManager
 	LocalSources   LocalSourceManager

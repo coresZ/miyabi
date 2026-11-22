@@ -76,6 +76,34 @@ type Page struct {
 	HasMore bool                  `json:"has_more"`
 }
 
+// BrowseFilter controls a filtered, paginated library browse.
+type BrowseFilter struct {
+	Query       string
+	Sort        string // "recent" (default), "rating", "release"
+	Source      string // "" (all), "115", "local"
+	HighRated   bool
+	TagNames    []string
+	ActorNames  []string
+	MakerNames  []string
+	SeriesNames []string
+	Page        int
+	Limit       int
+}
+
+// FilterOption is one selectable value for a browse filter.
+type FilterOption struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// FilterOptions lists the values available for browsing filters.
+type FilterOptions struct {
+	Tags   []FilterOption `json:"tags"`
+	Actors []FilterOption `json:"actors"`
+	Makers []FilterOption `json:"makers"`
+	Series []FilterOption `json:"series"`
+}
+
 // LocalSources resolves the configured local media directories.
 type LocalSources interface {
 	Find(ctx context.Context, id string) (localsource.Source, bool, error)
@@ -87,11 +115,13 @@ type Service struct {
 	tasks        *tasks.Service
 	scanner      *scan.Scanner
 	localScanner *scan.LocalScanner
-	localSources LocalSources
-	exportMgr    *export.Manager
-	scanLock     syncx.ContextLock
-	sources      func(context.Context) ([]domain.LibrarySource, error)
-	localSources func(context.Context) ([]LocalScanTarget, error)
+	// localSourceStore serves the local directories the user configured; the
+	// localSources callback below lists them for scan-all style entry points.
+	localSourceStore LocalSources
+	exportMgr        *export.Manager
+	scanLock         syncx.ContextLock
+	sources          func(context.Context) ([]domain.LibrarySource, error)
+	localSources     func(context.Context) ([]LocalScanTarget, error)
 }
 
 // LocalScanTarget is an enabled local source directory and its metadata mode.
@@ -102,22 +132,27 @@ type LocalScanTarget struct {
 
 type Options struct {
 	ExportManager *export.Manager
-	LocalSources  LocalSources
+	// Sources supplies the enabled cloud sources to aggregate in the library.
+	Sources func(context.Context) ([]domain.LibrarySource, error)
+	// LocalSources supplies the enabled local source directories.
+	LocalSources func(context.Context) ([]LocalScanTarget, error)
+	// LocalSourceStore serves one configured local directory by id.
+	LocalSourceStore LocalSources
 	// Pacing defaults to scan.DefaultPacing; tests can provide a no-op.
 	Pacing func(context.Context) error
 }
 
 func New(database *ent.Client, d *drive.Drive, tasks *tasks.Service, images *mediaimage.Cache, options Options) *Service {
 	svc := &Service{
-		database:     database,
-		drive:        d,
-		tasks:        tasks,
-		scanner:      scan.New(d, database, images, tasks, options.ExportManager, options.Pacing),
-		localScanner: scan.NewLocalScanner(database, images),
-		localSources: options.LocalSources,
-		exportMgr:    options.ExportManager,
-		sources:      options.Sources,
-		localSources: options.LocalSources,
+		database:         database,
+		drive:            d,
+		tasks:            tasks,
+		scanner:          scan.New(d, database, images, tasks, options.ExportManager, options.Pacing),
+		localScanner:     scan.NewLocalScanner(database, images),
+		localSourceStore: options.LocalSourceStore,
+		exportMgr:        options.ExportManager,
+		sources:          options.Sources,
+		localSources:     options.LocalSources,
 	}
 	if d != nil && tasks != nil {
 		d.SetMountListener(func(ctx context.Context, event drive.MountEvent) error {

@@ -24,7 +24,7 @@ func localSourceFixture(t *testing.T) (*Service, *tasks.Service, *localsource.Ma
 	registry := tasks.NewRegistry()
 	queue := tasks.NewService(store.Client, registry)
 	sources := localsource.NewManager(store.Client)
-	lib := New(store.Client, nil, queue, nil, Options{LocalSources: sources})
+	lib := New(store.Client, nil, queue, nil, Options{LocalSourceStore: sources})
 	registry.Register(tasks.NewHandler(tasks.KindScan, lib.Scan, lib.Finished))
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "ABC-123.strm"), []byte("https://example.com/video"), 0o600); err != nil {

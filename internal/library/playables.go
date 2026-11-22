@@ -67,7 +67,7 @@ func (s *Service) Playables(ctx context.Context, scope, directory, query string,
 			scopePred = file.And(scopePred, file.RootIDEQ(root))
 		}
 	case PlayableRemote:
-		source := s.Source()
+		source := s.Source(ctx)
 		if source == nil {
 			return result, nil
 		}
@@ -136,8 +136,8 @@ func (s *Service) Playables(ctx context.Context, scope, directory, query string,
 // localPlayRoot resolves a configured local source id to its root path, and
 // otherwise treats the value as a raw root path.
 func (s *Service) localPlayRoot(ctx context.Context, directory string) (string, error) {
-	if s.localSources != nil {
-		source, found, err := s.localSources.Find(ctx, directory)
+	if s.localSourceStore != nil {
+		source, found, err := s.localSourceStore.Find(ctx, directory)
 		if err != nil {
 			return "", err
 		}

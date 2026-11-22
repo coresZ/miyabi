@@ -7,24 +7,11 @@ import (
 	"path/filepath"
 
 	"github.com/ppxb/miyabi/internal/domain"
-	"github.com/ppxb/miyabi/internal/ent/movie"
-	"github.com/ppxb/miyabi/internal/ent/task"
 	"github.com/ppxb/miyabi/internal/library/scan"
 	"github.com/ppxb/miyabi/internal/localsource"
 )
 
 const embyLocalDirectoryName = "Emby 本地目录"
-
-// localMetadataJob mirrors scrape.MetadataPayload so the library package need
-// not import the scrape package just to queue metadata work.
-type localMetadataJob struct {
-	Rebuild    bool                 `json:"rebuild,omitempty"`
-	Source     domain.LibrarySource `json:"source"`
-	ScanTaskID int                  `json:"scan_task_id"`
-	MovieID    int                  `json:"movie_id"`
-	Code       string               `json:"code"`
-	ManualCode string               `json:"manual_code,omitempty"`
-}
 
 // startLocalScan queues an import of the configured Emby directory.
 func (s *Service) startLocalScan(ctx context.Context) (domain.TaskInfo, error) {
@@ -40,10 +27,10 @@ func (s *Service) startLocalScan(ctx context.Context) (domain.TaskInfo, error) {
 
 // StartLocalScan queues a scan of one configured local media directory.
 func (s *Service) StartLocalScan(ctx context.Context, id string) (domain.TaskInfo, error) {
-	if s.localSources == nil {
+	if s.localSourceStore == nil {
 		return domain.TaskInfo{}, domain.E(domain.KindNotFound, "本地媒体目录不存在", nil)
 	}
-	source, found, err := s.localSources.Find(ctx, id)
+	source, found, err := s.localSourceStore.Find(ctx, id)
 	if err != nil {
 		return domain.TaskInfo{}, err
 	}
@@ -122,10 +109,10 @@ func (s *Service) resolveLocalDirectory(ctx context.Context, queued domain.Libra
 		return root, nil
 	}
 	stale := domain.E(domain.KindConflict, "本地媒体目录已变更，请重新扫描", nil)
-	if s.localSources == nil {
+	if s.localSourceStore == nil {
 		return "", stale
 	}
-	source, found, err := s.localSources.Find(ctx, queued.Directory.ID)
+	source, found, err := s.localSourceStore.Find(ctx, queued.Directory.ID)
 	if err != nil {
 		return "", err
 	}
@@ -156,8 +143,9 @@ func (s *Service) scanLocal(ctx context.Context, id int, payload domain.ScanPayl
 	if err != nil {
 		return fmt.Errorf("scan local directory %s: %w", root, err)
 	}
-	// Local files without an NFO still need central metadata scraping.
-	queued, err := scan.EnqueueLocalScrapes(ctx, s.database, id, payload.Source)
+	// Local files without an NFO still need central metadata scraping; a
+	// metadata-only scan settles them instead.
+	queued, err := scan.EnqueueLocalScrapes(ctx, s.database, id, payload.Source, result.PendingMovieIDs, payload.MetadataOnly)
 	if err != nil {
 		return err
 	}
@@ -171,52 +159,4 @@ func (s *Service) scanLocal(ctx context.Context, id int, payload domain.ScanPayl
 	payload.Scan.Movies = result.MoviesAdded
 	// Metadata progress folds the queued scrape children into this scan task.
 	return scan.ReportScan(ctx, s.database.Task, id, payload, s.tasks)
-}
-
-// applyLocalMetadataMode either settles local-only movies or queues metadata
-// completion for the movies a local scan discovered without local metadata.
-func (s *Service) applyLocalMetadataMode(ctx context.Context, scanTaskID int, payload domain.ScanPayload, movieIDs []int) error {
-	if len(movieIDs) == 0 {
-		return nil
-	}
-	if payload.MetadataOnly {
-		_, err := s.database.Movie.Update().
-			Where(movie.IDIn(movieIDs...), movie.ScrapeStatusEQ(movie.ScrapeStatusPending)).
-			SetScrapeStatus(movie.ScrapeStatusDone).Save(ctx)
-		return err
-	}
-	records, err := s.database.Movie.Query().
-		Where(movie.IDIn(movieIDs...)).
-		Select(movie.FieldID, movie.FieldCode, movie.FieldManualCode).
-		All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, record := range records {
-		input := localMetadataJob{
-			Source: payload.Source, ScanTaskID: scanTaskID, MovieID: record.ID,
-			Code: record.Code, ManualCode: record.ManualCode,
-		}
-		encoded, err := tasks.EncodePayload(input)
-		if err != nil {
-			return err
-		}
-		resourceKey := fmt.Sprintf("movie:%d", record.ID)
-		exists, err := s.database.Task.Query().Where(
-			task.TypeEQ(tasks.KindScrape.String()), task.ResourceKeyEQ(resourceKey),
-			task.StatusIn(task.StatusQueued, task.StatusRunning),
-		).Exist(ctx)
-		if err != nil {
-			return err
-		}
-		if exists {
-			continue
-		}
-		if _, err := s.database.Task.Create().SetType(tasks.KindScrape.String()).
-			SetResourceKey(resourceKey).SetPayload(encoded).Save(ctx); err != nil {
-			return err
-		}
-	}
-	s.tasks.WakePool()
-	return nil
 }

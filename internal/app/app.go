@@ -106,11 +106,36 @@ func New(cfg *config.Config, logger *slog.Logger) (_ *App, err error) {
 		return nil, fmt.Errorf("initialize images cache: %w", err)
 	}
 
+	playSvc := playback.New(store.Client, driveSvc, 8*time.Hour)
 	exportMgr := export.NewManager(export.Config{
 		EmbyDir: cfg.EmbyDir, PublicURL: cfg.PublicURL, STRMToken: cfg.STRMToken,
 	})
 	localSources := localsource.NewManager(store.Client)
-	libSvc := library.New(store.Client, driveSvc, taskSvc, images, library.Options{ExportManager: exportMgr, LocalSources: localSources})
+	libSvc := library.New(store.Client, driveSvc, taskSvc, images, library.Options{
+		ExportManager: exportMgr,
+		Sources:       sourceSvc.LibrarySources,
+		LocalSources: func(ctx context.Context) ([]library.LocalScanTarget, error) {
+			targets, err := sourceSvc.LocalTargets(ctx)
+			if err != nil {
+				return nil, err
+			}
+			result := make([]library.LocalScanTarget, 0, len(targets))
+			for _, target := range targets {
+				result = append(result, library.LocalScanTarget{Path: target.Path, MetadataOnly: target.MetadataOnly})
+			}
+			return result, nil
+		},
+		LocalSourceStore: localSources,
+	})
+	sourceSvc.SetMountProvider(driveSvc)
+	sourceSvc.SetScanHandler(func(ctx context.Context, src domain.LibrarySource) error {
+		_, err := libSvc.EnqueueSyncMode(ctx, src, false)
+		return err
+	})
+	sourceSvc.SetLocalScanHandler(func(ctx context.Context, root string, metadataOnly bool) error {
+		_, err := libSvc.StartLocalSourceScanModeIncremental(ctx, root, metadataOnly)
+		return err
+	})
 	javbusClient, err := javbus.New(javbus.Options{Proxy: networkSvc.ProxyManager()})
 	if err != nil {
 		return nil, err
@@ -259,6 +284,7 @@ func New(cfg *config.Config, logger *slog.Logger) (_ *App, err error) {
 		Offline:        offlineSvc,
 		Monitor:        monitorSvc,
 		Library:        libSvc,
+		Play:           playSvc,
 		LocalPlay:      libSvc,
 		Playables:      libSvc,
 		LocalSources:   localSources,

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/ppxb/miyabi/internal/domain"
-	subtitlemeta "github.com/ppxb/miyabi/internal/domain/subtitle"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/movie"
 	"github.com/ppxb/miyabi/internal/nfo"

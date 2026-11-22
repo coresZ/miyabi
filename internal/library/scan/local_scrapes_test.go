@@ -31,7 +31,7 @@ func TestEnqueueLocalScrapesQueuesPendingLocalMovies(t *testing.T) {
 	store.Client.File.Create().SetFileID("local-1").SetName("IPX-123.mp4").SetSize(1 << 30).
 		SetAccountID(domain.LocalAccountID).SetRootID(domain.LocalAccountID).SetPath("IPX-123.mp4").SetMovieID(record.ID).SaveX(ctx)
 
-	queued, err := EnqueueLocalScrapes(ctx, store.Client, 7, source)
+	queued, err := EnqueueLocalScrapes(ctx, store.Client, 7, source, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestEnqueueLocalScrapesSkipsDoneActiveAndRemote(t *testing.T) {
 	store.Client.File.Create().SetFileID("local-new").SetName("NEW-1.mp4").SetSize(1).
 		SetAccountID(domain.LocalAccountID).SetRootID(domain.LocalAccountID).SetPath("NEW-1.mp4").SetMovieID(want.ID).SaveX(ctx)
 
-	queued, err := EnqueueLocalScrapes(ctx, store.Client, 9, source)
+	queued, err := EnqueueLocalScrapes(ctx, store.Client, 9, source, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,5 +90,38 @@ func TestEnqueueLocalScrapesSkipsDoneActiveAndRemote(t *testing.T) {
 		task.ResourceKeyEQ(fmt.Sprintf("movie:%d", want.ID))).OnlyX(ctx)
 	if created.Status != task.StatusQueued {
 		t.Fatalf("queued task status=%q", created.Status)
+	}
+}
+
+func TestEnqueueLocalScrapesSettlesMetadataOnlyMovies(t *testing.T) {
+	store := localScanStore(t)
+	ctx := t.Context()
+	source := domain.LibrarySource{AccountID: domain.LocalAccountID,
+		Directory: domain.LibraryDirectory{ID: "src-1", Name: "本地", Path: `D:\media`}}
+
+	settle := store.Client.Movie.Create().SetCode("KEEP-1").SaveX(ctx)
+	store.Client.File.Create().SetFileID("local-keep").SetName("KEEP-1.mp4").SetSize(1).
+		SetAccountID(domain.LocalAccountID).SetRootID(domain.LocalAccountID).SetPath("KEEP-1.mp4").SetMovieID(settle.ID).SaveX(ctx)
+
+	untouched := store.Client.Movie.Create().SetCode("LATER-1").SaveX(ctx)
+	store.Client.File.Create().SetFileID("local-later").SetName("LATER-1.mp4").SetSize(1).
+		SetAccountID(domain.LocalAccountID).SetRootID(domain.LocalAccountID).SetPath("LATER-1.mp4").SetMovieID(untouched.ID).SaveX(ctx)
+
+	queued, err := EnqueueLocalScrapes(ctx, store.Client, 3, source, []int{settle.ID}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued != 0 {
+		t.Fatalf("queued=%d, want 0", queued)
+	}
+	if count := store.Client.Task.Query().CountX(ctx); count != 0 {
+		t.Fatalf("scrape tasks=%d, want 0", count)
+	}
+	if got := store.Client.Movie.GetX(ctx, settle.ID).ScrapeStatus; got != movie.ScrapeStatusDone {
+		t.Fatalf("settled movie status=%v, want done", got)
+	}
+	// Only the movies this scan discovered are settled.
+	if got := store.Client.Movie.GetX(ctx, untouched.ID).ScrapeStatus; got != movie.ScrapeStatusPending {
+		t.Fatalf("movie outside the scan status=%v, want pending", got)
 	}
 }
