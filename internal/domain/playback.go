@@ -3,7 +3,6 @@ package domain
 import (
 	"database/sql/driver"
 	"encoding/json"
-	"fmt"
 	"time"
 )
 
@@ -21,31 +20,18 @@ type LibraryFile struct {
 type PlaybackSettings struct {
 	Rate    float64 `json:"rate,omitempty"`
 	Quality string  `json:"quality,omitempty"`
+	// Subtitle is the chosen subtitle track id, or "off".
+	Subtitle string `json:"subtitle,omitempty"`
+	// SubtitleOffset shifts subtitle cues in seconds; zero is a real choice,
+	// so a nil pointer means "not mentioned".
+	SubtitleOffset *float64 `json:"subtitle_offset,omitempty"`
 }
 
-// Value lets ent store PlaybackSettings in a JSON column via database/sql.
+// Value lets an upsert pass PlaybackSettings to the SQL driver as JSON. Reads
+// go through ent's JSON field decoding; implementing sql.Scanner here would make
+// the ent generator emit broken scan code for the field.
 func (s PlaybackSettings) Value() (driver.Value, error) {
 	return json.Marshal(s)
-}
-
-// Scan lets ent read a JSON column back into PlaybackSettings.
-func (s *PlaybackSettings) Scan(value any) error {
-	if value == nil {
-		return nil
-	}
-	var data []byte
-	switch v := value.(type) {
-	case []byte:
-		data = v
-	case string:
-		data = []byte(v)
-	default:
-		return fmt.Errorf("unsupported type %T for PlaybackSettings", value)
-	}
-	if len(data) == 0 {
-		return nil
-	}
-	return json.Unmarshal(data, s)
 }
 
 // WatchResume is the last saved playback position of a movie together with its

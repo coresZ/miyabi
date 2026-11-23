@@ -26,7 +26,7 @@
 - [x] 🟠 `web/src/features/sources/sources-section.tsx:166`：保存失败的 `InlineError` 渲染在模态框之下，用户不可见。改法：`onError` 用 toast 或把错误传入 `SourceDialog`。（已修复：`persist` 增加 `onError` toast，移除被遮住的 `InlineError`）
 - [x] 🟠 `web/src/features/library/player-dialog.tsx:156-160`：`try { void seek() } catch {}` 捕获不到异步 reject。改法：`seek(...).catch(() => {})`。（已修复：改为 `void seek(...).catch(() => {})`）
 - [x] 🟠 `web/src/features/library/player-dialog.tsx:53-55,87,118`：`sources` 为空时永远显示"加载中"；失败无重试。改法：区分 pending / error / 无源，失败用 `InlineError onRetry`。（已核实：后端成功响应必带 ≥1 条 source，"成功+空源"分支不可达；已修复真实问题——播放失败改用 `InlineError onRetry`，右侧信息区失败态用 `InlineError`、加载态改骨架屏）
-- [ ] 🟠 `web/src/features/sources/sources-section.tsx:484-488,210-214`：PikPak 提示"在卡片中完成登录"，但卡片无此入口。改法：移除 pikpak 选项或改文案（暂不处理）。
+- [x] 🟠 `web/src/features/sources/sources-section.tsx:484-488,210-214`：PikPak 提示"在卡片中完成登录"，但卡片无此入口。改法：移除 pikpak 选项或改文案（暂不处理）。（已决定保留但禁用：PikPak 无任何后端实现；类型下拉中显示「PikPak（即将支持）」且不可选，后端 `validate` 拒绝 PikPak，删除仅对 PikPak 生效的提示文案；新增校验用例）
 - [x] 🟠 `web/src/features/sources/sources-section.tsx:505-514`：删除存储源无二次确认（data-section 清理缓存有确认）。（已修复：删除前弹出二次确认对话框）
 - [x] 🟠 `web/src/components/app-navigation.tsx:36,57`：`onNavigate` 无人传入，移动端点击导航后侧边栏不关闭。改法：内部 `useSidebar().setOpenMobile(false)`。（已修复：`AppNavigation` 内部 `setOpenMobile(false)` 并移除死 prop；侧栏 logo 链接同样关闭）
 - [x] 🟠 `internal/drive/events.go:18-19` vs `account_ops.go:74-78`：注释承诺"commit 锁下运行、失败回滚"，代码未实现。改法：实现或修正注释。（已修正注释：明确回调不在 commit 锁下、失败不会回滚已持久化的 mount）
@@ -45,7 +45,7 @@
 
 ### 后端
 - [x] 🔴 ✅ `internal/actors/service.go:642-692`：每个头像请求全表扫描 Actor 并逐行 sha1（头像已改为 eager 加载，放大开销）。改法：profile 存 key 列或用 profile ID，按索引单行查询。（已修复：`Actor` 新增索引列 `name_key`（归一化名的 sha1），`scrape/mapping.go` 写入，`findNames` 改为按 `name_key` 走索引查询；并给 `actors.actor_profile` 加索引，存在 profile 时补合并别名仍走索引。查询计划由 `SCAN actors` 变为 `SEARCH ... USING INDEX actor_name_key`/`actor_actor_profile`）
-- [ ] 🔴 `internal/actors/service.go:219-281,351-362`：`Catalog/Detail` 全量加载演员与影片边后内存分页；`:279` 排序比较器内反复调用 `display()`（每次复制+排序）。改法：以 ActorProfile 为主表 SQL 分页，`display()` 预计算。（部分改善：`display()/norm` 已改为每组只算一次；`Detail` 改走 `name_key` 索引只加载单组，不再全量构建目录。Catalog 的 SQL 分页未做——分组键是「profile_id 或归一化名」的派生值、非可索引列，且库中 3/91 有 profile，需先物化分组表，另行处理）
+- [x] 🔴 `internal/actors/service.go:219-281,351-362`：`Catalog/Detail` 全量加载演员与影片边后内存分页；`:279` 排序比较器内反复调用 `display()`（每次复制+排序）。改法：以 ActorProfile 为主表 SQL 分页，`display()` 预计算。（部分改善：`display()/norm` 已改为每组只算一次；`Detail` 改走 `name_key` 索引只加载单组，不再全量构建目录。Catalog 的 SQL 分页未做——分组键是「profile_id 或归一化名」的派生值、非可索引列，且库中 3/91 有 profile，需先物化分组表，另行处理）（已随 D3 解决：目录改为以 `ActorProfile` 为主表在 SQL 中分页，内存分组与 `display()` 已删除）
 - [x] 🔴 ✅ `internal/actors/service.go:936-943`：`EnsureProfiles` 循环逐行写、无事务、错误全吞。改法：`WithTx` + `Update().Where(IDIn)` + `CreateBulk`。（已重写为增量对账：只处理「尚无 profile 且能匹配到已有 profile」的演员，补挂 profile + 缺失别名；`s.db.Tx` 事务内批量 `Update().Where(IDIn)`，不再逐行写/全删重建/新建 profile。新增 `EnsureMovieProfiles(ctx, movieID)` 在每次影片刮削入库后调用（`scrape.go` 紧随 `MergeMovieCrossLanguage`），避免新抓到的同名演员在列表里裂成两条。`EnsureProfiles` 保留为全量增量兜底，仅处理未挂载演员）
 - [x] 🟠 ✅ `internal/actors/service.go:377-382`：GET `Detail` 中逐个 UPDATE 写库。（已修复：改为单条批量 `Actor.Update().Where(IDIn(ids...), 仅未挂载或挂到别的 profile).SetProfileID(pid)`，已挂到本 profile 的演员跳过，重复打开详情页 0 写；错误改为返回不再 `_ =` 吞掉）
 - [x] 🟠 ✅ `internal/actors/service.go:504-534`：`mergeActorPair` 多步写无事务、错误全吞；`fillProfileFrom:585`、`applyProfile:847` 同。（已修复：`mergeActorPair` 整体放进 `s.db.Tx`，其中 `ensureProfileTx`/`fillProfileFrom`/`copyProfileImages` 全部改为接收 tx 并返回 error，任一失败回滚；`applyProfile` 也改为「先取 `persistMu`（统一锁序 persistMu→tx）再开事务」，资料更新 + 图片写入同事务、返回 error；`appendProfileImages` 改 tx 版、错误不再 `_ =`。`enrichProfile` 现在会把 `applyProfile` 的错误向上返回以便下次重试）
@@ -90,12 +90,12 @@
 - [x] `web/src/api/pan.ts:67-68` `fileLists`、`panKeys.files`（已删 `fileLists`；`panKeys.files` 经核实被 `web/tests/query-errors.test.ts:90` 使用，保留）
 - [x] `web/src/features/tasks/task-notification-diff.ts:1-14` 重复的 `isScanTask/isTaskActive/isOfflineTaskActive`（已改为复用 `@/api/tasks`、`@/api/offline`，仅保留本地 `isBatchTask`）
 - [x] `web/src/features/tasks/task-toast.tsx:79-81` 不可达分支（已简化：active 分支恒有 `movie_id`，删除不可达的 `正在${action}媒体库` 分支）
-- [ ] `web/src/features/tasks/task-progress-state.ts:6-13` 从未显示的 `stages[].label`（复核成立；涉及 `TaskProgress` 取 label 兜底的重构，待办）
+- [x] `web/src/features/tasks/task-progress-state.ts:6-13` 从未显示的 `stages[].label`（复核成立；涉及 `TaskProgress` 取 label 兜底的重构，待办）（已修复：唯一调用方总会传入自身文案，6 个阶段 label 从不显示；`stages` 改为仅保留阶段顺序）
 - [x] `internal/offline/recovery.go:83-101` `Service.Recover`（已删除；`recoverSource` 仍由 `sync.go:66,132` 使用，保留）
 - [x] `internal/offline/service.go:18-20` 接口未用方法 → `catalogue.HasMagnet`（`magnets.go:67`）、`MovieCode`（`service.go:225`）；`monitor.OfflineAdder.Add` → `offline.Service.Add`（已从接口删除 `HasMagnet`/`MovieCode` 与 `OfflineAdder.Add`；实现与测试保留）
 - [x] `internal/catalogue/types.go:81` `LocalState.Source()`（已从接口删除；包内 0 调用）
 - [x] `internal/gfriends/client.go:31` `rawContentBase`、`:410-419` `FetchImage`；`:234-245` 改用 `escapeContentRel`（已删 `rawContentBase` 与 `Client.FetchImage`；`escapeContentRel` 已在 `FetchRel` 使用）
-- [ ] `internal/metadata/service.go:244` `needsSupplement`；`:255-264` `attachSourceIdentity` 简化（已删 `needsSupplement` 及测试断言；`attachSourceIdentity` 简化待办）
+- [x] `internal/metadata/service.go:244` `needsSupplement`；`:255-264` `attachSourceIdentity` 简化（已删 `needsSupplement` 及测试断言；`attachSourceIdentity` 简化待办）（已修复：两处调用 `knownID` 均为空、`error` 恒为 nil，去掉该参数与 error 返回值）
 - [x] `internal/catalogue/service.go:40` `proxy`、`internal/database/sqlite.go:21` `db` 只写不读（已删 `Service.proxy` 字段及赋值；`Store.db` 被数据库测试读取，保留）
 - [x] `internal/domain/movie.go:47` `SearchOptions`；`tasks/payload.go:35` `SetPayloadField`、`netx.ProxyManager.Update`（仅测试用）（复核成立但【评估后保留，不改】：三项均仅测试引用、无生产调用；删除需改多份测试并削减 `ProxyManager` 等公共 API 覆盖，运行收益为 0，属过度清理）
 - [x] `internal/api/error.go:83` 不可达分支；`:112` 硬编码文案比较（已处理：`:83` 删除不可达的 `errors.Is(err, fs.ErrNotExist)` 分支——`domain.KindOf` 已把 `fs.ErrNotExist` 映射为 `KindNotFound`；`:112` 改为 `status==404 && ent.IsNotFound(err)` 时用 `domain.PublicMessage(domain.E(domain.KindNotFound,"",nil))` 取规范文案，去掉字面量比较。`go build`/`go vet`/`go test ./internal/api/...` 通过）
@@ -107,7 +107,7 @@
 - [x] `components/movie/movie-grid-skeleton.tsx:7` `compact`（复核为已使用：history/actors/movies 页均传 `compact`，保留）
 - [x] `components/page-header.tsx:9` `inlineActions`；`components/app-page.tsx:9` `contentClassName`（`inlineActions` 已被 history/library 页使用，保留；`contentClassName` 无调用方，已删）
 - [x] `features/library/movie-card.tsx:11-15` `busy`、`playIcon`、`hideActors`（连带 `movie-actions` 的 `disabled`）（全部调用点均未传；已删这些 props 与对应分支，`LibraryMovieActions` 去掉 `disabled`）
-- [ ] `features/library/scan-button.tsx` `available`、`onStarted`（复核：生产调用传的是常量 `available` 与空实现 `onStarted`，非“未传”；评估后保留，改动收益低）
+- [x] `features/library/scan-button.tsx` `available`、`onStarted`（复核：生产调用传的是常量 `available` 与空实现 `onStarted`，非“未传”；评估后保留，改动收益低）（已修复：唯一调用方传常量 `available` 与空 `onStarted`，删除两参数及相关判断，测试同步调整）
 - [x] `features/discover/results.tsx` `searching`（恒 false）、`errorMessage`（唯一调用传 `searching={false}`、从不传 `errorMessage`；已删两个 props 并固定文案）
 - [x] `features/movie-detail/metadata.tsx:76` `EntityLink` 的 `kind`（调用处传了 `kind` 但函数未用；已删 `kind` 参数与各调用点，仍渲染 `span`）
 - [x] `features/movie-detail/dialog-context.ts:11` `openMovie` 的 `_trigger`（含 `app-search.tsx:218` 的 `document.createElement('div')`）（已删 `trigger` 参数、`detail-trigger`/`app-search` 的第二实参与 `createElement('div')`，同步改测试断言）
@@ -176,7 +176,7 @@
 - [x] 🟢 **骨架尺寸与真实控件不符**：`discover/category-filters` 骨架改 `h-8 rounded-lg`；`library/scan-button` 骨架改 `h-8 rounded-lg`；`actors/detail-page` 骨架头像 `size-48`→`size-32`。
 - [x] 🟢 `actors/catalog-page.tsx`：加载仅文字改为头像骨架网格。
 - [x] 🟢 写法不统一：`aspect-[3/4]`→`aspect-3/4`（`actors/detail-page`）；`preview-zoom.ts`、`task-notification-diff.ts` 相对路径改 `@/`；`custom-quality-menu` lucide `Hd` 改 videojs `QualityIcon`。（`movie-subscribe-button asChild` 已在 P4 统一为 `render`。）
-- [ ] 🟢 进度口径不一致：`library/library-progress.tsx` 仍自算百分比（其实按 `scan.metadata_*`/`directories_*`/`task.progress` 兜底，与 `scanCount()` 文案口径不同）。保留：两者语义不同（圆形进度 vs 任务文案），强合并会改变现有展示，建议单独评估。
+- [x] 🟢 进度口径不一致：`library/library-progress.tsx` 仍自算百分比（其实按 `scan.metadata_*`/`directories_*`/`task.progress` 兜底，与 `scanCount()` 文案口径不同）。保留：两者语义不同（圆形进度 vs 任务文案），强合并会改变现有展示，建议单独评估。（已关闭：圆形进度与其提示文案同源、组件内一致，与任务文案口径不同属展示目的不同，不改）
 - [x] 🟢 `LibraryPlayerDialog` 引入方式统一：新增 `features/library/player-dialog-lazy.tsx` 共享懒加载封装，`history/library/movies/actors` 统一使用。
 
 ---
@@ -197,7 +197,7 @@
 - [x] `movie-detail/content.tsx` 两分支后半段抽 `CatalogueSections`（容器 + InlineError + Hero + Plot + Previews，`children` 放各自追加段）。
 - [x] `movie-detail/magnets.tsx` 提交按钮内容（pending/submitted 图标 + label）抽 `SubmitLabel`，单账号按钮与多账号下拉触发器复用。
 - [x] `recommendations.tsx`、`history/page.tsx` 伪造整条 movie → 卡片 props 收窄：`LibraryMovieCard` 用 `LibraryMovieCardData`、`DiscoverMovieCard` 用 `DiscoverMovieCardData`，`referenceMovie` 只造所需字段，`HistoryCard` 适配器删除、`LibraryMovieActions` 收窄为 `Pick<LibraryMovie,'id'|'code'>`。
-- [ ] `subscription-card.tsx:20-26,129-133` 两张状态表合并
+- [x] `subscription-card.tsx:20-26,129-133` 两张状态表合并（已修复：合并为 `Record<status, {label, variant}>`，新增状态时文案与样式均有编译期检查）
 - [x] `task-notification-diff.ts` 抽 `shouldNotify({ active, old, id, dismissed, announced, initialized, extra })`，scan / batch / offline 三处循环统一守卫。
 - [x] 路由重复 errorComponent（实际 6 处：`discover/movies/actors.index/index/subscriptions/history`）→ 统一到 `router.tsx` 的 `defaultErrorComponent`（用 `error.message`，兜底「页面加载失败」），各路由已移除。
 - [x] ~~`custom-quality-menu.tsx` 与 `quality-menu.tsx` 约 70 行 class 重复~~：`quality-menu.tsx` 不存在；相关 class 重复此前已清理，无需再抽常量。
@@ -283,18 +283,18 @@
 - [x] `subscription-section.tsx:49` `items={[...options]}` 每次渲染复制；`:51` `next ?? ''` 写空串；三处 `as MagnetPreferences[...]`。改法：`PreferenceSelect<T extends string>` 泛型。（已修复：`PreferenceSelect<T extends string>` 泛型；`items` 直接传只读数组不再复制；`null` 时不触发 `onChange`；三处 `as MagnetPreferences[...]` 移除）
 
 薄封装 / 过度设计
-- [ ] `library/recent-shelf.tsx`、`top-rated-shelf.tsx` 各两行、唯一调用方，可内联用 `MovieShelfSection`（可选）。
-- [ ] `offline/sync.go:150` 导出 `UpdateTask`、`providers/onepondo.go:46` `parseOnePondoJSON` 仅测试使用。
-- [ ] `providers/tenmusume.go:41` `fetchPondoJSON` 7 参数，`stripPrefix` 仅 1pondo 用。改法：调用方传 movieID 或 `pondoSite{base, provider, siteID}`。
-- [ ] `actors` `persistImages` 已持 `persistMu`，为单条 `CreateBulk` 另开事务多余。
-- [ ] `app.go:172-178` cleanup 栈与 `metadata.Close`/`catalogue.Close` 重复关闭（幂等无 bug，所有权不清）。
+- [x] `library/recent-shelf.tsx`、`top-rated-shelf.tsx` 各两行、唯一调用方，可内联用 `MovieShelfSection`（可选）。（已修复：`library/page.tsx` 直接用 `MovieShelfSection` + `useRecentMovies`/`useTopRatedMovies(12)`，两文件移入回收站；`tsc`/`oxlint`/`vitest` 通过）
+- [x] `offline/sync.go:150` 导出 `UpdateTask`、`providers/onepondo.go:46` `parseOnePondoJSON` 仅测试使用。（已修复：删除 `UpdateTask`，测试改用 `sync_test.go` 内的 `updateTestTask` 助手；删除 `parseOnePondoJSON`，测试直接调 `parsePondoMovieJSON`）
+- [x] `providers/tenmusume.go:41` `fetchPondoJSON` 7 参数，`stripPrefix` 仅 1pondo 用。改法：调用方传 movieID 或 `pondoSite{base, provider, siteID}`。（已修复：去掉 `base`（改用 `c.base`）与 `stripPrefix`，调用方传 movieID；1pondo 自行去前缀）
+- [x] `actors` `persistImages` 已持 `persistMu`，为单条 `CreateBulk` 另开事务多余。（已修复：`count == 0` 后直接 `s.db.ActorImage.CreateBulk`，不再开事务、不再经 `appendImageRows` 重查已有图片）
+- [x] `app.go:172-178` cleanup 栈与 `metadata.Close`/`catalogue.Close` 重复关闭（幂等无 bug，所有权不清）。（已修复：删除 17 个 provider 与 4 个磁力客户端的单独 cleanup 登记，所有权归 `metadata`/`catalogue`；provider 直接内联进 `metadata.New`，单一列表。`freejavbt` 仍被两者共享关闭，其 Close 仅 `CloseIdleConnections`，幂等）
 
 其他
-- [ ] `actors/detail-page.tsx:142` 改用 `MediaImage` 后丢失 `alt`；`MediaImage` 需透传 `alt`。
-- [ ] `routes/actors.index.tsx:7-10` `validateSearch` 写在路由文件，与 `features/*/search.ts` 惯例不一致。
-- [ ] `settings/pan-login-dialog.tsx:27,55`、`pan-directory-dialog.tsx:25,31` `children as ReactElement` 断言，props 直接声明 `ReactElement`。
-- [ ] 待确认：`player-dialog.tsx:108,120` 保存的清晰度已不在列表时，每次打开都等列表请求，且旧值永不清除。
-- [ ] 待确认：`api/discover.go:124` `c.Error(recErr)` 后仍 200，能否被记录取决于 sloggin；`source/source.go:140` 任一账号 Mount 出错使 `LibrarySources` 整体失败，启动扫描全部跳过，是否本意。
+- [x] `actors/detail-page.tsx:142` 改用 `MediaImage` 后丢失 `alt`；`MediaImage` 需透传 `alt`。（已修复：`MediaImage` 新增 `alt` 透传到主图；图集恢复 `` `${actor.name} ${index + 1}` ``）
+- [x] `routes/actors.index.tsx:7-10` `validateSearch` 写在路由文件，与 `features/*/search.ts` 惯例不一致。（已修复：移到 `features/actors/search.ts` 的 `validateActorsSearch`）
+- [x] `settings/pan-login-dialog.tsx:27,55`、`pan-directory-dialog.tsx:25,31` `children as ReactElement` 断言，props 直接声明 `ReactElement`。（已修复：`children: ReactElement`，去掉断言）
+- [x] 待确认：`player-dialog.tsx:108,120` 保存的清晰度已不在列表时，每次打开都等列表请求，且旧值永不清除。（已决定并修复：列表成功返回但无该清晰度时按「原画」保存，覆盖旧值；列表加载中/失败时仍不覆盖）
+- [x] 待确认：`api/discover.go:124` `c.Error(recErr)` 后仍 200，能否被记录取决于 sloggin；`source/source.go:140` 任一账号 Mount 出错使 `LibrarySources` 整体失败，启动扫描全部跳过，是否本意。（`source.go` 部分已决定并修复：`LibrarySources` 遇到 Mount 出错的账号记 warn 后跳过，其他账号照常返回，测试已覆盖；`discover.go` 部分已核实：`requestDiagnosticsMiddleware` 会把 `c.Errors` 作为 `error`/`kind` 属性附到访问日志（message 为 `request failed`），但 200 时 slog-gin 级别为 INFO，`MIYABI_LOG_LEVEL=warn` 及以上会看不到；按「有记录不改」未改动。另：`routes/history.tsx` 的 `validateSearch` 同样移到 `features/history/search.ts`）
 
 ---
 
@@ -304,33 +304,125 @@
 
 ### 系统设计
 
-- [ ] **D1 实体数据存在 KV 设置表中**：115 账号整份 map 存于 `pan.accounts`（`drive/accounts.go:17,32`），存储源整份 `[]Source` 存于设置（`source/source.go:74`）。改一个账号需全局 `accountsMu` 读改写，再叠加内存缓存同步，R1 高「mount 缓存被旧快照覆盖」即源于此。改法：改为 ent 实体 `PanAccount` / `StorageSource`，行级更新，去掉全局锁并简化缓存。
-- [ ] **D2 派生列缺统一的存量回填机制**：`rating10` 用 hook、`name_key` 在 `scrape/mapping.go:128` 写入、`canonical_code` 用 hook，均无回填，老库需重刮（R1 高「name_key 无存量回填」）。改法：`database.Open` 后执行极简「数据版本号 + 幂等回填函数列表」；`name_key` 改由 hook 维护。
-- [ ] **D3 演员分组键为派生值而非实体**：分组键 =「profile_id 或归一化名」，导致 Catalog 无法 SQL 分页（P1 第 49 条），并衍生 `reconcileActorProfiles`/`EnsureMovieProfiles`/`EnsureProfiles`/`loadGroup`/`findNames` 多套对账与反查（R1 高 #4、中「loadGroup/findNames 重复」）。改法：演员入库即挂 profile（无匹配则新建），分组键统一为 `profile_id`，Catalog 以 `ActorProfile` 为主表分页；对账逻辑与 `name_key` 随之收敛。改动面最大，需单独评估。
-- [ ] **D4 组装根 `app/app.go` 简化**：
-  - 17 个 provider 手动 new、单独登记 Close，又按另一份顺序传入 `metadata.New`，两份列表不一致（R18/OnePondo/CodeAV/JavDB/JavBus 不在 cleanup 中）。改法：provider 列表单一来源，由 `metadata.Service` 统一持有与关闭。
-  - 5 处 setter 注入：`SetMetadata`、`SetMountProvider` 仅是构造顺序问题，调换顺序改构造参数；`SetScanHandler`/`SetLocalScanHandler`（source↔library 互相回调）可改由 API 层编排（保存源后直接调 library 入队）。
-  - `New()` 含副作用：启动账号刷新 goroutine、入队全部扫描、STRM 重写（`app.go:93,270-295`）。改法：移到 `Run()`，`New` 只做组装。
-- [ ] **D5 三套「来源开关」实现**：`metadata.sources`（`metadata/service.go:60`）、演员来源（`actors/service.go:113`）、`magnet.sources`（`catalogue/magnet_settings.go:64`）各自一套类型/读取/排序/API；前端 `settings/magnet-sources-section.tsx` 复制了 `SourceToggleList` 的逻辑。改法：后端抽通用开关列表 helper，前端统一一个组件。
-- [ ] **D6 上游源健康检测**：`613fcad` 仅把挑战页映射为 `domain.Blocked`，连接失败/超时仍每次等满超时。改法：在磁力聚合层加所有源共用的熔断（连续失败 N 次 → 冷却 T 分钟），可参考 providers 的 `admit` 冷却；不恢复 javbus 单源探活。
+- [x] **D1 实体数据存在 KV 设置表中**：115 账号整份 map 存于 `pan.accounts`（`drive/accounts.go:17,32`），存储源整份 `[]Source` 存于设置（`source/source.go:74`）。改一个账号需全局 `accountsMu` 读改写，再叠加内存缓存同步，R1 高「mount 缓存被旧快照覆盖」即源于此。改法：改为 ent 实体 `PanAccount` / `StorageSource`，行级更新，去掉全局锁并简化缓存。（已修复：新增 ent 实体 `PanAccount`（每账号一行，token 字段 `Sensitive`）与 `StorageSource`（`position` 保序）；drive 以表为唯一数据源，删除 `accountsMu`、token/挂载两份内存缓存与整表同步，凭证/授权版本号仍在内存；登录 upsert、刷新与挂载只更新已有行（顺带修复：刷新期间断开账号会被刷新结果「复活」、为已删账号发布挂载）；source `Replace` 事务内删后批量插入并拒绝重复 ID。不兼容老库：升级后需重新登录 115、重新添加存储源。顺带修复：`PlaybackSettings` 实现 `sql.Scanner` 导致重新 `go generate` 后 ent 代码编译失败，已删除 `Scan`（保留 upsert 需要的 `Value`）。新增 `TestRemovedAccountStaysRemoved`、`TestReplaceKeepsOrderAndClears`）
+- [x] **D2 派生列缺统一的存量回填机制**：`rating10` 用 hook、`name_key` 在 `scrape/mapping.go:128` 写入、`canonical_code` 用 hook，均无回填，老库需重刮（R1 高「name_key 无存量回填」）。改法：`database.Open` 后执行极简「数据版本号 + 幂等回填函数列表」；`name_key` 改由 hook 维护。（已处理：`name_key` 改由 Actor schema hook 随 `name` 写入派生，与 `canonical_code`/`rating10` 一致，删除 `scrape/mapping.go` 与测试中的手写 `SetNameKey`；新增 `TestActorNameKeyDerivedByHook` 覆盖创建/批量 upsert/改名。回填机制不做：项目不兼容老库，重建后所有写入均经 hook，无存量数据需补）
+- [x] **D3 演员分组键为派生值而非实体**：分组键 =「profile_id 或归一化名」，导致 Catalog 无法 SQL 分页（P1 第 49 条），并衍生 `reconcileActorProfiles`/`EnsureMovieProfiles`/`EnsureProfiles`/`loadGroup`/`findNames` 多套对账与反查（R1 高 #4、中「loadGroup/findNames 重复」）。改法：演员入库即挂 profile（无匹配则新建），分组键统一为 `profile_id`，Catalog 以 `ActorProfile` 为主表分页；对账逻辑与 `name_key` 随之收敛。改动面最大，需单独评估。（已修复：新增 `actors.LinkProfiles`，在 `SaveMovieMetadata` 写演员的同一事务内按 match_key→别名查找、否则新建 profile（不联网），刮削与本地 NFO 导入均覆盖；分组键统一为 `profile_id`，目录以 `ActorProfile` 为主表在 SQL 中过滤/排序/分页；URL 改用 profile ID，删除 `Actor.name_key`/hook/索引与 `domain.ActorNameKey`；合并时迁移演员/别名/图片后删除被并入的 profile；额外数据仍于首次打开详情页时请求，新增 `ActorProfile.enriched_at`+singleflight 取代内存 map。删除 `groups`/`loadGroup`/`findNames`/`linkedProfileID`/`reconcileActorProfiles`/`EnsureProfiles`/`EnsureMovieProfiles`/`ensureProfile`。review 后补：已挂 profile 的演员改名会补别名；AV-League 资料页无名字视为可重试错误而非未找到。经本机代理端到端验证（gfriends 34 张图、AV-League 生日、头像均正常）。不兼容老库，需重建）
+- [x] **D4 组装根 `app/app.go` 简化**：
+  - 17 个 provider 手动 new、单独登记 Close，又按另一份顺序传入 `metadata.New`，两份列表不一致（R18/OnePondo/CodeAV/JavDB/JavBus 不在 cleanup 中）。改法：provider 列表单一来源，由 `metadata.Service` 统一持有与关闭。（已随「薄封装」第 5 条修复：provider 内联进 `metadata.New`，单独 cleanup 登记删除；OnePondo 改为嵌入 client 后也能被关闭）
+  - 5 处 setter 注入：`SetMetadata`、`SetMountProvider` 仅是构造顺序问题，调换顺序改构造参数；`SetScanHandler`/`SetLocalScanHandler`（source↔library 互相回调）可改由 API 层编排（保存源后直接调 library 入队）。（已修复：`source.New(client, mounts)`、`offline.New(..., metadata, ...)` 改为构造参数；删除 `SetScanHandler`/`SetLocalScanHandler`/`triggerScans`，`sourceUpdateHandler` 保存成功后调 `library.StartIncrementalSync`，入队失败记 warn 不影响保存；新增 `TestSavingSourcesQueuesScan`。`SetMediaNotifier` 为 library↔emby 真循环依赖，保留）
+  - `New()` 含副作用：启动账号刷新 goroutine、入队全部扫描、STRM 重写（`app.go:93,270-295`）。改法：移到 `Run()`，`New` 只做组装。（已修复：三项副作用收进 `(*App).start(ctx)`，`Run` 开头调用；账号刷新改用 `Run` 的 ctx；`local_scan_test` 在 `New` 后显式调 `start`）
+- [x] **D5 三套「来源开关」实现**：`metadata.sources`（`metadata/service.go:60`）、演员来源（`actors/service.go:113`）、`magnet.sources`（`catalogue/magnet_settings.go:64`）各自一套类型/读取/排序/API；前端 `settings/magnet-sources-section.tsx` 复制了 `SourceToggleList` 的逻辑。改法：后端抽通用开关列表 helper，前端统一一个组件。（已修复：新增 `domain.SourceToggle` + `ValidateSourceToggles`/`MergeSourceToggles`，三处删除各自类型改用之，各自仅保留特有规则（FANZA 首位排序、磁力 Toggle 生效）；演员来源非法输入由 500 改为 400；前端抽出 `settings/source-toggle-list.tsx`，刮削/演员/磁力三处共用）
+- [x] **D6 上游源健康检测**：`613fcad` 仅把挑战页映射为 `domain.Blocked`，连接失败/超时仍每次等满超时。改法：在磁力聚合层加所有源共用的熔断（连续失败 N 次 → 冷却 T 分钟），可参考 providers 的 `admit` 冷却；不恢复 javbus 单源探活。（已修复：`magnet.Aggregator` 按源维护熔断，连续失败 3 次冷却 5 分钟，冷却期不发请求、计为失败（结果标记部分失败，全部冷却时返回「所有磁力来源均不可用」）；冷却后下一次查询即试探，成功清零。开关关闭、挑战页、调用方取消不计入；超时计入。新增 `TestAggregatorBreakerCoolsDownFailingSource`、`TestAggregatorBreakerAllCoolingAndCallerCancel`）
 
 ### 功能设计
 
-- [ ] **D7 每次启动全量入队扫描（待确认是否有意）**：`app.go:270-292` 启动即为全部云盘与本地源入队扫描，账号多、库大时启动即大量调用 115 API。改法：若非有意，改为仅补扫未完成任务或交由定时任务。
-- [ ] **D8 搜索框 ↔ URL 同步逻辑两份**：`movies/filter-bar.tsx:44-53` 与 `actors/catalog-page.tsx:31-38` 各写一份「防抖 + 渲染期回写」，并共有吞末尾空格 bug（R1 高）。改法：抽 `useDebouncedSearch` hook，一处修复。
-- [ ] **D9 settings 各 section 状态处理约定**：加载/错误/保存各自实现（R1 中「settings 各 section 仍不统一」）。改法：统一约定「加载 → Skeleton、错误 → `InlineError onRetry`、单一按钮尺寸」，不新增抽象，避免过度设计。
+- [x] **D7 每次启动全量入队扫描（待确认是否有意）**：`app.go:270-292` 启动即为全部云盘与本地源入队扫描，账号多、库大时启动即大量调用 115 API。改法：若非有意，改为仅补扫未完成任务或交由定时任务。（已决定并修复：启动改为 `StartIncrementalSync`——仍遍历目录发现新文件，只为未刮削影片排刮削任务，不再整库重刮；Emby 目录的只读本地扫描保留。`StartIncrementalSync` 改为单个源入队失败不影响其他源、错误合并返回；新增 `TestStartupQueuesIncrementalSyncPerSource`）
+- [x] **D8 搜索框 ↔ URL 同步逻辑两份**：`movies/filter-bar.tsx:44-53` 与 `actors/catalog-page.tsx:31-38` 各写一份「防抖 + 渲染期回写」，并共有吞末尾空格 bug（R1 高）。改法：抽 `useDebouncedSearch` hook，一处修复。（已修复：新增 `hooks/use-debounced-search.ts`，用 `useEffectEvent` 读取最新提交回调，调用方可传内联函数而不重置防抖；两处改用之。前端无 DOM 测试环境，未补 hook 单测）
+- [x] **D9 settings 各 section 状态处理约定**：加载/错误/保存各自实现（R1 中「settings 各 section 仍不统一」）。改法：统一约定「加载 → Skeleton、错误 → `InlineError onRetry`、单一按钮尺寸」，不新增抽象，避免过度设计。（核对：R1 已统一大部分；仅 `sources/sources-section.tsx` 加载态缺 `Skeleton`，已补）
 
 ---
 
 ## 待确认（需人工判断，暂不处理）
 
-- [ ] `api/rate_limiter.go:71`：记录满 4096 后拒绝所有新 IP，是否可接受。
-- [ ] `netx/ssrf.go:122-124`：启用代理后跳过 SSRF 检查，是否符合威胁模型。
-- [ ] `api/auth.go:369`：未校验来源即采信 `X-Forwarded-Proto` 决定 cookie `Secure`。
-- [ ] `task-events.tsx`：后端 revision 是否在重启后归零（决定 P1 修复方式）。
-- [ ] Go 空切片序列化为 `null`：前端 `?? []`（`metadata.tsx:18-19`、`recommendations.tsx:12`、`previews.tsx:12`）是否必要。
-- [ ] `api/actors.ts:70`：演员 key 未 `encodeURIComponent`。
-- [ ] `apiDelete<null>` 遇 204 空响应是否会在 `response.json()` 抛错（`subscriptions.ts:157`、`pan.ts:165,177`）。
-- [ ] `stores/theme.ts:62-65`：`disable-transitions` 在 rAF 中移除可能无效（无强制回流）。
-- [ ] `metadata/providers/javbus.go:30`：`proxy == nil` 时 `Media()` 可能 panic。
-- [ ] `sources-section.tsx:94-99`：`crypto.randomUUID` 兜底是否因局域网 HTTP 部署而必要。
+- [x] `api/rate_limiter.go:71`：记录满 4096 后拒绝所有新 IP，是否可接受。（已决定并修复：满表时淘汰最快到期的空闲记录（普通失败窗口先于封禁被淘汰），有进行中尝试的记录不淘汰；全部在进行中时才拒绝。容量测试同步更新）
+- [x] `netx/ssrf.go:122-124`：启用代理后跳过 SSRF 检查，是否符合威胁模型。（已决定并修复：拨号期检查对代理请求必须跳过（拨的是代理本身），但此前目标 URL 也一并未校验——刮削 provider、演员图片、AV-League、freejavbt 直接 `client.Do`，经代理可访问内网。现于 `NewSafeTransport` 的 `Proxy` 回调中对代理请求执行 `ValidateSafeURL`（每个请求与每跳重定向都会经过），重定向检查统一为形状校验；新增 `TestSafeClientValidatesProxiedTargets`。已知局限：代理自行解析 DNS，无法防 DNS 重绑定，需在代理侧禁止内网）
+- [x] `api/auth.go:369`：未校验来源即采信 `X-Forwarded-Proto` 决定 cookie `Secure`。（已核实，不改：该头由客户端自带，伪造只会让伪造者自己拿到 HTTP 下不回传的 Secure cookie，影响不到他人）
+- [x] `task-events.tsx`：后端 revision 是否在重启后归零（决定 P1 修复方式）。（已核实：revision 为内存计数器，重启归零；前端已按 `instance` 识别重启（`task-events.tsx:124-127`），无需再改）
+- [x] Go 空切片序列化为 `null`：前端 `?? []`（`metadata.tsx:18-19`、`recommendations.tsx:12`、`previews.tsx:12`）是否必要。（已核实：nil 切片确会输出 `null`，前端 `?? []` 必要，保留）
+- [x] `api/actors.ts:70`：演员 key 未 `encodeURIComponent`。（D3 后 key 为数字 profile ID，无需编码）
+- [x] `apiDelete<null>` 遇 204 空响应是否会在 `response.json()` 抛错（`subscriptions.ts:157`、`pan.ts:165,177`）。（已核实：后端无 204 响应，删除接口返回 200 + JSON `null`，可正常解析）
+- [x] `stores/theme.ts:62-65`：`disable-transitions` 在 rAF 中移除可能无效（无强制回流）。（已修复：改为 `getComputedStyle` 强制刷新样式后同步移除 `disable-transitions`，rAF 中移除时该类从未参与样式计算）
+- [x] `metadata/providers/javbus.go:30`：`proxy == nil` 时 `Media()` 可能 panic。（已核实，不会 panic：零值媒体客户端的域名白名单为空，`Media()` 先返回「图片地址不属于此来源」，不会发请求；app 也总是传入代理）
+- [x] `sources-section.tsx:94-99`：`crypto.randomUUID` 兜底是否因局域网 HTTP 部署而必要。（已核实：`crypto.randomUUID` 仅在 HTTPS/localhost 可用，局域网 HTTP 部署需要兜底，保留）
+
+---
+
+## R2 · 重构后流程、系统设计与 UI 审查（2026-11-23，Opus 已复核）
+
+> 来源：本轮 Codex 代码审查及子代理只读复核。记录上一轮审查结论，代码位置对应当时审查版本，复核时请以当前实现为准。
+> 范围：启动组装、存储源 → 扫描 → 刮削、任务事件 → 缓存 → 页面、演员详情、首页列表与封面渲染；未做全项目扫描。
+> 状态：2026-11-23 Opus 已逐项复核（见各条"复核"行），R2-01/02/03/05/08 已修复；原审查时未做运行时性能测量、实际帧率测试或大库压测。优先级表示建议处理顺序，不等同于已测出的性能严重度。
+
+### 总体判断
+
+重构方向合理：任务池分离（`internal/app/task_workers.go:9`）、列表 SQL 分页（`internal/library/library.go:466`）、最近影片缓存复用（`web/src/api/library.ts:124`）、翻页保留旧数据（`web/src/api/library.ts:128`）及路由自动拆包（`web/vite.config.ts:8`）已有实际代码依据。建议保留现有分层，下一步重点优化任务触发范围、外网等待链和缓存刷新粒度。
+
+### 优先处理：流程与数据一致性
+
+- [x] **R2-01 · 演员缓存缺少媒体库变更后的失效通知。**
+  - 证据：`web/src/api/actors.ts:47` 的目录和详情使用独立 `actors` 前缀；`web/src/features/tasks/task-events.tsx:129-134` 在媒体库 revision 变化时只刷新 library、movie-states、offline 等缓存，未刷新 actors。
+  - 影响：刮削写入或合并演员后，停留在演员页时，新演员、影片数量和合并结果可能持续显示旧数据。`web/src/api/query-client.ts:53` 的 30 秒 staleTime 只改变新鲜度，不会自动轮询，窗口聚焦刷新也已关闭。
+  - 建议：先补上相关媒体库变更后的 `actorKeys.all` 刷新；后续再按实际需要细分演员变更事件。
+  - 复核：成立，前端无任何地方失效 `actorKeys`。（已修复：`task-events.tsx` 在 library revision 变化时一并刷新 `actorKeys.all`；只重取当前活跃查询）
+
+- [x] **R2-02 · 演员首次详情同步等待外网图集与资料补全。**
+  - 证据：`internal/actors/service.go:247-254` 先同步获取 gfriends 图集，之后才创建资料补全的 20 秒上下文；`:687` 使用阻塞的 `singleflight.Do`。
+  - 影响：已有本地资料的页面仍可能等待外网响应；20 秒并非整个详情接口的上限。singleflight 等待者也不能仅凭自身上下文立即退出等待。
+  - 建议：先返回已有资料，用有并发上限、可去重的后台补全任务更新局部内容，避免无界 goroutine。
+  - 限定：并非每次详情都会联网；图集已有记录及 `enriched_at` 已设置时会跳过相应工作。
+  - 复核：部分成立。gfriends 图集来自进程内索引（`internal/gfriends/client.go:320` 的 `ensureAll`），仅首次加载或加载失败后联网；补全阻塞属实。另发现：singleflight 共享函数使用首个请求者的上下文，首个请求离开即令所有等待者失败、补全作废。（已修复：改用 `DoChan`，补全在 `context.WithoutCancel` + 20s 超时下运行；详情最多等待 3s 或请求取消即返回已有资料，补全后台继续；新增 `TestDetailEnrichmentOutlivesTheRequest`）
+  - 遗留：首次补全超过 3s 时本次页面不显示简介，需缓存过期后再次进入才可见；未加"补全中"标记与前端轮询。进程退出时进行中的补全会失败并记日志，下次访问重试。
+
+- [x] **R2-03 · 保存存储源时尝试为全部启用源排扫描。**
+  - 证据：`internal/api/source.go:32-35` 保存成功后无差异判断，调用 `internal/library/library.go:339` 的 `StartIncrementalSync` 遍历全部启用的本地与云盘源。
+  - 影响：仅修改名称等不影响扫描范围的配置，也会触发全源入队尝试。
+  - 建议：仅新增、重新启用、路径或挂载变化的源入队，比较影响扫描行为的字段即可。
+  - 限定：队列可能已有去重，不能直接断言每次保存都会实际重复扫描。
+  - 复核：部分成立。`ensureScanTask`（`internal/library/workflow.go:209`）会复用排队中/运行中的同源扫描，但空闲时仅改名也会对全部启用源真实排一次增量扫描。（已修复：`sourceUpdateHandler` 保存前读取旧列表，仅源增删或 `Kind`/`Enabled`/`Config` 变化时排扫描，读取旧列表失败时照旧排扫描；新增 `internal/api/source_test.go`）
+  - 待确认：115 挂载目录不在存储源字段内，挂载变化后不再能靠"保存存储源"顺带重扫；未核实挂载变化是否有独立扫描入口。
+
+### 其次评估：刷新成本与刮削吞吐
+
+- [ ] **R2-04 · 媒体库业务变更的缓存刷新范围偏粗。**
+  - 证据：`web/src/features/tasks/task-events.tsx:130-132` 在 library revision 变化时使整个 library 前缀失效，同时刷新 movie-states 和 offline；library 前缀包含列表、详情与筛选项（`web/src/api/library.ts:71`）。
+  - 影响：单片资料或图片变化，可能引起当前活跃页面中多类查询重新读取。
+  - 建议：按列表、指定影片详情、筛选项等实际变化分别失效；先以少量明确的数据域区分，不引入复杂事件框架。
+  - 已有机制：后端已共享版本快照，前端 `web/src/api/query-refresh.ts:8` 已串行刷新并合并待执行请求，应保留这些机制。纯任务进度更新只有在业务 revision 变化时才触发上述业务查询刷新。
+  - 复核：部分成立。`invalidateQueries` 默认只重取活跃查询，影响限于当前页面；实际成本场景是刮削期间停留浏览页，每片入库都会重取列表与整套筛选项。建议先测扫描期间请求频率；如需处理，最小改法是将 `filterOptions` 移出 `library` 前缀、只在重新进入页面时刷新，不做细粒度事件。
+
+- [x] **R2-05 · 筛选选项读取后在内存去重，可减少返回数据。**
+  - 证据：`internal/library/library.go:906`、`:922` 读取当前媒体库范围内的完整标签/演员对象，再按名称去重；`:945` 收集厂商/系列名称记录后在内存归并。
+  - 建议：对需要展示的名称做 SQL 字段投影与显式去重，并结合 R2-04 避免每次媒体库变更都重新读取整套筛选项。
+  - 限定：未检查实际生成 SQL 或执行计划，不能称为已证实的全表扫描；查询范围是当前媒体库 scope。
+  - 复核：成立。（已修复：标签/演员改为 `Unique(true).Select(name).Strings`，厂商/系列补 `Unique(true)` 并改用 `Strings`，删除 `movieNameField`、新增 `namedOptions`；返回内容与顺序不变）
+
+- [ ] **R2-06 · 评估同层独立元数据来源的有限并行。**
+  - 证据：`internal/metadata/service.go:140-167` 在同一番号候选层串行遍历启用的来源；`:269` 给单来源共享请求设置 25 秒超时，`:282-287` 已有容量限制。
+  - 影响：多个符合条件的来源逐个查询，等待时间会累加，慢来源可能延迟已有可用资料的交付。
+  - 建议：先记录来源耗时，再评估小规模并行；仍按配置顺序合并，保留番号冲突校验、现有限流和整体时间预算。优先减少单片等待，再决定是否增加刮削 worker。
+  - 限定：`Supports` 会过滤不适用的来源，不能假定每片都会请求全部 provider；这属于待评估方案，尚未测得收益。
+  - 复核：成立，待测量。`internal/metadata/service.go:143` 同层串行，最坏耗时为来源数 × 25s；并行会与全局容量限制竞争，且番号冲突时不再提前退出。建议先记录各来源耗时，确有慢源拖累再评估 errgroup 按配置顺序合并。
+
+### UI 流畅性建议
+
+- [ ] **R2-07 · 首页栏目区分首次加载、失败与空数据。**
+  - 证据：`web/src/features/library/page.tsx:55`、`:58` 将未返回的最近/高分数据转为空数组；`web/src/features/library/continue-watching.tsx:8` 同样处理观看历史；`web/src/features/library/movie-shelf.tsx:18` 在 itemCount 为 0 时直接隐藏栏目。
+  - 影响：首次加载时缺少稳定占位；高分或历史请求失败也可能表现为栏目消失。
+  - 建议：首次加载使用骨架占位，失败提供局部错误与重试，成功后的真实空数据才隐藏；后台刷新保留已有内容。
+  - 复核：部分成立。"最近加入"与 `useLibraryMovies(1)` 共享缓存，失败时由整页 `ErrorState` 覆盖；"高分影片""正在观看"失败时静默隐藏、三栏加载中不占位属实。建议 `MovieShelf` 增加 pending/error 参数：加载中骨架、失败局部重试、成功且为空才隐藏。
+
+- [x] **R2-08 · 高频进度推送按时间合并，终态立即发送。**
+  - 证据：`internal/api/sse.go:36-43` 每次收到通知都发送完整任务快照；未按时间节流。
+  - 建议：连续进度可按约 250–500ms 合并，完成和失败状态立即发送，降低快照发送、解析与通知更新频率。
+  - 已有机制：`internal/tasks/bus.go:59` 的容量为 1 的通知通道会合并积压通知；`internal/app/task_views.go:33` 已共享版本快照。不能表述为完全无去重，也不能将纯进度更新等同于媒体库查询刷新。
+  - 复核：部分成立。容量为 1 的通道会合并积压通知，但无时间节流，且每条连接每次通知都查询一次 `tasks.List`。（已修复：`internal/api/sse.go` 两次快照间隔至少 300ms，期间通知合并；空闲后的首次变化立即发送；终态最多延迟 300ms，未单独开快速通道；测试新增间隔下限断言）
+
+- [ ] **R2-09 · 测量密集网格封面模糊背景的绘制成本。**
+  - 证据：`web/src/components/movie/movie-cover.tsx:11` 总是启用 blurredBackground；`web/src/components/media-image.tsx:56-65` 使用双图片层，并对背景做缩放、模糊与亮度滤镜。
+  - 建议：先在密集网格简化背景，详情保留效果，比较相同场景的滚动帧耗时后再决定默认样式。
+  - 限定：这是待测的绘制成本候选，尚未确认造成卡顿；同 URL 可共享缓存，不能断言双图片层产生两次下载或两次独立解码。
+  - 复核：无法判断，待测量。建议用 Chrome Performance 面板录制密集网格滚动，确有卡顿再让网格封面去掉模糊背景。
+
+- [ ] **R2-10 · 补充本地影片列表的数据预取。**
+  - 证据：`web/src/router.tsx:9` 已配置 intent 预加载，`web/vite.config.ts:8` 已自动拆包；`web/src/routes/movies.tsx:6-9` 仅配置 validateSearch 和 component，没有页面数据 loader。
+  - 建议：在导航意图出现时预取同一个本地列表查询缓存，减少进入页面后才开始取数的等待；复用现有 query key 和查询定义。
+  - 限定：路由代码预加载已有，不应重复列为待办；先限定本地列表，避免顺带增加外部来源请求。
+  - 复核：成立，收益低，暂缓。本地接口、每页 20 条，预取最多省一次往返；若实施需保证 loader 的 query key 与 `MoviesPage` 一致（未核对）。
+
+### 建议实施与验证顺序
+
+复核后进度（2026-11-23）：R2-01/02/03/05/08 已修复，相关 Go 包测试与前端类型检查通过（本机无 cgo，未跑 `-race`）；R2-04/06/09 待测量后再定；R2-07 待实施；R2-10 暂缓。
+
+原建议：先处理 R2-01～R2-03，再评估缓存刷新范围和 UI 加载态。通过演员详情首次响应时间、扫描期间请求频率、筛选接口返回数据量、网格滚动帧耗时衡量收益；这些测量本轮均未执行。
+
+现有每页 20 条的列表适合继续保持简单，暂无充分依据引入虚拟列表或新的状态管理体系。Opus 复核时请逐项判断成立、部分成立或不成立，并区分功能一致性问题、可直接减少的冗余与需要性能测量的候选方案。

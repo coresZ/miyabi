@@ -19,7 +19,6 @@ var (
 		{Name: "name_zht", Type: field.TypeString, Nullable: true},
 		{Name: "gender", Type: field.TypeEnum, Enums: []string{"female", "male", "unknown"}, Default: "unknown"},
 		{Name: "avatar", Type: field.TypeString, Nullable: true},
-		{Name: "name_key", Type: field.TypeString, Default: ""},
 		{Name: "actor_profile", Type: field.TypeInt, Nullable: true},
 	}
 	// ActorsTable holds the schema information for the "actors" table.
@@ -30,7 +29,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "actors_actor_profiles_profile",
-				Columns:    []*schema.Column{ActorsColumns[10]},
+				Columns:    []*schema.Column{ActorsColumns[9]},
 				RefColumns: []*schema.Column{ActorProfilesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -42,14 +41,9 @@ var (
 				Columns: []*schema.Column{ActorsColumns[3], ActorsColumns[4]},
 			},
 			{
-				Name:    "actor_name_key",
-				Unique:  false,
-				Columns: []*schema.Column{ActorsColumns[9]},
-			},
-			{
 				Name:    "actor_actor_profile",
 				Unique:  false,
-				Columns: []*schema.Column{ActorsColumns[10]},
+				Columns: []*schema.Column{ActorsColumns[9]},
 			},
 		},
 	}
@@ -73,6 +67,13 @@ var (
 				Columns:    []*schema.Column{ActorAliasColumns[5]},
 				RefColumns: []*schema.Column{ActorProfilesColumns[0]},
 				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "actoralias_normalized",
+				Unique:  false,
+				Columns: []*schema.Column{ActorAliasColumns[4]},
 			},
 		},
 	}
@@ -123,6 +124,7 @@ var (
 		{Name: "skill", Type: field.TypeString, Nullable: true},
 		{Name: "debut_date", Type: field.TypeString, Nullable: true},
 		{Name: "source_url", Type: field.TypeString, Nullable: true},
+		{Name: "enriched_at", Type: field.TypeTime, Nullable: true},
 	}
 	// ActorProfilesTable holds the schema information for the "actor_profiles" table.
 	ActorProfilesTable = &schema.Table{
@@ -310,6 +312,25 @@ var (
 			},
 		},
 	}
+	// PanAccountsColumns holds the columns for the "pan_accounts" table.
+	PanAccountsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "account_id", Type: field.TypeString, Unique: true},
+		{Name: "access_token", Type: field.TypeString, Default: ""},
+		{Name: "refresh_token", Type: field.TypeString, Default: ""},
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "directory_id", Type: field.TypeString, Default: ""},
+		{Name: "directory_name", Type: field.TypeString, Default: ""},
+		{Name: "directory_path", Type: field.TypeString, Default: ""},
+	}
+	// PanAccountsTable holds the schema information for the "pan_accounts" table.
+	PanAccountsTable = &schema.Table{
+		Name:       "pan_accounts",
+		Columns:    PanAccountsColumns,
+		PrimaryKey: []*schema.Column{PanAccountsColumns[0]},
+	}
 	// SettingsColumns holds the columns for the "settings" table.
 	SettingsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -323,6 +344,23 @@ var (
 		Name:       "settings",
 		Columns:    SettingsColumns,
 		PrimaryKey: []*schema.Column{SettingsColumns[0]},
+	}
+	// StorageSourcesColumns holds the columns for the "storage_sources" table.
+	StorageSourcesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "config", Type: field.TypeJSON, Nullable: true},
+		{Name: "position", Type: field.TypeInt, Default: 0},
+	}
+	// StorageSourcesTable holds the schema information for the "storage_sources" table.
+	StorageSourcesTable = &schema.Table{
+		Name:       "storage_sources",
+		Columns:    StorageSourcesColumns,
+		PrimaryKey: []*schema.Column{StorageSourcesColumns[0]},
 	}
 	// SubscriptionsColumns holds the columns for the "subscriptions" table.
 	SubscriptionsColumns = []*schema.Column{
@@ -568,7 +606,9 @@ var (
 		MetadataCachesTable,
 		MoviesTable,
 		OfflineDownloadsTable,
+		PanAccountsTable,
 		SettingsTable,
+		StorageSourcesTable,
 		SubscriptionsTable,
 		SubtitlesTable,
 		TagsTable,

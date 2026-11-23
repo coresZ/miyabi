@@ -3,16 +3,15 @@ package source
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/ppxb/miyabi/internal/database"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
+	"github.com/ppxb/miyabi/internal/ent/storagesource"
 )
-
-const settingKey = "sources"
 
 // Kind identifies how a storage source is reached.
 type Kind string
@@ -32,12 +31,10 @@ type Source struct {
 	Config  map[string]string `json:"config,omitempty"`
 }
 
-// Service persists the configured storage sources as a single settings row.
+// Service persists the configured storage sources, one StorageSource row each.
 type Service struct {
-	client      *ent.Client
-	onLocalScan func(context.Context, string, bool) error
-	onScan      func(context.Context, domain.LibrarySource) error
-	mounts      MountProvider
+	client *ent.Client
+	mounts MountProvider
 }
 
 // LocalTarget is an enabled local source directory and its metadata mode.
@@ -51,32 +48,19 @@ type MountProvider interface {
 	Mount(context.Context, string) (domain.LibrarySource, bool, error)
 }
 
-func New(client *ent.Client) *Service {
-	return &Service{client: client}
-}
-
-// SetLocalScanHandler lets the composition root enqueue scans after sources change.
-func (s *Service) SetLocalScanHandler(handler func(context.Context, string, bool) error) {
-	s.onLocalScan = handler
-}
-
-// SetScanHandler enqueues scans for configured cloud sources.
-func (s *Service) SetScanHandler(handler func(context.Context, domain.LibrarySource) error) {
-	s.onScan = handler
-}
-
-// SetMountProvider lets the service resolve 115 account mounts.
-func (s *Service) SetMountProvider(provider MountProvider) {
-	s.mounts = provider
+// New creates the source service; mounts resolves 115 account mount directories.
+func New(client *ent.Client, mounts MountProvider) *Service {
+	return &Service{client: client, mounts: mounts}
 }
 
 func (s *Service) List(ctx context.Context) ([]Source, error) {
-	sources, _, err := database.LoadSetting[[]Source](ctx, s.client, settingKey)
+	rows, err := s.client.StorageSource.Query().Order(ent.Asc(storagesource.FieldPosition)).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if sources == nil {
-		sources = []Source{}
+	sources := make([]Source, 0, len(rows))
+	for _, row := range rows {
+		sources = append(sources, Source{ID: row.ID, Kind: Kind(row.Kind), Name: row.Name, Enabled: row.Enabled, Config: row.Config})
 	}
 	return sources, nil
 }
@@ -85,44 +69,41 @@ func (s *Service) Replace(ctx context.Context, sources []Source) ([]Source, erro
 	if sources == nil {
 		sources = []Source{}
 	}
+	seen := make(map[string]bool, len(sources))
 	for i := range sources {
 		if strings.TrimSpace(sources[i].ID) == "" {
 			sources[i].ID = uuid.NewString()
 		}
+		if seen[sources[i].ID] {
+			return nil, domain.E(domain.KindInvalid, "存储源 ID 重复", nil)
+		}
+		seen[sources[i].ID] = true
 		if err := validate(sources[i]); err != nil {
 			return nil, err
 		}
 	}
-	if err := database.SaveSetting(ctx, s.client, settingKey, sources); err != nil {
+	// The settings page submits the whole ordered list, so replace every row.
+	err := ent.WithTx(ctx, s.client, func(tx *ent.Tx) error {
+		if _, err := tx.StorageSource.Delete().Exec(ctx); err != nil {
+			return err
+		}
+		builders := make([]*ent.StorageSourceCreate, 0, len(sources))
+		for i, src := range sources {
+			builders = append(builders, tx.StorageSource.Create().
+				SetID(src.ID).SetKind(string(src.Kind)).SetName(src.Name).
+				SetEnabled(src.Enabled).SetConfig(src.Config).SetPosition(i))
+		}
+		return tx.StorageSource.CreateBulk(builders...).Exec(ctx)
+	})
+	if err != nil {
 		return nil, err
 	}
-	s.triggerScans(ctx, sources)
 	return sources, nil
 }
 
-func (s *Service) triggerScans(ctx context.Context, sources []Source) {
-	for _, src := range sources {
-		if !src.Enabled {
-			continue
-		}
-		switch src.Kind {
-		case KindLocal:
-			if path := strings.TrimSpace(src.Config["path"]); path != "" && s.onLocalScan != nil {
-				_ = s.onLocalScan(ctx, path, localMetadataOnly(src))
-			}
-		case Kind115:
-			accountID := strings.TrimSpace(src.Config["account_id"])
-			if accountID == "" || s.mounts == nil {
-				continue
-			}
-			if mount, ok, err := s.mounts.Mount(ctx, accountID); err == nil && ok && s.onScan != nil {
-				_ = s.onScan(ctx, mount)
-			}
-		}
-	}
-}
-
 // LibrarySources returns the enabled 115 sources that have a mounted directory.
+// An account whose mount cannot be read is logged and skipped so it does not
+// block the other accounts.
 func (s *Service) LibrarySources(ctx context.Context) ([]domain.LibrarySource, error) {
 	sources, err := s.List(ctx)
 	if err != nil {
@@ -130,7 +111,7 @@ func (s *Service) LibrarySources(ctx context.Context) ([]domain.LibrarySource, e
 	}
 	result := make([]domain.LibrarySource, 0)
 	for _, src := range sources {
-		if src.Kind != Kind115 || !src.Enabled || s.mounts == nil {
+		if src.Kind != Kind115 || !src.Enabled {
 			continue
 		}
 		accountID := strings.TrimSpace(src.Config["account_id"])
@@ -139,7 +120,8 @@ func (s *Service) LibrarySources(ctx context.Context) ([]domain.LibrarySource, e
 		}
 		mount, ok, err := s.mounts.Mount(ctx, accountID)
 		if err != nil {
-			return nil, err
+			slog.WarnContext(ctx, "skip 115 source with unreadable mount", "account", accountID, "error", err)
+			continue
 		}
 		if ok {
 			result = append(result, mount)
@@ -200,8 +182,11 @@ func validate(src Source) error {
 		if !info.IsDir() {
 			return domain.E(domain.KindInvalid, fmt.Sprintf("路径不是目录：%s", path), nil)
 		}
-	case Kind115, KindPikPak:
+	case Kind115:
 		// Cloud sources are authenticated separately; nothing to validate here.
+	case KindPikPak:
+		// Reserved for a future PikPak drive; there is no login or scan yet.
+		return domain.E(domain.KindInvalid, "PikPak 存储源暂不支持", nil)
 	default:
 		return domain.E(domain.KindInvalid, "未知的存储源类型", nil)
 	}

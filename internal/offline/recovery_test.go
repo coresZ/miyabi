@@ -96,7 +96,7 @@ func TestRecoverySwitchesSeriallyAndPreservesTaskIdentity(t *testing.T) {
 		t.Fatal(r.events)
 	}
 	// Restart between cancellation and replacement submission.
-	r.s = New(r.s.database, r.s.catalogue, r.s.drive, r.s.tasks, r.s.library, r.s.submitTimeout)
+	r.s = New(r.s.database, r.s.catalogue, r.s.drive, r.s.tasks, r.s.library, r.s.metadata, r.s.submitTimeout)
 	r.s.now = func() time.Time { return r.now }
 	r.poll(30 * time.Second)
 	current := r.s.database.OfflineDownload.GetX(t.Context(), original.ID)
@@ -110,7 +110,7 @@ func TestRecoverySwitchesSeriallyAndPreservesTaskIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.s.UpdateTask(t.Context(), sess, original, pan.OfflineTask{Status: 2, FileID: "old-output"}); err != nil {
+	if err := updateTestTask(r.s, t.Context(), sess, original, pan.OfflineTask{Status: 2, FileID: "old-output"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := r.s.database.OfflineDownload.GetX(t.Context(), original.ID); got.ScanTaskID != 0 || got.Status != offlinedownload.StatusRunning {
@@ -313,7 +313,7 @@ func TestSubmissionTimeoutRecoversWithoutAnotherAdd(t *testing.T) {
 	if record.Recovery.Action != actionSubmit || !record.Recovery.SubmissionStarted {
 		t.Fatalf("submission intent lost: %+v", record)
 	}
-	r.s = New(r.s.database, r.s.catalogue, r.s.drive, r.s.tasks, r.s.library, r.s.submitTimeout)
+	r.s = New(r.s.database, r.s.catalogue, r.s.drive, r.s.tasks, r.s.library, r.s.metadata, r.s.submitTimeout)
 	r.s.now = func() time.Time { return r.now }
 	r.now = record.Recovery.RetryAt
 	r.poll(0)

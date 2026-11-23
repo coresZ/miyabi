@@ -32,6 +32,7 @@ type Dependencies struct {
 	Emby           EmbyManager
 	Sources        SourceManager
 	Actors         ActorManager
+	Subtitles      SubtitleManager
 	Frontend       fs.FS
 	STRMToken      string
 	TrustedProxies []string
@@ -74,6 +75,10 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.GET("/strm/play/:fileID/*filename", noStore(), strmHandler)
 	api.HEAD("/strm/play/:fileID/*filename", noStore(), strmHandler)
 
+	// External players cannot send the session cookie; serve a subtitle as
+	// UTF-8 text using the same token policy as the STRM relay.
+	api.GET("/subtitle-file/:trackID", noStore(), subtitleFileHandler(deps.Subtitles, deps.STRMToken, deps.Access))
+
 	protected := api.Group("", authMiddleware(deps.Access))
 
 	settingsAPI := protected.Group("/settings", noStore())
@@ -93,7 +98,11 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	settingsAPI.GET("/subscription", subscriptionSettingsGetHandler(deps.Monitor))
 	settingsAPI.PUT("/subscription", subscriptionSettingsUpdateHandler(deps.Monitor))
 	settingsAPI.GET("/sources", sourceListHandler(deps.Sources))
-	settingsAPI.PUT("/sources", sourceUpdateHandler(deps.Sources))
+	settingsAPI.PUT("/sources", sourceUpdateHandler(deps.Sources, deps.Library))
+
+	// MPV bridge installer scripts, downloaded from the Outputs settings page.
+	protected.GET("/mpv-bridge/install.ps1", noStore(), mpvBridgeScriptHandler(mpvBridgeInstall, "install-mpv-bridge.ps1"))
+	protected.GET("/mpv-bridge/uninstall.ps1", noStore(), mpvBridgeScriptHandler(mpvBridgeUninstall, "uninstall-mpv-bridge.ps1"))
 
 	protected.GET("/library/movies", libraryMoviesHandler(deps.Library))
 	protected.GET("/library/browse", libraryBrowseHandler(deps.Library))
@@ -102,6 +111,13 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	protected.GET("/library/movies/:id", libraryMovieHandler(deps.Library))
 	protected.POST("/library/movies/:id/scrape", libraryMovieScrapeHandler(deps.Library))
 	protected.GET("/library/movies/:id/previews/:index", libraryPreviewHandler(deps.Library, deps.Metadata))
+	subtitlesAPI := protected.Group("/library/movies/:id/subtitles", noStore())
+	subtitlesAPI.GET("", subtitleListHandler(deps.Subtitles))
+	subtitlesAPI.GET("/search", subtitleSearchHandler(deps.Subtitles))
+	subtitlesAPI.POST("/preview", subtitlePreviewHandler(deps.Subtitles))
+	subtitlesAPI.POST("", subtitleSaveHandler(deps.Subtitles))
+	subtitlesAPI.DELETE("/:subtitleID", subtitleDeleteHandler(deps.Subtitles))
+	subtitlesAPI.GET("/:subtitleID/cues", subtitleCuesHandler(deps.Subtitles))
 	protected.POST("/library/scan", libraryScanHandler(deps.Library, deps.Emby))
 	protected.POST("/library/sync", librarySyncHandler(deps.Library))
 	protected.GET("/library/pending", libraryPendingHandler(deps.Library))
@@ -125,6 +141,9 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	playAPI.GET("/:id/stream/:resource", playStreamHandler(deps.Play))
 	playAPI.HEAD("/:id/stream/:resource", playStreamHandler(deps.Play))
 	playAPI.POST("/progress", playProgressHandler(deps.Play))
+
+	// Builds the miyabi-mpv:// deep link used by the movie card context menu.
+	protected.GET("/mpv-link", noStore(), mpvLinkHandler(deps.Play, deps.Subtitles, deps.STRMToken))
 
 	protected.GET("/history", noStore(), historyHandler(deps.Play))
 	protected.POST("/history/remove", historyRemoveHandler(deps.Play))

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -61,9 +62,10 @@ type App struct {
 	driveSvc  *drive.Drive
 	play      *playback.Service
 	catalogue *catalogue.Service
-	scrape    *scrape.Service
 	metadata  *metadata.Service
 	embySvc   *emby.Service
+	library   *library.Service
+	export    *export.Manager
 }
 
 // New initializes all services, database connections, and registers task handlers.
@@ -92,13 +94,12 @@ func New(cfg *config.Config, logger *slog.Logger) (_ *App, err error) {
 
 	taskRegistry := tasks.NewRegistry()
 	taskSvc := tasks.NewService(store.Client, taskRegistry)
-	sourceSvc := source.New(store.Client)
 	driveSvc, err := drive.New(ctx, store.Client)
 	if err != nil {
 		return nil, fmt.Errorf("initialize drive service: %w", err)
 	}
 	cleanup = append(cleanup, driveSvc.Close)
-	driveSvc.StartAccountRefresh(ctx)
+	sourceSvc := source.New(store.Client, driveSvc)
 
 	images, err := mediaimage.NewCache(cfg.DataDir)
 	if err != nil {
@@ -124,81 +125,63 @@ func New(cfg *config.Config, logger *slog.Logger) (_ *App, err error) {
 			return result, nil
 		},
 	})
-	sourceSvc.SetMountProvider(driveSvc)
-	sourceSvc.SetScanHandler(func(ctx context.Context, src domain.LibrarySource) error {
-		_, err := libSvc.EnqueueSyncMode(ctx, src, false)
-		return err
-	})
-	sourceSvc.SetLocalScanHandler(func(ctx context.Context, root string, metadataOnly bool) error {
-		_, err := libSvc.StartLocalSourceScanModeIncremental(ctx, root, metadataOnly)
-		return err
-	})
 	javbusClient, err := javbus.New(javbus.Options{Proxy: networkSvc.ProxyManager()})
 	if err != nil {
 		return nil, err
 	}
-	cleanup = append(cleanup, javbusClient.Close)
 	sukebeiClient, err := sukebei.New(sukebei.Options{Proxy: networkSvc.ProxyManager()})
 	if err != nil {
 		return nil, fmt.Errorf("initialize Sukebei magnet source: %w", err)
 	}
-	cleanup = append(cleanup, sukebeiClient.Close)
 	freejavbtClient, err := freejavbt.New(freejavbt.Options{Proxy: networkSvc.ProxyManager()})
 	if err != nil {
 		return nil, fmt.Errorf("initialize freejavbt source: %w", err)
 	}
-	cleanup = append(cleanup, freejavbtClient.Close)
 	projectjavClient, err := projectjav.New(projectjav.Options{Proxy: networkSvc.ProxyManager()})
 	if err != nil {
 		return nil, fmt.Errorf("initialize ProjectJav magnet source: %w", err)
 	}
-	cleanup = append(cleanup, projectjavClient.Close)
+	// catalogue owns the magnet clients and metadata owns its providers: each
+	// service's Close releases what it was given, so they are not registered
+	// separately here. freejavbt is shared by both; its Close is idempotent.
 	catalogueSvc, err := catalogue.New(ctx, store.Client, networkSvc.ProxyManager(), libSvc, javbusClient, sukebeiClient, freejavbtClient, projectjavClient)
 	if err != nil {
 		return nil, fmt.Errorf("initialize catalogue service: %w", err)
 	}
 	cleanup = append(cleanup, catalogueSvc.Close)
-	fc2Source := providers.NewFC2(networkSvc.ProxyManager())
-	fc2dbSource := providers.NewFC2DB(networkSvc.ProxyManager())
-	fanzaSource := providers.NewFANZA(networkSvc.ProxyManager())
-	heyzoSource := providers.NewHEYZO(networkSvc.ProxyManager())
-	pacopacomamaSource := providers.NewPacopacomama(networkSvc.ProxyManager())
-	jav321Source := providers.NewJav321(networkSvc.ProxyManager())
-	tokyohotSource := providers.NewTokyoHot(networkSvc.ProxyManager())
-	heydougaSource := providers.NewHeydouga(networkSvc.ProxyManager())
-	caribbeancomSource := providers.NewCaribbeancom(networkSvc.ProxyManager())
-	caribbeancomprSource := providers.NewCaribbeancomPremium(networkSvc.ProxyManager())
-	c0930Source := providers.NewC0930(networkSvc.ProxyManager())
-	h0930Source := providers.NewH0930(networkSvc.ProxyManager())
-	h4610Source := providers.NewH4610(networkSvc.ProxyManager())
-	tenmusumeSource := providers.NewTenMusume(networkSvc.ProxyManager())
-	muramuraSource := providers.NewMuraMura(networkSvc.ProxyManager())
-	dahliaSource := providers.NewDahlia(networkSvc.ProxyManager())
-	dugaSource := providers.NewDuga(networkSvc.ProxyManager())
-	cleanup = append(cleanup,
-		fc2Source.Close, fc2dbSource.Close, fanzaSource.Close, heyzoSource.Close,
-		pacopacomamaSource.Close, jav321Source.Close, tokyohotSource.Close, heydougaSource.Close,
-		caribbeancomSource.Close, caribbeancomprSource.Close, c0930Source.Close, h0930Source.Close,
-		h4610Source.Close, tenmusumeSource.Close, muramuraSource.Close, dahliaSource.Close,
-		dugaSource.Close,
+	proxy := networkSvc.ProxyManager()
+	metadataSvc, err := metadata.New(ctx, store.Client,
+		providers.NewFANZA(proxy),
+		providers.NewFC2(proxy),
+		providers.NewFC2DB(proxy),
+		providers.NewHEYZO(proxy),
+		providers.NewPacopacomama(proxy),
+		providers.NewJavDB(catalogueSvc),
+		providers.NewJavBus(javbusClient, proxy),
+		providers.NewR18(proxy),
+		providers.NewOnePondo(proxy),
+		providers.NewCodeAV(proxy),
+		providers.NewJav321(proxy),
+		providers.NewTokyoHot(proxy),
+		providers.NewHeydouga(proxy),
+		providers.NewCaribbeancom(proxy),
+		providers.NewCaribbeancomPremium(proxy),
+		providers.NewC0930(proxy),
+		providers.NewH0930(proxy),
+		providers.NewH4610(proxy),
+		providers.NewTenMusume(proxy),
+		providers.NewMuraMura(proxy),
+		providers.NewDahlia(proxy),
+		providers.NewDuga(proxy),
+		freejavbtClient,
 	)
-	metadataSvc, err := metadata.New(ctx, store.Client, fanzaSource, fc2Source, fc2dbSource, heyzoSource, pacopacomamaSource,
-		providers.NewJavDB(catalogueSvc), providers.NewJavBus(javbusClient, networkSvc.ProxyManager()),
-		providers.NewR18(networkSvc.ProxyManager()),
-		providers.NewOnePondo(networkSvc.ProxyManager()),
-		providers.NewCodeAV(networkSvc.ProxyManager()),
-		jav321Source, tokyohotSource, heydougaSource,
-		caribbeancomSource, caribbeancomprSource, c0930Source, h0930Source, h4610Source, tenmusumeSource, muramuraSource,
-		dahliaSource, dugaSource, freejavbtClient)
 	if err != nil {
 		return nil, err
 	}
 	cleanup = append(cleanup, metadataSvc.Close)
 
-	offlineSvc := offline.New(store.Client, catalogueSvc, driveSvc, taskSvc, libSvc, offlineSubmitTimeout)
-	offlineSvc.SetMetadata(metadataSvc)
+	offlineSvc := offline.New(store.Client, catalogueSvc, driveSvc, taskSvc, libSvc, metadataSvc, offlineSubmitTimeout)
 	monitorSvc := monitor.New(store.Client, catalogueSvc, offlineSvc, taskSvc)
-	subtitleSvc := subtitle.NewService(store.Client, subtitle.NewFinder(networkSvc.ProxyManager()))
 	gfriendsClient := gfriends.New(cfg.DataDir, &http.Client{
 		Timeout:   30 * time.Second,
 		Transport: netx.NewTransport(networkSvc.ProxyManager()),
@@ -232,38 +215,14 @@ func New(cfg *config.Config, logger *slog.Logger) (_ *App, err error) {
 	// This is the only cycle: library -> Emby -> catalogue -> library.
 	// Bind it before starting task pools or accepting requests.
 	libSvc.SetMediaNotifier(embySvc)
+	subtitleSvc := subtitle.NewService(store.Client, subtitle.NewFinder(networkSvc.ProxyManager()),
+		filepath.Join(cfg.DataDir, "subtitles"), func() string { return exportMgr.Config().EmbyDir }, embySvc)
 	scrapeSvc := scrape.New(store.Client, driveSvc, metadataSvc, images, taskSvc, scrape.Dependencies{
 		ExportManager: exportMgr, MediaNotifier: embySvc, Subtitles: subtitleSvc, Merger: actorsSvc,
 	})
-	cleanup = append(cleanup, scrapeSvc.Close)
 	maintenanceSvc, err := maintenance.New(cfg.DataDir, store.Client, images, scrapeSvc)
 	if err != nil {
 		return nil, fmt.Errorf("initialize maintenance service: %w", err)
-	}
-
-	if err := libSvc.ScheduleLocalScan(ctx); err != nil {
-		logger.ErrorContext(ctx, "failed to queue startup Emby directory scan", "error", err)
-	}
-	if targets, err := sourceSvc.LocalTargets(ctx); err != nil {
-		logger.ErrorContext(ctx, "failed to load local sources", "error", err)
-	} else {
-		for _, target := range targets {
-			if _, err := libSvc.StartLocalSourceScanMode(ctx, target.Path, target.MetadataOnly); err != nil {
-				logger.ErrorContext(ctx, "failed to queue local source scan", "path", target.Path, "error", err)
-			}
-		}
-	}
-	if mounts, err := sourceSvc.LibrarySources(ctx); err != nil {
-		logger.ErrorContext(ctx, "failed to load cloud sources", "error", err)
-	} else {
-		for _, source := range mounts {
-			if _, err := libSvc.EnqueueScan(ctx, source); err != nil {
-				logger.ErrorContext(ctx, "failed to queue cloud source scan", "error", err)
-			}
-		}
-	}
-	if exportCfg := exportMgr.Config(); exportCfg.PublicURL != "" && exportCfg.EmbyDir != "" {
-		embySvc.StartStartupSTRMRewrite()
 	}
 
 	taskRegistry.Register(tasks.NewHandler(tasks.KindScan, libSvc.Scan, libSvc.Finished).WithRetry(domain.RetryDelay))
@@ -290,6 +249,7 @@ func New(cfg *config.Config, logger *slog.Logger) (_ *App, err error) {
 		Emby:           embySvc,
 		Sources:        sourceSvc,
 		Actors:         actorsSvc,
+		Subtitles:      subtitleSvc,
 		Frontend:       miyabi.Frontend(),
 		STRMToken:      cfg.STRMToken,
 		TrustedProxies: cfg.TrustedProxies,
@@ -313,19 +273,39 @@ func New(cfg *config.Config, logger *slog.Logger) (_ *App, err error) {
 		driveSvc:  driveSvc,
 		play:      playSvc,
 		catalogue: catalogueSvc,
-		scrape:    scrapeSvc,
 		metadata:  metadataSvc,
 		embySvc:   embySvc,
+		library:   libSvc,
+		export:    exportMgr,
 	}, nil
 }
 
-// Run starts the task pools, the periodic workers and the HTTP server, then
-// blocks until ctx is cancelled or one of them fails. Every exit path shuts
-// the server down gracefully and waits for the workers before returning.
+// start runs the startup side effects that New deliberately leaves out: the
+// account token refresh loop, the startup scans and the STRM rewrite. Sources
+// only get an incremental sync: new files are still discovered, but existing
+// movies are not all re-scraped on every start.
+func (a *App) start(ctx context.Context) {
+	a.driveSvc.StartAccountRefresh(ctx)
+	if err := a.library.ScheduleLocalScan(ctx); err != nil {
+		a.logger.ErrorContext(ctx, "failed to queue startup Emby directory scan", "error", err)
+	}
+	if _, err := a.library.StartIncrementalSync(ctx); err != nil {
+		a.logger.ErrorContext(ctx, "failed to queue startup source sync", "error", err)
+	}
+	if exportCfg := a.export.Config(); exportCfg.PublicURL != "" && exportCfg.EmbyDir != "" {
+		a.embySvc.StartStartupSTRMRewrite()
+	}
+}
+
+// Run runs the startup side effects, starts the task pools, the periodic
+// workers and the HTTP server, then blocks until ctx is cancelled or one of
+// them fails. Every exit path shuts the server down gracefully and waits for
+// the workers before returning.
 func (a *App) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	a.server.BaseContext = func(net.Listener) context.Context { return ctx }
+	a.start(ctx)
 
 	var workers sync.WaitGroup
 	poolError := make(chan error, len(a.pools))
@@ -374,7 +354,6 @@ func (a *App) Run(ctx context.Context) error {
 // Close releases resources held by the application.
 func (a *App) Close() error {
 	a.embySvc.Close()
-	a.scrape.Close()
 	a.metadata.Close()
 	a.catalogue.Close()
 	a.play.Close()

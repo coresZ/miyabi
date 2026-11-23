@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	actorprofiles "github.com/ppxb/miyabi/internal/actors"
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/actor"
@@ -125,7 +126,6 @@ func SaveMovieMetadata(ctx context.Context, tx *ent.Tx, id int, doc nfo.Movie) e
 			gender = actor.GenderUnknown
 		}
 		actors = append(actors, tx.Actor.Create().SetProvider(person.Provider).SetSourceID(person.ID).SetName(person.Name).
-			SetNameKey(domain.ActorNameKey(person.Name)).
 			SetNameZht(person.NameZHT).SetGender(gender).SetAvatar(person.Thumb))
 		actorPredicates = append(actorPredicates, actor.And(actor.ProviderEQ(person.Provider), actor.SourceIDEQ(person.ID)))
 	}
@@ -135,6 +135,11 @@ func SaveMovieMetadata(ctx context.Context, tx *ent.Tx, id int, doc nfo.Movie) e
 		}
 		ids, err := tx.Actor.Query().Where(actor.Or(actorPredicates...)).IDs(ctx)
 		if err != nil {
+			return err
+		}
+		// Link new actors to their canonical profile in the same transaction, so
+		// every actor written by scrapes or local NFO imports is in the catalog.
+		if err := actorprofiles.LinkProfiles(ctx, tx, ids); err != nil {
 			return err
 		}
 		update.AddActorIDs(ids...)

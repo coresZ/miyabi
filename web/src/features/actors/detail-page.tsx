@@ -105,7 +105,11 @@ export function ActorDetailPage({ actorKey }: { actorKey: string }) {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <Avatar className="size-32">
-          <AvatarImage src={actor.avatar ? imageURL(actor.avatar) : undefined} alt={actor.name} loading="eager" />
+          <AvatarImage
+            src={actor.avatar ? imageURL(actor.avatar) : undefined}
+            alt={actor.name}
+            loading="eager"
+          />
           <AvatarFallback>{actor.name.slice(0, 1)}</AvatarFallback>
         </Avatar>
         <div className="flex flex-col gap-2">
@@ -171,6 +175,7 @@ export function ActorDetailPage({ actorKey }: { actorKey: string }) {
               <div key={index} className="aspect-3/4 w-full overflow-hidden rounded-lg">
                 <MediaImage
                   source={`/api/actors/${actor.key}/image/${index}`}
+                  alt={`${actor.name} ${index + 1}`}
                   className="object-cover"
                 />
               </div>

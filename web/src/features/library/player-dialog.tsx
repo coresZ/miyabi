@@ -19,12 +19,14 @@ import type { LibraryMovieDetail } from '@/api/library'
 import { historyKeys } from '@/api/history'
 import { savePlaybackProgress, usePlayQualities, useStartMoviePlayback } from '@/api/play'
 import type { PlaybackResume } from '@/api/play'
+import { useMovieSubtitles } from '@/api/subtitles'
 import { InlineError } from '@/components/error-state'
 import { StatList } from '@/components/stat-list'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { VideoSkin } from '@/components/videojs/video/skin'
+import { PlayerSubtitles, subtitleOffsetOptions } from '@/features/library/player-subtitles'
 
 // The subset of the player store the parent needs to snapshot before a quality
 // switch. Kept structural so the ref stays decoupled from the store's full type.
@@ -95,6 +97,14 @@ function LibraryPlayer({
   const playerRef = useRef<PlayerControls | null>(null)
   const pendingSeekRef = useRef<PendingSeek | null>(null)
 
+  // Subtitle preferences are per movie, so they apply whichever file resumes.
+  const subtitles = useMovieSubtitles(movieId, true)
+  const savedSettings = playback.data?.resume?.settings
+  const [subtitleChoice, setSubtitleChoice] = useState<string | undefined>()
+  const [offsetChoice, setOffsetChoice] = useState<number | null>(null)
+  const subtitleOffset = offsetChoice ?? savedSettings?.subtitle_offset ?? 0
+  const subtitleTracks = subtitles.data ?? []
+
   const qualityOptions = useMemo(() => {
     const options = [{ value: 'direct', label: '原画' }]
     for (const item of qualities.data?.sources ?? []) {
@@ -115,9 +125,15 @@ function LibraryPlayer({
     playback.data?.sources?.[0]
   const source = matchedSource ?? originalSource
   const qualityValue = matchedSource?.src ?? 'direct'
-  // Only persist the rendition once the list resolved it; otherwise omit it so
-  // the backend keeps the previously saved rendition instead of overwriting it.
-  const qualityForSave = needsQualities ? matchedSource?.label : 'direct'
+  // Persist the rendition only once the list resolved. A saved rendition the
+  // list no longer offers is replaced by the original, so later opens stop
+  // waiting for the list. While the list is pending or failed, omit it so the
+  // backend keeps the previously saved rendition.
+  const qualityForSave = needsQualities
+    ? qualities.data
+      ? (matchedSource?.label ?? 'direct')
+      : undefined
+    : 'direct'
 
   const handleQualityChange = (value: string) => {
     if (value === qualityValue) return
@@ -134,7 +150,11 @@ function LibraryPlayer({
           paused: current.state.paused
         }
       } else if (!pendingSeekRef.current) {
-        pendingSeekRef.current = { time: 0, rate: current.state.playbackRate, paused: current.state.paused }
+        pendingSeekRef.current = {
+          time: 0,
+          rate: current.state.playbackRate,
+          paused: current.state.paused
+        }
       }
     }
     if (value === 'direct') {
@@ -173,6 +193,15 @@ function LibraryPlayer({
                 qualityValue={qualityValue}
                 onQualityChange={handleQualityChange}
                 onSettingsOpen={() => setQualitiesRequested(true)}
+                subtitleOffsetMenu={
+                  subtitleTracks.length > 0
+                    ? {
+                        options: subtitleOffsetOptions,
+                        value: String(subtitleOffset),
+                        onValueChange: value => setOffsetChoice(Number(value))
+                      }
+                    : undefined
+                }
               >
                 {hls ? (
                   <HlsJsVideo
@@ -188,12 +217,23 @@ function LibraryPlayer({
                   <Video src={source.src} playsInline autoPlay />
                 )}
               </VideoSkin>
+              {subtitleTracks.length > 0 ? (
+                <PlayerSubtitles
+                  movieID={movieId}
+                  tracks={subtitleTracks}
+                  offset={subtitleOffset}
+                  savedChoice={savedSettings?.subtitle}
+                  onChoiceChange={setSubtitleChoice}
+                />
+              ) : null}
               <PlaybackSync
                 movieId={movieId}
                 fileID={playback.data?.file_id}
                 resume={playback.data?.resume}
                 sourceKey={qualityValue}
                 quality={qualityForSave}
+                subtitle={subtitleChoice}
+                subtitleOffset={offsetChoice ?? undefined}
                 playerRef={playerRef}
                 pendingSeekRef={pendingSeekRef}
               />
@@ -227,6 +267,8 @@ function PlaybackSync({
   resume,
   sourceKey,
   quality,
+  subtitle,
+  subtitleOffset,
   playerRef,
   pendingSeekRef
 }: {
@@ -235,6 +277,10 @@ function PlaybackSync({
   resume?: PlaybackResume
   sourceKey: string
   quality?: string
+  /** Undefined until the subtitle tracks report a choice; omitted keeps the saved one. */
+  subtitle?: string
+  /** Undefined until changed in this session; omitted keeps the saved offset. */
+  subtitleOffset?: number
   playerRef: RefObject<PlayerControls | null>
   pendingSeekRef: RefObject<PendingSeek | null>
 }) {
@@ -253,6 +299,7 @@ function PlaybackSync({
   // previous source's still-valid duration.
   const resetForSource = useRef<string | null>(null)
   const qualityRef = useRef(quality)
+  const subtitleRef = useRef({ subtitle, subtitleOffset })
 
   // Expose the live player so the parent can snapshot the playhead before it
   // swaps rendition (the media element remounts and would otherwise reset to 0).
@@ -267,6 +314,10 @@ function PlaybackSync({
     qualityRef.current = quality
   }, [quality])
 
+  useEffect(() => {
+    subtitleRef.current = { subtitle, subtitleOffset }
+  }, [subtitle, subtitleOffset])
+
   // Single source of truth for persisting progress and settings; reads the
   // current player state and quality at call time. Stable identity so the
   // heartbeat is not rebuilt on every quality change.
@@ -276,9 +327,12 @@ function PlaybackSync({
       const { currentTime, duration, playbackRate } = player.state
       if (!(currentTime > 0) || !(duration > 0)) return
       const q = qualityRef.current
+      const { subtitle, subtitleOffset } = subtitleRef.current
       void savePlaybackProgress(movieId, fileID, currentTime, duration, {
         rate: playbackRate,
-        ...(q ? { quality: q } : {})
+        ...(q ? { quality: q } : {}),
+        ...(subtitle ? { subtitle } : {}),
+        ...(subtitleOffset !== undefined ? { subtitle_offset: subtitleOffset } : {})
       }).catch(() => {})
     } catch {
       // The player can be torn down before this cleanup runs.
@@ -327,10 +381,10 @@ function PlaybackSync({
     if (!pending.paused) void player.play().catch(() => {})
   }, [sourceKey, duration, player, pendingSeekRef])
 
-  // Persist speed and quality changes promptly; the heartbeat also carries them.
+  // Persist speed, quality and subtitle changes promptly; the heartbeat also carries them.
   useEffect(() => {
     saveProgress()
-  }, [playbackRate, quality, saveProgress])
+  }, [playbackRate, quality, subtitle, subtitleOffset, saveProgress])
 
   useEffect(() => {
     if (!fileID) return
