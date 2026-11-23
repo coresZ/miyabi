@@ -6,7 +6,7 @@
   "identifier": "com.ppxb.miyabi.desktop",
   "build": {
     "frontendDist": "stub",
-    "beforeBuildCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-desktop-server.ps1"
+    "beforeBuildCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/build-desktop-server.ps1"
   },
   "app": {
     "windows": [],
