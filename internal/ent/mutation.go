@@ -11923,18 +11923,16 @@ type SubscriptionMutation struct {
 	updated_at      *time.Time
 	kind            *subscription.Kind
 	target_id       *string
+	fanza_id        *string
+	javdb_id        *string
 	code            *string
 	title           *string
 	cover           *string
 	release_date    *string
 	origin_id       *int
 	addorigin_id    *int
-	auto_download   *bool
 	status          *subscription.Status
 	cursor          *string
-	hash            *string
-	task_id         *int
-	addtask_id      *int
 	next_check_at   *time.Time
 	last_checked_at *time.Time
 	checks          *int
@@ -12188,6 +12186,78 @@ func (m *SubscriptionMutation) ResetTargetID() {
 	m.target_id = nil
 }
 
+// SetFanzaID sets the "fanza_id" field.
+func (m *SubscriptionMutation) SetFanzaID(s string) {
+	m.fanza_id = &s
+}
+
+// FanzaID returns the value of the "fanza_id" field in the mutation.
+func (m *SubscriptionMutation) FanzaID() (r string, exists bool) {
+	v := m.fanza_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFanzaID returns the old "fanza_id" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldFanzaID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFanzaID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFanzaID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFanzaID: %w", err)
+	}
+	return oldValue.FanzaID, nil
+}
+
+// ResetFanzaID resets all changes to the "fanza_id" field.
+func (m *SubscriptionMutation) ResetFanzaID() {
+	m.fanza_id = nil
+}
+
+// SetJavdbID sets the "javdb_id" field.
+func (m *SubscriptionMutation) SetJavdbID(s string) {
+	m.javdb_id = &s
+}
+
+// JavdbID returns the value of the "javdb_id" field in the mutation.
+func (m *SubscriptionMutation) JavdbID() (r string, exists bool) {
+	v := m.javdb_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldJavdbID returns the old "javdb_id" field's value of the Subscription entity.
+// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionMutation) OldJavdbID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldJavdbID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldJavdbID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldJavdbID: %w", err)
+	}
+	return oldValue.JavdbID, nil
+}
+
+// ResetJavdbID resets all changes to the "javdb_id" field.
+func (m *SubscriptionMutation) ResetJavdbID() {
+	m.javdb_id = nil
+}
+
 // SetCode sets the "code" field.
 func (m *SubscriptionMutation) SetCode(s string) {
 	m.code = &s
@@ -12402,42 +12472,6 @@ func (m *SubscriptionMutation) ResetOriginID() {
 	delete(m.clearedFields, subscription.FieldOriginID)
 }
 
-// SetAutoDownload sets the "auto_download" field.
-func (m *SubscriptionMutation) SetAutoDownload(b bool) {
-	m.auto_download = &b
-}
-
-// AutoDownload returns the value of the "auto_download" field in the mutation.
-func (m *SubscriptionMutation) AutoDownload() (r bool, exists bool) {
-	v := m.auto_download
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAutoDownload returns the old "auto_download" field's value of the Subscription entity.
-// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *SubscriptionMutation) OldAutoDownload(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAutoDownload is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAutoDownload requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAutoDownload: %w", err)
-	}
-	return oldValue.AutoDownload, nil
-}
-
-// ResetAutoDownload resets all changes to the "auto_download" field.
-func (m *SubscriptionMutation) ResetAutoDownload() {
-	m.auto_download = nil
-}
-
 // SetStatus sets the "status" field.
 func (m *SubscriptionMutation) SetStatus(s subscription.Status) {
 	m.status = &s
@@ -12508,112 +12542,6 @@ func (m *SubscriptionMutation) OldCursor(ctx context.Context) (v string, err err
 // ResetCursor resets all changes to the "cursor" field.
 func (m *SubscriptionMutation) ResetCursor() {
 	m.cursor = nil
-}
-
-// SetHash sets the "hash" field.
-func (m *SubscriptionMutation) SetHash(s string) {
-	m.hash = &s
-}
-
-// Hash returns the value of the "hash" field in the mutation.
-func (m *SubscriptionMutation) Hash() (r string, exists bool) {
-	v := m.hash
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldHash returns the old "hash" field's value of the Subscription entity.
-// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *SubscriptionMutation) OldHash(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldHash is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldHash requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldHash: %w", err)
-	}
-	return oldValue.Hash, nil
-}
-
-// ResetHash resets all changes to the "hash" field.
-func (m *SubscriptionMutation) ResetHash() {
-	m.hash = nil
-}
-
-// SetTaskID sets the "task_id" field.
-func (m *SubscriptionMutation) SetTaskID(i int) {
-	m.task_id = &i
-	m.addtask_id = nil
-}
-
-// TaskID returns the value of the "task_id" field in the mutation.
-func (m *SubscriptionMutation) TaskID() (r int, exists bool) {
-	v := m.task_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldTaskID returns the old "task_id" field's value of the Subscription entity.
-// If the Subscription object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *SubscriptionMutation) OldTaskID(ctx context.Context) (v *int, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldTaskID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldTaskID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldTaskID: %w", err)
-	}
-	return oldValue.TaskID, nil
-}
-
-// AddTaskID adds i to the "task_id" field.
-func (m *SubscriptionMutation) AddTaskID(i int) {
-	if m.addtask_id != nil {
-		*m.addtask_id += i
-	} else {
-		m.addtask_id = &i
-	}
-}
-
-// AddedTaskID returns the value that was added to the "task_id" field in this mutation.
-func (m *SubscriptionMutation) AddedTaskID() (r int, exists bool) {
-	v := m.addtask_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearTaskID clears the value of the "task_id" field.
-func (m *SubscriptionMutation) ClearTaskID() {
-	m.task_id = nil
-	m.addtask_id = nil
-	m.clearedFields[subscription.FieldTaskID] = struct{}{}
-}
-
-// TaskIDCleared returns if the "task_id" field was cleared in this mutation.
-func (m *SubscriptionMutation) TaskIDCleared() bool {
-	_, ok := m.clearedFields[subscription.FieldTaskID]
-	return ok
-}
-
-// ResetTaskID resets all changes to the "task_id" field.
-func (m *SubscriptionMutation) ResetTaskID() {
-	m.task_id = nil
-	m.addtask_id = nil
-	delete(m.clearedFields, subscription.FieldTaskID)
 }
 
 // SetNextCheckAt sets the "next_check_at" field.
@@ -12853,7 +12781,7 @@ func (m *SubscriptionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SubscriptionMutation) Fields() []string {
-	fields := make([]string, 0, 18)
+	fields := make([]string, 0, 17)
 	if m.created_at != nil {
 		fields = append(fields, subscription.FieldCreatedAt)
 	}
@@ -12865,6 +12793,12 @@ func (m *SubscriptionMutation) Fields() []string {
 	}
 	if m.target_id != nil {
 		fields = append(fields, subscription.FieldTargetID)
+	}
+	if m.fanza_id != nil {
+		fields = append(fields, subscription.FieldFanzaID)
+	}
+	if m.javdb_id != nil {
+		fields = append(fields, subscription.FieldJavdbID)
 	}
 	if m.code != nil {
 		fields = append(fields, subscription.FieldCode)
@@ -12881,20 +12815,11 @@ func (m *SubscriptionMutation) Fields() []string {
 	if m.origin_id != nil {
 		fields = append(fields, subscription.FieldOriginID)
 	}
-	if m.auto_download != nil {
-		fields = append(fields, subscription.FieldAutoDownload)
-	}
 	if m.status != nil {
 		fields = append(fields, subscription.FieldStatus)
 	}
 	if m.cursor != nil {
 		fields = append(fields, subscription.FieldCursor)
-	}
-	if m.hash != nil {
-		fields = append(fields, subscription.FieldHash)
-	}
-	if m.task_id != nil {
-		fields = append(fields, subscription.FieldTaskID)
 	}
 	if m.next_check_at != nil {
 		fields = append(fields, subscription.FieldNextCheckAt)
@@ -12924,6 +12849,10 @@ func (m *SubscriptionMutation) Field(name string) (ent.Value, bool) {
 		return m.Kind()
 	case subscription.FieldTargetID:
 		return m.TargetID()
+	case subscription.FieldFanzaID:
+		return m.FanzaID()
+	case subscription.FieldJavdbID:
+		return m.JavdbID()
 	case subscription.FieldCode:
 		return m.Code()
 	case subscription.FieldTitle:
@@ -12934,16 +12863,10 @@ func (m *SubscriptionMutation) Field(name string) (ent.Value, bool) {
 		return m.ReleaseDate()
 	case subscription.FieldOriginID:
 		return m.OriginID()
-	case subscription.FieldAutoDownload:
-		return m.AutoDownload()
 	case subscription.FieldStatus:
 		return m.Status()
 	case subscription.FieldCursor:
 		return m.Cursor()
-	case subscription.FieldHash:
-		return m.Hash()
-	case subscription.FieldTaskID:
-		return m.TaskID()
 	case subscription.FieldNextCheckAt:
 		return m.NextCheckAt()
 	case subscription.FieldLastCheckedAt:
@@ -12969,6 +12892,10 @@ func (m *SubscriptionMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldKind(ctx)
 	case subscription.FieldTargetID:
 		return m.OldTargetID(ctx)
+	case subscription.FieldFanzaID:
+		return m.OldFanzaID(ctx)
+	case subscription.FieldJavdbID:
+		return m.OldJavdbID(ctx)
 	case subscription.FieldCode:
 		return m.OldCode(ctx)
 	case subscription.FieldTitle:
@@ -12979,16 +12906,10 @@ func (m *SubscriptionMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldReleaseDate(ctx)
 	case subscription.FieldOriginID:
 		return m.OldOriginID(ctx)
-	case subscription.FieldAutoDownload:
-		return m.OldAutoDownload(ctx)
 	case subscription.FieldStatus:
 		return m.OldStatus(ctx)
 	case subscription.FieldCursor:
 		return m.OldCursor(ctx)
-	case subscription.FieldHash:
-		return m.OldHash(ctx)
-	case subscription.FieldTaskID:
-		return m.OldTaskID(ctx)
 	case subscription.FieldNextCheckAt:
 		return m.OldNextCheckAt(ctx)
 	case subscription.FieldLastCheckedAt:
@@ -13034,6 +12955,20 @@ func (m *SubscriptionMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetTargetID(v)
 		return nil
+	case subscription.FieldFanzaID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFanzaID(v)
+		return nil
+	case subscription.FieldJavdbID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetJavdbID(v)
+		return nil
 	case subscription.FieldCode:
 		v, ok := value.(string)
 		if !ok {
@@ -13069,13 +13004,6 @@ func (m *SubscriptionMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetOriginID(v)
 		return nil
-	case subscription.FieldAutoDownload:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAutoDownload(v)
-		return nil
 	case subscription.FieldStatus:
 		v, ok := value.(subscription.Status)
 		if !ok {
@@ -13089,20 +13017,6 @@ func (m *SubscriptionMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCursor(v)
-		return nil
-	case subscription.FieldHash:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetHash(v)
-		return nil
-	case subscription.FieldTaskID:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetTaskID(v)
 		return nil
 	case subscription.FieldNextCheckAt:
 		v, ok := value.(time.Time)
@@ -13143,9 +13057,6 @@ func (m *SubscriptionMutation) AddedFields() []string {
 	if m.addorigin_id != nil {
 		fields = append(fields, subscription.FieldOriginID)
 	}
-	if m.addtask_id != nil {
-		fields = append(fields, subscription.FieldTaskID)
-	}
 	if m.addchecks != nil {
 		fields = append(fields, subscription.FieldChecks)
 	}
@@ -13159,8 +13070,6 @@ func (m *SubscriptionMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case subscription.FieldOriginID:
 		return m.AddedOriginID()
-	case subscription.FieldTaskID:
-		return m.AddedTaskID()
 	case subscription.FieldChecks:
 		return m.AddedChecks()
 	}
@@ -13179,13 +13088,6 @@ func (m *SubscriptionMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddOriginID(v)
 		return nil
-	case subscription.FieldTaskID:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddTaskID(v)
-		return nil
 	case subscription.FieldChecks:
 		v, ok := value.(int)
 		if !ok {
@@ -13203,9 +13105,6 @@ func (m *SubscriptionMutation) ClearedFields() []string {
 	var fields []string
 	if m.FieldCleared(subscription.FieldOriginID) {
 		fields = append(fields, subscription.FieldOriginID)
-	}
-	if m.FieldCleared(subscription.FieldTaskID) {
-		fields = append(fields, subscription.FieldTaskID)
 	}
 	if m.FieldCleared(subscription.FieldNextCheckAt) {
 		fields = append(fields, subscription.FieldNextCheckAt)
@@ -13232,9 +13131,6 @@ func (m *SubscriptionMutation) ClearField(name string) error {
 	switch name {
 	case subscription.FieldOriginID:
 		m.ClearOriginID()
-		return nil
-	case subscription.FieldTaskID:
-		m.ClearTaskID()
 		return nil
 	case subscription.FieldNextCheckAt:
 		m.ClearNextCheckAt()
@@ -13265,6 +13161,12 @@ func (m *SubscriptionMutation) ResetField(name string) error {
 	case subscription.FieldTargetID:
 		m.ResetTargetID()
 		return nil
+	case subscription.FieldFanzaID:
+		m.ResetFanzaID()
+		return nil
+	case subscription.FieldJavdbID:
+		m.ResetJavdbID()
+		return nil
 	case subscription.FieldCode:
 		m.ResetCode()
 		return nil
@@ -13280,20 +13182,11 @@ func (m *SubscriptionMutation) ResetField(name string) error {
 	case subscription.FieldOriginID:
 		m.ResetOriginID()
 		return nil
-	case subscription.FieldAutoDownload:
-		m.ResetAutoDownload()
-		return nil
 	case subscription.FieldStatus:
 		m.ResetStatus()
 		return nil
 	case subscription.FieldCursor:
 		m.ResetCursor()
-		return nil
-	case subscription.FieldHash:
-		m.ResetHash()
-		return nil
-	case subscription.FieldTaskID:
-		m.ResetTaskID()
 		return nil
 	case subscription.FieldNextCheckAt:
 		m.ResetNextCheckAt()

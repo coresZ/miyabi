@@ -10,12 +10,9 @@ import (
 type SubscriptionManager interface {
 	List(ctx context.Context, kind string, page int, limit int) ([]monitor.Item, error)
 	Targets(ctx context.Context, kind string) ([]monitor.TargetItem, error)
-	AddMovie(ctx context.Context, movieID string, opts monitor.AddMovieOptions) (monitor.Item, error)
-	AddActor(ctx context.Context, actorID string, opts monitor.AddActorOptions) (monitor.Item, error)
+	AddActor(ctx context.Context, actorKey string) (monitor.Item, error)
 	Update(ctx context.Context, id int, opts monitor.UpdateOptions) (monitor.Item, error)
 	Remove(ctx context.Context, id int) error
-	EnqueueSingle(ctx context.Context, id int) (monitor.Item, error)
-	EnqueueBatch(ctx context.Context, req monitor.BatchEnqueueRequest) (int, error)
 	ActorFeed(ctx context.Context, actorID int, page int, limit int) ([]monitor.Item, error)
 	Config(ctx context.Context) (monitor.Config, error)
 	UpdateConfig(ctx context.Context, cfg monitor.Config) (monitor.Config, error)
@@ -37,21 +34,14 @@ type subscriptionTargetsQuery struct {
 }
 
 type subscriptionCreateInput struct {
-	Kind         string `json:"kind" binding:"required,oneof=movie actor"`
-	TargetID     string `json:"target_id" binding:"required"`
-	Title        string `json:"title"`
-	Cover        string `json:"cover"`
-	AutoDownload *bool  `json:"auto_download"`
+	// Only library actors can be followed, by actor key; movie subscriptions
+	// come from actor checks.
+	Kind     string `json:"kind" binding:"required,oneof=actor"`
+	TargetID string `json:"target_id" binding:"required"`
 }
 
 type subscriptionUpdateInput struct {
-	AutoDownload *bool   `json:"auto_download"`
-	Status       *string `json:"status" binding:"omitempty,oneof=active paused"`
-}
-
-type subscriptionEnqueueBatchInput struct {
-	IDs []int `json:"ids"`
-	All bool  `json:"all"`
+	Status *string `json:"status" binding:"omitempty,oneof=active paused"`
 }
 
 type subscriptionURI struct {
@@ -86,19 +76,7 @@ func subscriptionCreateHandler(mgr SubscriptionManager) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		var item monitor.Item
-		var err error
-		if input.Kind == "actor" {
-			item, err = mgr.AddActor(c.Request.Context(), input.TargetID, monitor.AddActorOptions{
-				Title:        input.Title,
-				Cover:        input.Cover,
-				AutoDownload: input.AutoDownload,
-			})
-		} else {
-			item, err = mgr.AddMovie(c.Request.Context(), input.TargetID, monitor.AddMovieOptions{
-				AutoDownload: input.AutoDownload,
-			})
-		}
+		item, err := mgr.AddActor(c.Request.Context(), input.TargetID)
 		created(c, item, err)
 	}
 }
@@ -113,10 +91,7 @@ func subscriptionUpdateHandler(mgr SubscriptionManager) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		item, err := mgr.Update(c.Request.Context(), uri.ID, monitor.UpdateOptions{
-			AutoDownload: input.AutoDownload,
-			Status:       input.Status,
-		})
+		item, err := mgr.Update(c.Request.Context(), uri.ID, monitor.UpdateOptions{Status: input.Status})
 		respond(c, item, err)
 	}
 }
@@ -129,31 +104,6 @@ func subscriptionRemoveHandler(mgr SubscriptionManager) gin.HandlerFunc {
 		}
 		err := mgr.Remove(c.Request.Context(), uri.ID)
 		respond(c, nil, err)
-	}
-}
-
-func subscriptionEnqueueSingleHandler(mgr SubscriptionManager) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		uri, ok := bindURI[subscriptionURI](c)
-		if !ok {
-			return
-		}
-		item, err := mgr.EnqueueSingle(c.Request.Context(), uri.ID)
-		respond(c, item, err)
-	}
-}
-
-func subscriptionEnqueueBatchHandler(mgr SubscriptionManager) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		input, ok := bindJSON[subscriptionEnqueueBatchInput](c)
-		if !ok {
-			return
-		}
-		taskID, err := mgr.EnqueueBatch(c.Request.Context(), monitor.BatchEnqueueRequest{
-			IDs: input.IDs,
-			All: input.All,
-		})
-		accepted(c, gin.H{"task_id": taskID}, err)
 	}
 }
 

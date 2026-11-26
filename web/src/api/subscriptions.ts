@@ -16,10 +16,7 @@ export type SubscriptionItem = {
   cover: string
   release_date?: string
   origin_id?: number
-  auto_download: boolean
   status: SubscriptionStatus
-  hash?: string
-  task_id?: number
   next_check_at?: string
   last_checked_at?: string
   checks: number
@@ -116,41 +113,33 @@ export function useActorFeed(
   })
 }
 
+// Following a library actor, by actor key, records their new works for the
+// follow page.
 export function useAddSubscription() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (payload: { kind: SubscriptionKind; target_id: string; title?: string }) =>
-      apiPost<SubscriptionItem>('/api/subscriptions', payload),
-    onSuccess: item => {
-      void queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })
-      toast.success(item.kind === 'actor' ? `已订阅演员 ${item.title}` : item.code, {
-        description:
-          item.kind === 'actor'
-            ? '每天检查一次新作，未发售作品会自动加入影片订阅。'
-            : item.auto_download
-              ? '出现符合偏好的磁力后会自动加入 115。'
-              : '出现磁力后可在订阅页手动入库。'
+    mutationFn: (actorKey: string) =>
+      apiPost<SubscriptionItem>('/api/subscriptions', { kind: 'actor', target_id: actorKey }),
+    // Awaiting the refetch keeps the follow button busy until it shows the new state.
+    onSuccess: async item => {
+      await queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })
+      toast.success(`已关注 ${item.title}`, {
+        description: '每天检查一次新作，显示在「关注」页。'
       })
     },
-    meta: { errorTitle: '订阅失败' }
+    meta: { errorTitle: '关注失败' }
   })
 }
 
 export function useUpdateSubscription() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({
-      id,
-      ...patch
-    }: {
-      id: number
-      auto_download?: boolean
-      status?: 'active' | 'paused'
-    }) => apiPatch<SubscriptionItem>(`/api/subscriptions/${id}`, patch),
+    mutationFn: ({ id, ...patch }: { id: number; status?: 'active' | 'paused' }) =>
+      apiPatch<SubscriptionItem>(`/api/subscriptions/${id}`, patch),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })
     },
-    meta: { errorTitle: '更新订阅失败' }
+    meta: { errorTitle: '更新关注失败' }
   })
 }
 
@@ -158,18 +147,7 @@ export function useRemoveSubscription() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (item: { id: number }) => apiDelete<null>(`/api/subscriptions/${item.id}`),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })
-    },
-    meta: { errorTitle: '取消订阅失败' }
-  })
-}
-
-export function useBatchEnqueueSubscriptions() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (payload: { ids?: number[]; all?: boolean }) =>
-      apiPost<{ task_id: number }>('/api/subscriptions/enqueue', payload),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: subscriptionKeys.all }),
+    meta: { errorTitle: '取消关注失败' }
   })
 }

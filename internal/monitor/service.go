@@ -24,19 +24,17 @@ const (
 
 var checkTimePattern = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
 
-// Config is the subscription settings section: default auto-download flags,
-// the daily time at which movie and actor subscriptions are checked, and the
-// magnet preferences the picker applies.
+// Config is the download settings section: the magnet preferences and
+// download options offline downloads apply, plus the daily time at which actor
+// subscriptions are checked.
 type Config struct {
-	MovieAutoDownload bool               `json:"movie_auto_download"`
-	ActorAutoDownload bool               `json:"actor_auto_download"`
-	CheckTime         string             `json:"check_time"`
-	Preferences       magnet.Preferences `json:"preferences"`
-	Download          download.Config    `json:"download"`
+	CheckTime   string             `json:"check_time"`
+	Preferences magnet.Preferences `json:"preferences"`
+	Download    download.Config    `json:"download"`
 }
 
 func DefaultConfig() Config {
-	return Config{MovieAutoDownload: true, CheckTime: defaultCheckTime, Preferences: magnet.DefaultPreferences(), Download: download.DefaultConfig()}
+	return Config{CheckTime: defaultCheckTime, Preferences: magnet.DefaultPreferences(), Download: download.DefaultConfig()}
 }
 
 func (c *Config) UnmarshalJSON(data []byte) error {
@@ -74,10 +72,7 @@ type Item struct {
 	Cover         string              `json:"cover"`
 	ReleaseDate   string              `json:"release_date,omitempty"`
 	OriginID      *int                `json:"origin_id,omitempty"`
-	AutoDownload  bool                `json:"auto_download"`
 	Status        subscription.Status `json:"status"`
-	Hash          string              `json:"hash,omitempty"`
-	TaskID        *int                `json:"task_id,omitempty"`
 	NextCheckAt   *time.Time          `json:"next_check_at,omitempty"`
 	LastCheckedAt *time.Time          `json:"last_checked_at,omitempty"`
 	Checks        int                 `json:"checks"`
@@ -86,51 +81,42 @@ type Item struct {
 	UpdatedAt     time.Time           `json:"updated_at"`
 }
 
-// Discoverer is the catalogue surface the service needs, in domain types.
+// Discoverer browses JavDB, the fallback source of an actor's works.
 type Discoverer interface {
-	MovieSummary(ctx context.Context, movieID string) (domain.MovieSummary, error)
-	CatalogueMagnets(ctx context.Context, movieID string) ([]domain.Magnet, error)
-	CatalogueMagnetsByCode(ctx context.Context, code string) ([]domain.Magnet, error)
 	BrowseMovies(ctx context.Context, options domain.BrowseOptions) ([]domain.Movie, error)
 }
 
-type OfflineAdder interface {
-	AddByCode(ctx context.Context, movieID string, code string, hash string) (domain.OfflineSubmission, error)
+// ActressSource lists an actress's works on FANZA, the primary source.
+type ActressSource interface {
+	ResolveActress(ctx context.Context, names []string) (string, error)
+	ActressWorks(ctx context.Context, actressID string) ([]domain.Movie, error)
 }
 
-// catalogueMagnets resolves magnets for a subscription. Movie subscriptions
-// store their code, so the lookup can avoid re-fetching JavDB detail; legacy
-// rows without a code fall back to the movie-ID path.
-func (service *Service) catalogueMagnets(ctx context.Context, record *ent.Subscription) ([]domain.Magnet, error) {
-	if record.Code != "" {
-		return service.discover.CatalogueMagnetsByCode(ctx, record.Code)
-	}
-	return service.discover.CatalogueMagnets(ctx, record.TargetID)
+// ActorIdentity is a library actor as following needs it.
+type ActorIdentity struct {
+	// Key is the canonical actor key subscriptions are stored under.
+	Key, Name, Avatar string
+	// Names holds every known spelling, the canonical name first.
+	Names            []string
+	FanzaID, JavdbID string
 }
 
-// Service manages movie and actor subscriptions: it polls JavDB on the daily
-// schedule, picks magnets by preference, submits them to 115, and runs the
-// queued batch ingestion task.
+// ActorLookup reads a library actor by key; a missing actor is KindNotFound.
+type ActorLookup func(ctx context.Context, key string) (ActorIdentity, error)
+
+// Service manages actor subscriptions: it checks each actor's works on the
+// daily schedule and records new ones as movie subscriptions for display.
+// Downloading stays a manual action.
 type Service struct {
 	database *ent.Client
 	discover Discoverer
-	offline  OfflineAdder
+	fanza    ActressSource
+	actors   ActorLookup
 	tasks    *tasks.Service
-	wake     chan struct{}
 }
 
-func New(database *ent.Client, discover Discoverer, offline OfflineAdder, taskSvc *tasks.Service) *Service {
-	return &Service{database: database, discover: discover, offline: offline, tasks: taskSvc, wake: make(chan struct{}, 1)}
-}
-
-// Pending signals when a subscription wants an immediate check.
-func (service *Service) Pending() <-chan struct{} { return service.wake }
-
-func (service *Service) signal() {
-	select {
-	case service.wake <- struct{}{}:
-	default:
-	}
+func New(database *ent.Client, discover Discoverer, fanza ActressSource, actors ActorLookup, taskSvc *tasks.Service) *Service {
+	return &Service{database: database, discover: discover, fanza: fanza, actors: actors, tasks: taskSvc}
 }
 
 func (service *Service) Config(ctx context.Context) (Config, error) {
@@ -243,8 +229,7 @@ func subscriptionItem(record *ent.Subscription) Item {
 	return Item{
 		ID: record.ID, Kind: string(record.Kind), TargetID: record.TargetID, Code: record.Code,
 		Title: record.Title, Cover: record.Cover, ReleaseDate: record.ReleaseDate, OriginID: record.OriginID,
-		AutoDownload: record.AutoDownload, Status: record.Status, Hash: record.Hash,
-		TaskID: record.TaskID, NextCheckAt: record.NextCheckAt, LastCheckedAt: record.LastCheckedAt,
+		Status: record.Status, NextCheckAt: record.NextCheckAt, LastCheckedAt: record.LastCheckedAt,
 		Checks: record.Checks, Error: record.Error, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
 }

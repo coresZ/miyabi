@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiGet } from './client'
-import { discoverKeys, findCachedMovieCard } from './movie-detail-cache'
+import { discoverKeys, findCachedJavdbID, findCachedMovieCard } from './movie-detail-cache'
 
 export type ReleaseStatus = 'unknown' | 'released' | 'upcoming'
 export type Zone = 'censored' | 'uncensored' | 'western' | 'fc2' | 'anime'
@@ -62,6 +62,8 @@ export type DiscoverMovie = {
   preview_video: string
   magnets_count: number
   has_subtitle: boolean
+  has_uncensored?: boolean
+  has_cracked?: boolean
   has_preview: boolean
   actors: Actor[]
   tags: Tag[]
@@ -69,6 +71,8 @@ export type DiscoverMovie = {
   maker?: NamedEntity
   director?: NamedEntity
   release_status: ReleaseStatus
+  // Provider ids; JavDB catalogue cards carry their JavDB id here.
+  sources?: Array<{ provider: string; id: string }>
 }
 
 export type DiscoverMovieDetail = DiscoverMovie & {
@@ -166,13 +170,16 @@ function cardToDetail(movie: DiscoverMovie): DiscoverMovieDetail {
   }
 }
 
+// JavDB magnets join only when the movie's JavDB id is known: from a cached
+// catalogue card here, or from the library record on the server.
 export function useDiscoverMagnets(id: string, code?: string) {
+  const javdbID = findCachedJavdbID(useQueryClient(), id)
   return useQuery({
-    queryKey: discoverKeys.magnets(id, code),
+    queryKey: discoverKeys.magnets(id, code, javdbID),
     queryFn: ({ signal }) =>
       apiGet<DiscoverMagnet[]>(
         `/api/discover/movies/${encodeURIComponent(id)}/magnets`,
-        code ? { code } : undefined,
+        { code, javdb_id: javdbID },
         signal
       ),
     staleTime: 60_000,

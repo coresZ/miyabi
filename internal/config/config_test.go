@@ -38,8 +38,8 @@ func TestLoadDefaultsAndEnvironment(t *testing.T) {
 			name: "defaults",
 			want: Config{
 				Listen:         ":8080",
-				DataDir:        "./data",
-				EmbyDir:        filepath.Join("./data", "emby"),
+				DataDir:        defaultDataDir(),
+				EmbyDir:        filepath.Join(defaultDataDir(), "emby"),
 				PublicURL:      "http://" + netx.OutboundIP() + ":8080",
 				LogLevel:       slog.LevelInfo,
 				EmbySyncActors: true,
@@ -81,8 +81,8 @@ func TestLoadDefaultsAndEnvironment(t *testing.T) {
 			env:  map[string]string{"MIYABI_ACCESS_PASSWORD": ""},
 			want: Config{
 				Listen:         ":8080",
-				DataDir:        "./data",
-				EmbyDir:        filepath.Join("./data", "emby"),
+				DataDir:        defaultDataDir(),
+				EmbyDir:        filepath.Join(defaultDataDir(), "emby"),
 				PublicURL:      "http://" + netx.OutboundIP() + ":8080",
 				LogLevel:       slog.LevelInfo,
 				EmbySyncActors: true,
@@ -164,7 +164,7 @@ func TestLoadIgnoresLegacyConfigFile(t *testing.T) {
 	if err := os.WriteFile("config.toml", []byte("invalid legacy TOML ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if cfg, err := Load(); err != nil || cfg.Listen != ":8080" || cfg.DataDir != "./data" {
+	if cfg, err := Load(); err != nil || cfg.Listen != ":8080" || cfg.DataDir != defaultDataDir() {
 		t.Fatalf("local config file affected environment-only startup: %+v, %v", cfg, err)
 	}
 }
@@ -179,5 +179,40 @@ func TestLoadParsesTrustedProxies(t *testing.T) {
 	want := []string{"10.0.0.0/8", "192.168.1.1", "::1"}
 	if !reflect.DeepEqual(cfg.TrustedProxies, want) {
 		t.Fatalf("trusted proxies = %v, want %v", cfg.TrustedProxies, want)
+	}
+}
+
+// A protected instance needs a STRM token, since Emby and external players
+// cannot send the session cookie; without one it is derived from the password.
+func TestLoadDerivesSTRMTokenForProtectedAccess(t *testing.T) {
+	load := func(env map[string]string) Config {
+		t.Helper()
+		clearConfigEnvironment(t)
+		for key, value := range env {
+			t.Setenv(key, value)
+		}
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cfg
+	}
+
+	derived := load(map[string]string{"MIYABI_ACCESS_PASSWORD": "pass-one"}).STRMToken
+	if len(derived) != 32 {
+		t.Fatalf("derived token = %q", derived)
+	}
+	if again := load(map[string]string{"MIYABI_ACCESS_PASSWORD": "pass-one"}).STRMToken; again != derived {
+		t.Fatalf("token changed across restarts: %q != %q", again, derived)
+	}
+	if other := load(map[string]string{"MIYABI_ACCESS_PASSWORD": "pass-two"}).STRMToken; other == derived {
+		t.Fatal("different passwords derived the same token")
+	}
+	explicit := load(map[string]string{"MIYABI_ACCESS_PASSWORD": "pass-one", "MIYABI_STRM_TOKEN": " mine "}).STRMToken
+	if explicit != "mine" {
+		t.Fatalf("explicit token = %q, want mine", explicit)
+	}
+	if open := load(nil).STRMToken; open != "" {
+		t.Fatalf("open instance token = %q, want empty", open)
 	}
 }

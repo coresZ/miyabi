@@ -62,6 +62,34 @@ func (_u *SubscriptionUpdate) SetNillableTargetID(v *string) *SubscriptionUpdate
 	return _u
 }
 
+// SetFanzaID sets the "fanza_id" field.
+func (_u *SubscriptionUpdate) SetFanzaID(v string) *SubscriptionUpdate {
+	_u.mutation.SetFanzaID(v)
+	return _u
+}
+
+// SetNillableFanzaID sets the "fanza_id" field if the given value is not nil.
+func (_u *SubscriptionUpdate) SetNillableFanzaID(v *string) *SubscriptionUpdate {
+	if v != nil {
+		_u.SetFanzaID(*v)
+	}
+	return _u
+}
+
+// SetJavdbID sets the "javdb_id" field.
+func (_u *SubscriptionUpdate) SetJavdbID(v string) *SubscriptionUpdate {
+	_u.mutation.SetJavdbID(v)
+	return _u
+}
+
+// SetNillableJavdbID sets the "javdb_id" field if the given value is not nil.
+func (_u *SubscriptionUpdate) SetNillableJavdbID(v *string) *SubscriptionUpdate {
+	if v != nil {
+		_u.SetJavdbID(*v)
+	}
+	return _u
+}
+
 // SetCode sets the "code" field.
 func (_u *SubscriptionUpdate) SetCode(v string) *SubscriptionUpdate {
 	_u.mutation.SetCode(v)
@@ -145,20 +173,6 @@ func (_u *SubscriptionUpdate) ClearOriginID() *SubscriptionUpdate {
 	return _u
 }
 
-// SetAutoDownload sets the "auto_download" field.
-func (_u *SubscriptionUpdate) SetAutoDownload(v bool) *SubscriptionUpdate {
-	_u.mutation.SetAutoDownload(v)
-	return _u
-}
-
-// SetNillableAutoDownload sets the "auto_download" field if the given value is not nil.
-func (_u *SubscriptionUpdate) SetNillableAutoDownload(v *bool) *SubscriptionUpdate {
-	if v != nil {
-		_u.SetAutoDownload(*v)
-	}
-	return _u
-}
-
 // SetStatus sets the "status" field.
 func (_u *SubscriptionUpdate) SetStatus(v subscription.Status) *SubscriptionUpdate {
 	_u.mutation.SetStatus(v)
@@ -184,47 +198,6 @@ func (_u *SubscriptionUpdate) SetNillableCursor(v *string) *SubscriptionUpdate {
 	if v != nil {
 		_u.SetCursor(*v)
 	}
-	return _u
-}
-
-// SetHash sets the "hash" field.
-func (_u *SubscriptionUpdate) SetHash(v string) *SubscriptionUpdate {
-	_u.mutation.SetHash(v)
-	return _u
-}
-
-// SetNillableHash sets the "hash" field if the given value is not nil.
-func (_u *SubscriptionUpdate) SetNillableHash(v *string) *SubscriptionUpdate {
-	if v != nil {
-		_u.SetHash(*v)
-	}
-	return _u
-}
-
-// SetTaskID sets the "task_id" field.
-func (_u *SubscriptionUpdate) SetTaskID(v int) *SubscriptionUpdate {
-	_u.mutation.ResetTaskID()
-	_u.mutation.SetTaskID(v)
-	return _u
-}
-
-// SetNillableTaskID sets the "task_id" field if the given value is not nil.
-func (_u *SubscriptionUpdate) SetNillableTaskID(v *int) *SubscriptionUpdate {
-	if v != nil {
-		_u.SetTaskID(*v)
-	}
-	return _u
-}
-
-// AddTaskID adds value to the "task_id" field.
-func (_u *SubscriptionUpdate) AddTaskID(v int) *SubscriptionUpdate {
-	_u.mutation.AddTaskID(v)
-	return _u
-}
-
-// ClearTaskID clears the value of the "task_id" field.
-func (_u *SubscriptionUpdate) ClearTaskID() *SubscriptionUpdate {
-	_u.mutation.ClearTaskID()
 	return _u
 }
 
@@ -396,6 +369,12 @@ func (_u *SubscriptionUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.TargetID(); ok {
 		_spec.SetField(subscription.FieldTargetID, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.FanzaID(); ok {
+		_spec.SetField(subscription.FieldFanzaID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.JavdbID(); ok {
+		_spec.SetField(subscription.FieldJavdbID, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.Code(); ok {
 		_spec.SetField(subscription.FieldCode, field.TypeString, value)
 	}
@@ -417,26 +396,11 @@ func (_u *SubscriptionUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if _u.mutation.OriginIDCleared() {
 		_spec.ClearField(subscription.FieldOriginID, field.TypeInt)
 	}
-	if value, ok := _u.mutation.AutoDownload(); ok {
-		_spec.SetField(subscription.FieldAutoDownload, field.TypeBool, value)
-	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(subscription.FieldStatus, field.TypeEnum, value)
 	}
 	if value, ok := _u.mutation.Cursor(); ok {
 		_spec.SetField(subscription.FieldCursor, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.Hash(); ok {
-		_spec.SetField(subscription.FieldHash, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.TaskID(); ok {
-		_spec.SetField(subscription.FieldTaskID, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.AddedTaskID(); ok {
-		_spec.AddField(subscription.FieldTaskID, field.TypeInt, value)
-	}
-	if _u.mutation.TaskIDCleared() {
-		_spec.ClearField(subscription.FieldTaskID, field.TypeInt)
 	}
 	if value, ok := _u.mutation.NextCheckAt(); ok {
 		_spec.SetField(subscription.FieldNextCheckAt, field.TypeTime, value)
@@ -512,6 +476,34 @@ func (_u *SubscriptionUpdateOne) SetTargetID(v string) *SubscriptionUpdateOne {
 func (_u *SubscriptionUpdateOne) SetNillableTargetID(v *string) *SubscriptionUpdateOne {
 	if v != nil {
 		_u.SetTargetID(*v)
+	}
+	return _u
+}
+
+// SetFanzaID sets the "fanza_id" field.
+func (_u *SubscriptionUpdateOne) SetFanzaID(v string) *SubscriptionUpdateOne {
+	_u.mutation.SetFanzaID(v)
+	return _u
+}
+
+// SetNillableFanzaID sets the "fanza_id" field if the given value is not nil.
+func (_u *SubscriptionUpdateOne) SetNillableFanzaID(v *string) *SubscriptionUpdateOne {
+	if v != nil {
+		_u.SetFanzaID(*v)
+	}
+	return _u
+}
+
+// SetJavdbID sets the "javdb_id" field.
+func (_u *SubscriptionUpdateOne) SetJavdbID(v string) *SubscriptionUpdateOne {
+	_u.mutation.SetJavdbID(v)
+	return _u
+}
+
+// SetNillableJavdbID sets the "javdb_id" field if the given value is not nil.
+func (_u *SubscriptionUpdateOne) SetNillableJavdbID(v *string) *SubscriptionUpdateOne {
+	if v != nil {
+		_u.SetJavdbID(*v)
 	}
 	return _u
 }
@@ -599,20 +591,6 @@ func (_u *SubscriptionUpdateOne) ClearOriginID() *SubscriptionUpdateOne {
 	return _u
 }
 
-// SetAutoDownload sets the "auto_download" field.
-func (_u *SubscriptionUpdateOne) SetAutoDownload(v bool) *SubscriptionUpdateOne {
-	_u.mutation.SetAutoDownload(v)
-	return _u
-}
-
-// SetNillableAutoDownload sets the "auto_download" field if the given value is not nil.
-func (_u *SubscriptionUpdateOne) SetNillableAutoDownload(v *bool) *SubscriptionUpdateOne {
-	if v != nil {
-		_u.SetAutoDownload(*v)
-	}
-	return _u
-}
-
 // SetStatus sets the "status" field.
 func (_u *SubscriptionUpdateOne) SetStatus(v subscription.Status) *SubscriptionUpdateOne {
 	_u.mutation.SetStatus(v)
@@ -638,47 +616,6 @@ func (_u *SubscriptionUpdateOne) SetNillableCursor(v *string) *SubscriptionUpdat
 	if v != nil {
 		_u.SetCursor(*v)
 	}
-	return _u
-}
-
-// SetHash sets the "hash" field.
-func (_u *SubscriptionUpdateOne) SetHash(v string) *SubscriptionUpdateOne {
-	_u.mutation.SetHash(v)
-	return _u
-}
-
-// SetNillableHash sets the "hash" field if the given value is not nil.
-func (_u *SubscriptionUpdateOne) SetNillableHash(v *string) *SubscriptionUpdateOne {
-	if v != nil {
-		_u.SetHash(*v)
-	}
-	return _u
-}
-
-// SetTaskID sets the "task_id" field.
-func (_u *SubscriptionUpdateOne) SetTaskID(v int) *SubscriptionUpdateOne {
-	_u.mutation.ResetTaskID()
-	_u.mutation.SetTaskID(v)
-	return _u
-}
-
-// SetNillableTaskID sets the "task_id" field if the given value is not nil.
-func (_u *SubscriptionUpdateOne) SetNillableTaskID(v *int) *SubscriptionUpdateOne {
-	if v != nil {
-		_u.SetTaskID(*v)
-	}
-	return _u
-}
-
-// AddTaskID adds value to the "task_id" field.
-func (_u *SubscriptionUpdateOne) AddTaskID(v int) *SubscriptionUpdateOne {
-	_u.mutation.AddTaskID(v)
-	return _u
-}
-
-// ClearTaskID clears the value of the "task_id" field.
-func (_u *SubscriptionUpdateOne) ClearTaskID() *SubscriptionUpdateOne {
-	_u.mutation.ClearTaskID()
 	return _u
 }
 
@@ -880,6 +817,12 @@ func (_u *SubscriptionUpdateOne) sqlSave(ctx context.Context) (_node *Subscripti
 	if value, ok := _u.mutation.TargetID(); ok {
 		_spec.SetField(subscription.FieldTargetID, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.FanzaID(); ok {
+		_spec.SetField(subscription.FieldFanzaID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.JavdbID(); ok {
+		_spec.SetField(subscription.FieldJavdbID, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.Code(); ok {
 		_spec.SetField(subscription.FieldCode, field.TypeString, value)
 	}
@@ -901,26 +844,11 @@ func (_u *SubscriptionUpdateOne) sqlSave(ctx context.Context) (_node *Subscripti
 	if _u.mutation.OriginIDCleared() {
 		_spec.ClearField(subscription.FieldOriginID, field.TypeInt)
 	}
-	if value, ok := _u.mutation.AutoDownload(); ok {
-		_spec.SetField(subscription.FieldAutoDownload, field.TypeBool, value)
-	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(subscription.FieldStatus, field.TypeEnum, value)
 	}
 	if value, ok := _u.mutation.Cursor(); ok {
 		_spec.SetField(subscription.FieldCursor, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.Hash(); ok {
-		_spec.SetField(subscription.FieldHash, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.TaskID(); ok {
-		_spec.SetField(subscription.FieldTaskID, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.AddedTaskID(); ok {
-		_spec.AddField(subscription.FieldTaskID, field.TypeInt, value)
-	}
-	if _u.mutation.TaskIDCleared() {
-		_spec.ClearField(subscription.FieldTaskID, field.TypeInt)
 	}
 	if value, ok := _u.mutation.NextCheckAt(); ok {
 		_spec.SetField(subscription.FieldNextCheckAt, field.TypeTime, value)

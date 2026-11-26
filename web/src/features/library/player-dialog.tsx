@@ -13,16 +13,24 @@ import {
   type ReactNode,
   type RefObject
 } from 'react'
+import { toast } from 'sonner'
 
+import { describeApiError } from '@/api/client'
 import { libraryKeys, useLibraryMovie } from '@/api/library'
 import type { LibraryMovieDetail } from '@/api/library'
 import { historyKeys } from '@/api/history'
-import { savePlaybackProgress, usePlayQualities, useStartMoviePlayback } from '@/api/play'
+import {
+  fetchMpvLink,
+  savePlaybackProgress,
+  usePlayQualities,
+  useStartMoviePlayback
+} from '@/api/play'
 import type { PlaybackResume } from '@/api/play'
 import { useMovieSubtitles } from '@/api/subtitles'
 import { InlineError } from '@/components/error-state'
 import { StatList } from '@/components/stat-list'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { VideoSkin } from '@/components/videojs/video/skin'
@@ -88,11 +96,13 @@ function LibraryPlayer({
   const savedLabel = resumeApplies ? resume?.settings?.quality || 'direct' : 'direct'
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null)
   const effectiveLabel = selectedLabel ?? savedLabel
-  const needsQualities = effectiveLabel !== 'direct'
+  // Local files are served directly by this server and have no 115 renditions.
+  const isLocal = playback.data?.source?.account_id === 'local'
+  const needsQualities = effectiveLabel !== 'direct' && !isLocal
 
   const qualities = usePlayQualities(
     playback.data?.file_id,
-    !!playback.data?.file_id && (qualitiesRequested || needsQualities)
+    !!playback.data?.file_id && !isLocal && (qualitiesRequested || needsQualities)
   )
   const playerRef = useRef<PlayerControls | null>(null)
   const pendingSeekRef = useRef<PendingSeek | null>(null)
@@ -217,6 +227,7 @@ function LibraryPlayer({
                   <Video src={source.src} playsInline autoPlay />
                 )}
               </VideoSkin>
+              <PlaybackErrorNotice movieId={movieId} />
               {subtitleTracks.length > 0 ? (
                 <PlayerSubtitles
                   movieID={movieId}
@@ -258,6 +269,41 @@ function LibraryPlayer({
         <MovieInfo movieId={movieId} />
       </aside>
     </>
+  )
+}
+
+// Shown when the browser's built-in player cannot decode/load the stream. Local
+// files are often formats Chromium cannot play (e.g. MKV or HEVC in MP4), so we
+// replace the raw MEDIA_ELEMENT_ERROR with a hint to use the local MPV player.
+function PlaybackErrorNotice({ movieId }: { movieId: number }) {
+  const error = usePlayer(state => state.error)
+  const [launching, setLaunching] = useState(false)
+  // Only decode failures (3) and unsupported sources/format (4) mean the browser
+  // cannot play this file and MPV is the right fallback. Other media errors
+  // (network, aborted, ...) keep their normal handling.
+  const undecodable = error != null && (error.code === 3 || error.code === 4)
+  if (!undecodable) return null
+  const playWithMpv = async () => {
+    if (launching) return
+    setLaunching(true)
+    try {
+      const { url } = await fetchMpvLink(movieId)
+      window.location.href = url
+    } catch (err) {
+      toast.error('无法唤起 MPV', { description: describeApiError(err) })
+    } finally {
+      setLaunching(false)
+    }
+  }
+  return (
+    <div className="absolute inset-0 z-50 grid place-items-center bg-black/80 p-6 text-center">
+      <div className="max-w-sm space-y-3">
+        <p className="text-sm text-white/90">在线播放器解码失败，请使用本地 MPV 播放器观看。</p>
+        <Button variant="outline" disabled={launching} onClick={() => void playWithMpv()}>
+          {launching ? '正在唤起…' : '使用 MPV 播放'}
+        </Button>
+      </div>
+    </div>
   )
 }
 
@@ -435,6 +481,9 @@ function MovieInfo({ movieId }: { movieId: number }) {
           <Badge variant="frosted">{movie.code}</Badge>
           {movie.source === '115' ? <Badge variant="frosted">115</Badge> : null}
           {movie.has_subtitle ? <Badge variant="frosted">中文</Badge> : null}
+          {movie.has_uncensored || movie.has_cracked ? (
+            <Badge variant="frosted">无码</Badge>
+          ) : null}
         </div>
         <h2 className="text-xl leading-snug font-bold">{movie.title || movie.code}</h2>
         {movie.origin_title && movie.origin_title !== movie.title ? (

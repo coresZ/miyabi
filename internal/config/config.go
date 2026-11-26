@@ -1,6 +1,9 @@
 package config
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -31,7 +34,7 @@ type Config struct {
 
 func Load() (Config, error) {
 	listen := envOrDefault("MIYABI_LISTEN", ":8080")
-	dataDir := envOrDefault("MIYABI_DATA_DIR", "./data")
+	dataDir := envOrDefault("MIYABI_DATA_DIR", defaultDataDir())
 	logLevel, err := parseLogLevel(envOrDefault("MIYABI_LOG_LEVEL", "info"))
 	if err != nil {
 		return Config{}, err
@@ -68,14 +71,20 @@ func Load() (Config, error) {
 		}
 	}
 
+	accessPassword := os.Getenv("MIYABI_ACCESS_PASSWORD")
+	strmToken := strings.TrimSpace(os.Getenv("MIYABI_STRM_TOKEN"))
+	if strmToken == "" && accessPassword != "" {
+		strmToken = deriveSTRMToken(accessPassword)
+	}
+
 	cfg := Config{
 		Listen:         listen,
 		DataDir:        dataDir,
 		EmbyDir:        embyDir,
 		PublicURL:      publicURL,
-		STRMToken:      strings.TrimSpace(os.Getenv("MIYABI_STRM_TOKEN")),
+		STRMToken:      strmToken,
 		LogLevel:       logLevel,
-		AccessPassword: os.Getenv("MIYABI_ACCESS_PASSWORD"),
+		AccessPassword: accessPassword,
 		JWTSecret:      strings.TrimSpace(os.Getenv("MIYABI_JWT_SECRET")),
 		EmbyEnabled:    embyEnabled,
 		EmbyServerURL:  embyServerURL,
@@ -88,6 +97,52 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+// strmTokenSalt keeps the derived STRM token unrelated to the derived JWT secret.
+const strmTokenSalt = "miyabi-strm-token"
+
+// deriveSTRMToken gives a protected instance a fixed STRM token, so Emby and
+// external players, which cannot send the session cookie, can still stream.
+// The token is written into .strm files, so it is derived one-way.
+func deriveSTRMToken(password string) string {
+	mac := hmac.New(sha256.New, []byte(strmTokenSalt))
+	mac.Write([]byte(password))
+	return hex.EncodeToString(mac.Sum(nil))[:32]
+}
+
+// LocalURL returns the loopback address of the web UI for the tray menu.
+func (cfg Config) LocalURL() string {
+	host, port, err := net.SplitHostPort(cfg.Listen)
+	if err != nil {
+		return "http://127.0.0.1:8080"
+	}
+	switch host {
+	case "", "0.0.0.0", "::":
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port)
+}
+
+// defaultDataDir stores runtime data next to the executable so a portable,
+// double-clicked binary keeps its state beside it, since the working directory
+// is launcher-dependent. MIYABI_DATA_DIR still overrides this default.
+func defaultDataDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "./data"
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	dir := filepath.Dir(exe)
+	// `go run`/`go test` build into a temp go-build dir; keep the old
+	// CWD-relative default there so dev runs do not scatter data into ephemeral
+	// folders that are removed on exit.
+	if strings.Contains(dir, "go-build") {
+		return "./data"
+	}
+	return filepath.Join(dir, "data")
 }
 
 func envOrDefault(key, fallback string) string {

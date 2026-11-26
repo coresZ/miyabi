@@ -26,7 +26,7 @@ type offlineAddResult struct {
 func asyncOfflineAdd(ctx context.Context, service *Service, hash string) <-chan offlineAddResult {
 	result := make(chan offlineAddResult, 1)
 	go func() {
-		submission, err := service.Add(ctx, "fixture-movie", hash)
+		submission, err := service.AddForAccount(ctx, "100", "fixture-movie", hash)
 		result <- offlineAddResult{submission, err}
 	}()
 	return result
@@ -39,7 +39,7 @@ func TestOfflineAddRejectsUnknownMagnetBeforeSubmission(t *testing.T) {
 		adds++
 		return "", nil
 	}
-	_, err := service.Add(t.Context(), "fixture-movie", strings.Repeat("c", 40))
+	_, err := service.AddForAccount(t.Context(), "100", "fixture-movie", strings.Repeat("c", 40))
 	if !errors.Is(err, ErrMagnetNotFound) || adds != 0 || service.database.OfflineDownload.Query().CountX(t.Context()) != 0 {
 		t.Fatalf("unknown magnet was submitted or recorded: adds=%d error=%v", adds, err)
 	}
@@ -261,7 +261,7 @@ func TestOfflineDuplicateHistoryPreservesRedownloadBehavior(t *testing.T) {
 				return pan.FileInfo{File: pan.File{ID: "old-video", ParentID: "10", Name: "ABP-001.mp4"}, Path: []pan.Directory{{ID: "10"}}}, nil
 			}
 			client.removeOffline = func(context.Context, string, string) error { removes++; return nil }
-			result, err := service.Add(t.Context(), "fixture-movie", offlineHashA)
+			result, err := service.AddForAccount(t.Context(), "100", "fixture-movie", offlineHashA)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -304,7 +304,7 @@ func TestOfflinePlayableProcessingStillDeduplicatesUntilWorkflowFinishes(t *test
 		adds++
 		return offlineHashA, nil
 	}
-	result, err := service.Add(ctx, input.Code, input.Hash)
+	result, err := service.AddForAccount(ctx, "100", input.Code, input.Hash)
 	if err != nil || result.TaskID != record.ID || result.Phase != "in_library" || !result.Processing || adds != 0 {
 		t.Fatalf("playable processing download was resubmitted: %+v adds=%d err=%v", result, adds, err)
 	}
@@ -312,7 +312,7 @@ func TestOfflinePlayableProcessingStillDeduplicatesUntilWorkflowFinishes(t *test
 		t.Fatal(err)
 	}
 	service.database.File.DeleteOne(video).ExecX(ctx)
-	result, err = service.Add(ctx, input.Code, input.Hash)
+	result, err = service.AddForAccount(ctx, "100", input.Code, input.Hash)
 	if err != nil || result.TaskID == record.ID || result.Phase != "downloading" || adds != 1 {
 		t.Fatalf("deleted video could not be downloaded again: %+v adds=%d err=%v", result, adds, err)
 	}

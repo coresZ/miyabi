@@ -87,7 +87,7 @@ func (goldenDiscover) MovieStates(context.Context, []catalogue.MovieIdentity) ([
 	}, nil
 }
 
-func (goldenDiscover) Magnets(context.Context, string) ([]catalogue.Magnet, error) {
+func (goldenDiscover) MagnetsByCode(context.Context, string, string) ([]catalogue.Magnet, error) {
 	return []catalogue.Magnet{
 		{Magnet: domain.Magnet{Hash: "0000000000000000000000000000000000000003", Name: "HD subtitle fixture", Size: 1024 << 20,
 			HasSubtitle: true, HD: true, FilesCount: 3, CreatedAt: "2026-08-03",
@@ -96,10 +96,6 @@ func (goldenDiscover) Magnets(context.Context, string) ([]catalogue.Magnet, erro
 			HD: true, FilesCount: 2, CreatedAt: "2026-08-02",
 			Sources: []string{"javbus"}, Tags: []string{"高清", "4K"}, Inferred: true}, URI: "magnet:?xt=urn:btih:0000000000000000000000000000000000000002"},
 	}, nil
-}
-
-func (stub goldenDiscover) MagnetsByCode(ctx context.Context, _ string) ([]catalogue.Magnet, error) {
-	return stub.Magnets(ctx, "movie-exact")
 }
 
 func (goldenDiscover) Tags(context.Context, domain.Zone) ([]domain.TagCategory, error) {
@@ -185,13 +181,13 @@ type goldenSubscription struct {
 }
 
 func (goldenSubscription) List(context.Context, string, int, int) ([]monitor.Item, error) {
-	taskID, failure, next := 9, "JavDB 暂不可用", goldenTime().Add(time.Hour)
-	last := goldenTime()
+	failure, next := "JavDB 暂不可用", goldenTime().Add(time.Hour)
+	last, origin := goldenTime(), 3
 	return []monitor.Item{
-		{ID: 2, Kind: "movie", TargetID: "movie-upcoming", Code: "SONE-002", Title: "Upcoming", Cover: "https://media.example/upcoming.jpg", ReleaseDate: "2026-10-01",
-			AutoDownload: true, Status: subscription.StatusWaiting, NextCheckAt: &next, LastCheckedAt: &last, Checks: 3, Error: &failure, CreatedAt: goldenTime(), UpdatedAt: goldenTime()},
-		{ID: 1, Kind: "movie", TargetID: "movie-exact", Code: "ABP-123", Title: "Localized title", Cover: "https://media.example/cover.jpg", ReleaseDate: "2026-08-01",
-			AutoDownload: true, Status: subscription.StatusAdded, Hash: "0000000000000000000000000000000000000003", TaskID: &taskID, Checks: 1, CreatedAt: goldenTime(), UpdatedAt: goldenTime()},
+		{ID: 3, Kind: "actor", TargetID: "actor-1", Title: "Actor", Cover: "https://media.example/actor.jpg",
+			Status: subscription.StatusActive, NextCheckAt: &next, LastCheckedAt: &last, Checks: 3, Error: &failure, CreatedAt: goldenTime(), UpdatedAt: goldenTime()},
+		{ID: 2, Kind: "movie", TargetID: "SONE-002", Code: "SONE-002", Title: "Upcoming", Cover: "https://media.example/upcoming.jpg", ReleaseDate: "2026-10-01",
+			OriginID: &origin, Status: subscription.StatusWaiting, CreatedAt: goldenTime(), UpdatedAt: goldenTime()},
 	}, nil
 }
 
@@ -240,7 +236,7 @@ func TestResponseContractsMatchGoldenFiles(t *testing.T) {
 		{name: "discover_browse", method: http.MethodGet, path: "/api/discover/movies?zone=censored&page=1"},
 		{name: "discover_browse", method: http.MethodGet, path: "/api/discover/movies?zone=censored"},
 		{name: "discover_movie", method: http.MethodGet, path: "/api/discover/movies/movie-exact"},
-		{name: "discover_magnets", method: http.MethodGet, path: "/api/discover/movies/movie-exact/magnets"},
+		{name: "discover_magnets", method: http.MethodGet, path: "/api/discover/movies/movie-exact/magnets?code=SSIS-001"},
 		{name: "discover_movie_states", method: http.MethodPost, path: "/api/discover/movie-states",
 			body: `{"movies":[{"id":"movie-exact","code":"ABP-123"},{"id":"movie-near","code":"ABP-124"},{"id":"movie-saving","code":"SONE-001"}]}`},
 		{name: "discover_tags", method: http.MethodGet, path: "/api/discover/tags?zone=censored"},

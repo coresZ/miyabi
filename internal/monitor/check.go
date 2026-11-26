@@ -4,95 +4,91 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/ppxb/miyabi/internal/domain"
 	"github.com/ppxb/miyabi/internal/ent"
 	"github.com/ppxb/miyabi/internal/ent/subscription"
-	"github.com/ppxb/miyabi/internal/magnet"
 )
 
 const (
 	retryInterval     = time.Hour
-	movieBatchSize    = 10
 	actorBatchSize    = 5
 	requestGap        = 2 * time.Second
 	actorFeedPageSize = 40
 )
 
-// Check drains subscriptions due at the start of this run in small, alternating
-// movie and actor pages. The scheduler runs checks serially, with paced requests.
+// Check drains the actor subscriptions due at the start of this run in small
+// pages, recording their new works. The scheduler runs checks serially, with
+// paced requests.
 func (service *Service) Check(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
+	if err := service.dropUntracked(ctx); err != nil {
+		return fmt.Errorf("drop untracked subscriptions: %w", err)
+	}
 	cfg := service.config(ctx)
-	picker := magnet.NewPicker(cfg.Preferences)
 	requests := 0
-	pace := func() error {
-		if requests > 0 {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(requestGap):
-			}
-		}
-		requests++
-		return nil
-	}
-
 	cutoff := time.Now()
-	groups := []struct {
-		kind   subscription.Kind
-		status subscription.Status
-		limit  int
-		after  *ent.Subscription
-		done   bool
-	}{
-		{kind: subscription.KindMovie, status: subscription.StatusWaiting, limit: movieBatchSize},
-		{kind: subscription.KindActor, status: subscription.StatusActive, limit: actorBatchSize},
-	}
+	var after *ent.Subscription
 	var checkErrors []error
 	for {
-		more := false
-		for i := range groups {
-			group := &groups[i]
-			if group.done {
-				continue
+		records, err := service.dueSubscriptions(ctx, subscription.KindActor, subscription.StatusActive, cutoff, after, actorBatchSize)
+		if err != nil {
+			return errors.Join(append(checkErrors, err)...)
+		}
+		for _, record := range records {
+			if requests > 0 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(requestGap):
+				}
 			}
-			records, err := service.dueSubscriptions(ctx, group.kind, group.status, cutoff, group.after, group.limit)
-			if err != nil {
-				return errors.Join(append(checkErrors, err)...)
-			}
-			group.done = len(records) < group.limit
-			more = more || !group.done
-			if len(records) > 0 {
-				group.after = records[len(records)-1]
-			}
-			for _, record := range records {
-				if err := pace(); err != nil {
+			requests++
+			if err := service.checkActor(ctx, record, cfg.CheckTime); err != nil {
+				if ctx.Err() != nil {
 					return err
 				}
-				if group.kind == subscription.KindMovie {
-					err = service.checkMovie(ctx, record, picker, cfg.CheckTime)
-				} else {
-					err = service.checkActor(ctx, record, cfg.CheckTime)
-				}
-				if err != nil {
-					if ctx.Err() != nil {
-						return err
-					}
-					checkErrors = append(checkErrors, err)
-				}
+				checkErrors = append(checkErrors, err)
 			}
 		}
-		if !more {
-			break
+		if len(records) < actorBatchSize {
+			return errors.Join(checkErrors...)
 		}
+		after = records[len(records)-1]
 	}
-	return errors.Join(checkErrors...)
+}
+
+// dropUntracked deletes actor subscriptions no source can check, such as those
+// recorded by JavDB actor id before following moved to library actors, and
+// the works no followed actor owns any more.
+func (service *Service) dropUntracked(ctx context.Context) error {
+	removed := 0
+	err := ent.WithTx(ctx, service.database, func(tx *ent.Tx) error {
+		actors, err := tx.Subscription.Delete().Where(subscription.KindEQ(subscription.KindActor),
+			subscription.FanzaIDEQ(""), subscription.JavdbIDEQ("")).Exec(ctx)
+		if err != nil {
+			return err
+		}
+		owners, err := tx.Subscription.Query().Where(subscription.KindEQ(subscription.KindActor)).IDs(ctx)
+		if err != nil {
+			return err
+		}
+		orphan := subscription.OriginIDIsNil()
+		if len(owners) > 0 {
+			orphan = subscription.Or(orphan, subscription.OriginIDNotIn(owners...))
+		}
+		works, err := tx.Subscription.Delete().Where(subscription.KindEQ(subscription.KindMovie), orphan).Exec(ctx)
+		removed = actors + works
+		return err
+	})
+	if err == nil && removed > 0 {
+		service.tasks.NotifyMonitorChanged()
+	}
+	return err
 }
 
 func (service *Service) dueSubscriptions(ctx context.Context, kind subscription.Kind, status subscription.Status, cutoff time.Time, after *ent.Subscription, limit int) ([]*ent.Subscription, error) {
@@ -113,52 +109,9 @@ func (service *Service) dueSubscriptions(ctx context.Context, kind subscription.
 	return records, nil
 }
 
-func (service *Service) checkMovie(ctx context.Context, record *ent.Subscription, picker *magnet.Picker, checkTime string) error {
-	now := time.Now()
-	magnets, err := service.catalogueMagnets(ctx, record)
-	if err != nil {
-		return service.deferCheck(ctx, record, now, domain.E(domain.KindUpstream, "查询磁力失败："+domain.PublicMessage(err), err))
-	}
-	best, found := picker.Pick(magnets)
-	if !found {
-		next, stale := nextMovieCheck(now, record.ReleaseDate, record.CreatedAt, checkTime)
-		update := record.Update().SetLastCheckedAt(now).AddChecks(1).ClearError()
-		if stale {
-			update.SetStatus(subscription.StatusStale).ClearNextCheckAt()
-		} else {
-			update.SetNextCheckAt(next)
-		}
-		if err := update.Exec(ctx); err != nil && !ent.IsNotFound(err) {
-			return fmt.Errorf("schedule subscription %d: %w", record.ID, err)
-		}
-		service.tasks.NotifyMonitorChanged()
-		return nil
-	}
-	if !record.AutoDownload {
-		// Remember the pick for the user and look again tomorrow.
-		if err := record.Update().SetHash(best.Hash).SetLastCheckedAt(now).SetNextCheckAt(nextDaily(now, checkTime)).
-			AddChecks(1).ClearError().Exec(ctx); err != nil && !ent.IsNotFound(err) {
-			return fmt.Errorf("update subscription %d: %w", record.ID, err)
-		}
-		service.tasks.NotifyMonitorChanged()
-		return nil
-	}
-	submission, err := service.offline.AddByCode(ctx, record.TargetID, record.Code, best.Hash)
-	if err != nil {
-		return service.deferCheck(ctx, record, now, domain.E(domain.KindUpstream, "加入 115 失败："+domain.PublicMessage(err), err))
-	}
-	if err := record.Update().SetStatus(subscription.StatusAdded).SetHash(best.Hash).SetTaskID(submission.TaskID).
-		SetLastCheckedAt(now).AddChecks(1).ClearNextCheckAt().ClearError().Exec(ctx); err != nil && !ent.IsNotFound(err) {
-		return fmt.Errorf("complete subscription %d: %w", record.ID, err)
-	}
-	slog.InfoContext(ctx, "subscribed movie submitted to 115", "code", record.Code, "hash", best.Hash, "pan_task_id", submission.TaskID)
-	service.tasks.NotifyMonitorChanged()
-	return nil
-}
-
 func (service *Service) checkActor(ctx context.Context, record *ent.Subscription, checkTime string) error {
 	now := time.Now()
-	movies, err := service.browseActor(ctx, record.TargetID)
+	movies, err := service.actorWorks(ctx, record.FanzaID, record.JavdbID)
 	if err != nil {
 		return service.deferCheck(ctx, record, now, domain.E(domain.KindUpstream, "查询演员新作失败："+domain.PublicMessage(err), err))
 	}

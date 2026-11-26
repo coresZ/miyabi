@@ -67,7 +67,7 @@ func (r *recoveryRig) saveConfig(prefs magnet.Preferences) {
 
 func (r *recoveryRig) add(hash string) *ent.OfflineDownload {
 	r.t.Helper()
-	result, err := r.s.Add(r.t.Context(), "fixture-movie", hash)
+	result, err := r.s.AddForAccount(r.t.Context(), "100", "fixture-movie", hash)
 	if err != nil {
 		r.t.Fatal(err)
 	}
@@ -306,7 +306,7 @@ func TestSubmissionTimeoutRecoversWithoutAnotherAdd(t *testing.T) {
 		_, _ = add(ctx, token, uri, dir)
 		return "", context.DeadlineExceeded
 	}
-	if _, err := r.s.Add(t.Context(), "fixture-movie", offlineHashA); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := r.s.AddForAccount(t.Context(), "100", "fixture-movie", offlineHashA); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
 	}
 	record := r.s.database.OfflineDownload.Query().OnlyX(t.Context())
@@ -378,7 +378,7 @@ func TestSwitchKeepsHistoryVisibleAndDeduplicatesCurrentCandidate(t *testing.T) 
 		t.Fatal("switched task vanished", activity)
 	}
 	for _, hash := range []string{offlineHashA, offlineHashB} {
-		result, err := r.s.Add(t.Context(), record.Code, hash)
+		result, err := r.s.AddForAccount(t.Context(), "100", record.Code, hash)
 		if err != nil || result.TaskID != record.ID {
 			t.Fatalf("candidate created duplicate: %+v, %v", result, err)
 		}

@@ -20,8 +20,14 @@ func (Subscription) Fields() []ent.Field {
 		field.Enum("kind").
 			Values("movie", "actor").
 			Default("movie"),
+		// target_id is the library actor key for actors and the code for movies.
 		field.String("target_id").
 			NotEmpty(),
+		// The ids an actor's new works are listed by: FANZA first, JavDB as fallback.
+		field.String("fanza_id").
+			Default(""),
+		field.String("javdb_id").
+			Default(""),
 		field.String("code").
 			Default(""),
 		field.String("title").
@@ -33,18 +39,11 @@ func (Subscription) Fields() []ent.Field {
 		field.Int("origin_id").
 			Optional().
 			Nillable(),
-		field.Bool("auto_download").
-			Default(true),
 		field.Enum("status").
 			Values("waiting", "added", "stale", "active", "paused").
 			Default("waiting"),
 		field.String("cursor").
 			Default(""),
-		field.String("hash").
-			Default(""),
-		field.Int("task_id").
-			Optional().
-			Nillable(),
 		field.Time("next_check_at").
 			Optional().
 			Nillable(),

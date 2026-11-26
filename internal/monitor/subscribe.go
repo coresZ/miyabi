@@ -11,62 +11,39 @@ import (
 )
 
 type AddMovieOptions struct {
-	AutoDownload *bool
 	// OriginID marks a subscription spawned by an actor subscription.
 	OriginID *int
 }
 
-// AddMovie subscribes to a movie. Re-adding a waiting subscription is a
-// no-op; a user re-adding a finished or stale one re-arms it.
-func (service *Service) AddMovie(ctx context.Context, movieID string, opts AddMovieOptions) (Item, error) {
-	if item, found, err := service.existingMovie(ctx, movieID, opts); err != nil || found {
-		return item, err
-	}
-	summary, err := service.discover.MovieSummary(ctx, movieID)
-	if err != nil {
-		return Item{}, err
-	}
-	return service.createMovie(ctx, summary, opts)
-}
-
-// addMovie is AddMovie with the summary already known, which spares actor
-// checks one JavDB detail request per new work.
+// addMovie records a new work found by an actor check. Movies are never
+// subscribed directly; an existing subscription is left untouched.
 func (service *Service) addMovie(ctx context.Context, summary domain.MovieSummary, opts AddMovieOptions) (Item, error) {
-	if item, found, err := service.existingMovie(ctx, summary.ID, opts); err != nil || found {
+	if item, found, err := service.existingMovie(ctx, summary.ID); err != nil || found {
 		return item, err
 	}
 	return service.createMovie(ctx, summary, opts)
 }
 
 func (service *Service) createMovie(ctx context.Context, summary domain.MovieSummary, opts AddMovieOptions) (Item, error) {
-	var autoDownload bool
-	if opts.AutoDownload != nil {
-		autoDownload = *opts.AutoDownload
-	} else {
-		autoDownload = service.config(ctx).MovieAutoDownload
-	}
 	record, err := service.database.Subscription.Create().
 		SetKind(subscription.KindMovie).SetTargetID(summary.ID).SetCode(summary.Code).
 		SetTitle(summary.Title).SetCover(summary.Cover).SetReleaseDate(summary.ReleaseDate).
-		SetAutoDownload(autoDownload).SetStatus(subscription.StatusWaiting).
-		SetNillableOriginID(opts.OriginID).SetNextCheckAt(time.Now()).Save(ctx)
+		SetNillableOriginID(opts.OriginID).Save(ctx)
 	if err != nil {
 		if ent.IsConstraintError(err) {
 			// Lost a race with a concurrent add; query the existing row once.
-			if item, found, findErr := service.existingMovie(ctx, summary.ID, opts); findErr == nil && found {
+			if item, found, findErr := service.existingMovie(ctx, summary.ID); findErr == nil && found {
 				return item, nil
 			}
 		}
 		return Item{}, fmt.Errorf("create movie subscription: %w", err)
 	}
 	service.tasks.NotifyMonitorChanged()
-	service.signal()
 	return subscriptionItem(record), nil
 }
 
-// existingMovie resolves a duplicate add. Actor-spawned additions never touch
-// an existing subscription, so a movie that is already added stays added.
-func (service *Service) existingMovie(ctx context.Context, movieID string, opts AddMovieOptions) (Item, bool, error) {
+// existingMovie finds the subscription already recorded for a movie.
+func (service *Service) existingMovie(ctx context.Context, movieID string) (Item, bool, error) {
 	existing, err := service.database.Subscription.Query().
 		Where(subscription.KindEQ(subscription.KindMovie), subscription.TargetIDEQ(movieID)).Only(ctx)
 	if ent.IsNotFound(err) {
@@ -75,28 +52,11 @@ func (service *Service) existingMovie(ctx context.Context, movieID string, opts 
 	if err != nil {
 		return Item{}, false, fmt.Errorf("find subscription: %w", err)
 	}
-	if opts.OriginID != nil || existing.Status == subscription.StatusWaiting {
-		return subscriptionItem(existing), true, nil
-	}
-	item, err := service.retry(ctx, existing)
-	return item, true, err
-}
-
-func (service *Service) retry(ctx context.Context, record *ent.Subscription) (Item, error) {
-	updated, err := record.Update().SetStatus(subscription.StatusWaiting).SetNextCheckAt(time.Now()).
-		SetHash("").ClearTaskID().ClearError().Save(ctx)
-	if err != nil {
-		return Item{}, fmt.Errorf("retry subscription %d: %w", record.ID, err)
-	}
-	service.tasks.NotifyMonitorChanged()
-	service.signal()
-	return subscriptionItem(updated), nil
+	return subscriptionItem(existing), true, nil
 }
 
 type UpdateOptions struct {
-	AutoDownload *bool
-	// Status pauses or resumes an actor subscription; movie status only moves
-	// through checks and enqueues.
+	// Status pauses or resumes an actor subscription.
 	Status *string
 }
 
@@ -106,9 +66,6 @@ func (service *Service) Update(ctx context.Context, id int, opts UpdateOptions) 
 		return Item{}, err
 	}
 	update := record.Update()
-	if opts.AutoDownload != nil {
-		update.SetAutoDownload(*opts.AutoDownload)
-	}
 	if opts.Status != nil {
 		status := subscription.Status(*opts.Status)
 		if record.Kind != subscription.KindActor || (status != subscription.StatusActive && status != subscription.StatusPaused) {
@@ -127,9 +84,40 @@ func (service *Service) Update(ctx context.Context, id int, opts UpdateOptions) 
 	return subscriptionItem(updated), nil
 }
 
-// Remove deletes a subscription; a missing ID surfaces as not found.
+// Remove deletes a subscription; a missing ID surfaces as not found. A work is
+// recorded once under the first actor that found it, so each work of a removed
+// actor moves to another followed actor who has seen it, or is deleted.
 func (service *Service) Remove(ctx context.Context, id int) error {
-	if err := service.database.Subscription.DeleteOneID(id).Exec(ctx); err != nil {
+	if err := ent.WithTx(ctx, service.database, func(tx *ent.Tx) error {
+		works, err := tx.Subscription.Query().Where(subscription.OriginIDEQ(id)).All(ctx)
+		if err != nil {
+			return err
+		}
+		if len(works) > 0 {
+			others, err := tx.Subscription.Query().
+				Where(subscription.KindEQ(subscription.KindActor), subscription.IDNEQ(id)).All(ctx)
+			if err != nil {
+				return err
+			}
+			seenBy := make(map[string]int)
+			for _, other := range others {
+				for _, movieID := range decodeCursor(other.Cursor).SeenMovieIDs {
+					seenBy[movieID] = other.ID
+				}
+			}
+			for _, work := range works {
+				if owner, ok := seenBy[work.TargetID]; ok {
+					err = tx.Subscription.UpdateOneID(work.ID).SetOriginID(owner).Exec(ctx)
+				} else {
+					err = tx.Subscription.DeleteOneID(work.ID).Exec(ctx)
+				}
+				if err != nil {
+					return err
+				}
+			}
+		}
+		return tx.Subscription.DeleteOneID(id).Exec(ctx)
+	}); err != nil {
 		return err
 	}
 	service.tasks.NotifyMonitorChanged()
